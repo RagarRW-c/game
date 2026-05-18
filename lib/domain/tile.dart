@@ -19,9 +19,9 @@ class Tile {
   final int layer;
   final TileState state;
 
-  Tile copyWith({TileState? state}) => Tile(
+  Tile copyWith({String? type, TileState? state}) => Tile(
         id: id,
-        type: type,
+        type: type ?? this.type,
         x: x,
         y: y,
         layer: layer,
