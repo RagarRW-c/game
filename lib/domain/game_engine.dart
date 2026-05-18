@@ -27,6 +27,25 @@ class GameEngine {
   List<Tile> get boardTiles =>
       tiles.where((tile) => tile.state == TileState.board).toList();
 
+  /// Board tiles in the same order Flutter paints them in the board Stack.
+  ///
+  /// Later entries are rendered above earlier entries and therefore win any
+  /// visible overlap. Ties within a layer keep the canonical tile list order so
+  /// coverage checks use the same z-index as the UI.
+  List<Tile> get renderedBoardTiles {
+    final originalIndexById = <String, int>{};
+    for (var index = 0; index < tiles.length; index++) {
+      originalIndexById[tiles[index].id] = index;
+    }
+
+    return boardTiles.toList()
+      ..sort((a, b) {
+        final layerComparison = a.layer.compareTo(b.layer);
+        if (layerComparison != 0) return layerComparison;
+        return originalIndexById[a.id]!.compareTo(originalIndexById[b.id]!);
+      });
+  }
+
   bool get canUndo => _history.isNotEmpty && result == GameResult.playing;
 
   Tile? tileById(String id) {
@@ -36,24 +55,51 @@ class GameEngine {
     return null;
   }
 
-  /// A board tile is uncovered when no higher-layer active tile overlaps it.
-  /// The overlap check uses the rendered board and tile sizes so level JSON can
-  /// stay responsive with normalized 0..1 coordinates on any Android phone.
+  Size _boardSize = Size.zero;
+  Size _tileSize = Size.zero;
+
+  /// Updates the rendered board geometry used for tile overlap checks.
+  ///
+  /// Level data stores normalized coordinates, so coverage has to be evaluated
+  /// against the current rendered board and tile dimensions.
+  void updateBoardGeometry(Size boardSize, Size tileSize) {
+    _boardSize = boardSize;
+    _tileSize = tileSize;
+  }
+
+  /// A board tile is covered when any active tile rendered above it has a
+  /// visible rectangular overlap with it.
+  bool isTileCovered(Tile tile) {
+    if (tile.state != TileState.board ||
+        _boardSize == Size.zero ||
+        _tileSize == Size.zero) {
+      return false;
+    }
+
+    final renderedTiles = renderedBoardTiles;
+    final tileRenderIndex = renderedTiles.indexWhere(
+      (item) => item.id == tile.id,
+    );
+    if (tileRenderIndex == -1) return false;
+
+    return renderedTiles
+        .skip(tileRenderIndex + 1)
+        .any((other) => tile.overlaps(other, _boardSize, _tileSize));
+  }
+
+  /// A board tile is uncovered only when no tile rendered above it overlaps it.
   bool isUncovered(Tile candidate, Size boardSize, Size tileSize) {
-    if (candidate.state != TileState.board) return false;
-    final candidateRect = candidate.boardRect(boardSize, tileSize);
-    return boardTiles.every((other) {
-      if (other.id == candidate.id || other.layer <= candidate.layer) {
-        return true;
-      }
-      return !candidateRect.overlaps(other.boardRect(boardSize, tileSize));
-    });
+    updateBoardGeometry(boardSize, tileSize);
+    return candidate.state == TileState.board && !isTileCovered(candidate);
   }
 
   bool tapTile(String id, Size boardSize, Size tileSize) {
     if (result != GameResult.playing) return false;
+    updateBoardGeometry(boardSize, tileSize);
     final tile = tileById(id);
-    if (tile == null || !isUncovered(tile, boardSize, tileSize)) return false;
+    if (tile == null || tile.state != TileState.board || isTileCovered(tile)) {
+      return false;
+    }
 
     _saveSnapshot();
     tiles = tiles
@@ -114,10 +160,9 @@ class GameEngine {
 
   String? hint(Size boardSize, Size tileSize) {
     if (result != GameResult.playing) return null;
-    final uncovered = boardTiles
+    final uncovered = renderedBoardTiles
         .where((tile) => isUncovered(tile, boardSize, tileSize))
-        .toList()
-      ..sort((a, b) => a.layer.compareTo(b.layer));
+        .toList();
     if (uncovered.isEmpty) return null;
 
     final trayTypes = tray.map((id) => tileById(id)?.type).whereType<String>();
