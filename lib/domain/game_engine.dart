@@ -93,6 +93,12 @@ class GameEngine {
     return candidate.state == TileState.board && !isTileCovered(candidate);
   }
 
+  /// A board tile is uncovered only when no higher-layer active tile overlaps it.
+  bool isUncovered(Tile candidate, Size boardSize, Size tileSize) {
+    updateBoardGeometry(boardSize, tileSize);
+    return candidate.state == TileState.board && !isTileCovered(candidate);
+  }
+
   bool tapTile(String id, Size boardSize, Size tileSize) {
     if (result != GameResult.playing) return false;
     updateBoardGeometry(boardSize, tileSize);
