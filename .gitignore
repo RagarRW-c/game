@@ -1,0 +1,15 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+android/.gradle/
+android/local.properties
+android/app/*.jks
+android/app/*.keystore
+android/app/debug.keystore
+assets/audio/*.wav
+android/app/src/main/res/mipmap-*/ic_launcher.png
