@@ -1,0 +1,358 @@
+{
+  "level": 8,
+  "name": "Level 8",
+  "timeBonusSeconds": 110,
+  "tiles": [
+    {
+      "id": "L8_T000",
+      "type": "sun",
+      "x": 0.269,
+      "y": 0.392,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T001",
+      "type": "apple",
+      "x": 0.268,
+      "y": 0.142,
+      "layer": 0,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T002",
+      "type": "sun",
+      "x": 0.347,
+      "y": 0.18,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T003",
+      "type": "candy",
+      "x": 0.201,
+      "y": 0.361,
+      "layer": 3,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T004",
+      "type": "carrot",
+      "x": 0.59,
+      "y": 0.378,
+      "layer": 4,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T005",
+      "type": "moon",
+      "x": 0.669,
+      "y": 0.702,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T006",
+      "type": "leaf",
+      "x": 0.62,
+      "y": 0.143,
+      "layer": 2,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T007",
+      "type": "banana",
+      "x": 0.317,
+      "y": 0.65,
+      "layer": 1,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T008",
+      "type": "gem",
+      "x": 0.372,
+      "y": 0.145,
+      "layer": 4,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T009",
+      "type": "heart",
+      "x": 0.389,
+      "y": 0.163,
+      "layer": 1,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T010",
+      "type": "flower",
+      "x": 0.525,
+      "y": 0.444,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T011",
+      "type": "leaf",
+      "x": 0.354,
+      "y": 0.586,
+      "layer": 0,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T012",
+      "type": "shell",
+      "x": 0.329,
+      "y": 0.377,
+      "layer": 3,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T013",
+      "type": "flower",
+      "x": 0.577,
+      "y": 0.147,
+      "layer": 0,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T014",
+      "type": "leaf",
+      "x": 0.124,
+      "y": 0.256,
+      "layer": 4,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T015",
+      "type": "carrot",
+      "x": 0.497,
+      "y": 0.16,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T016",
+      "type": "berry",
+      "x": 0.279,
+      "y": 0.464,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T017",
+      "type": "candy",
+      "x": 0.109,
+      "y": 0.195,
+      "layer": 4,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T018",
+      "type": "carrot",
+      "x": 0.609,
+      "y": 0.159,
+      "layer": 1,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T019",
+      "type": "sun",
+      "x": 0.127,
+      "y": 0.141,
+      "layer": 4,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T020",
+      "type": "banana",
+      "x": 0.387,
+      "y": 0.613,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T021",
+      "type": "moon",
+      "x": 0.589,
+      "y": 0.689,
+      "layer": 1,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T022",
+      "type": "heart",
+      "x": 0.486,
+      "y": 0.373,
+      "layer": 3,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T023",
+      "type": "shell",
+      "x": 0.517,
+      "y": 0.405,
+      "layer": 3,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T024",
+      "type": "star",
+      "x": 0.369,
+      "y": 0.682,
+      "layer": 0,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T025",
+      "type": "berry",
+      "x": 0.299,
+      "y": 0.691,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T026",
+      "type": "gem",
+      "x": 0.69,
+      "y": 0.167,
+      "layer": 0,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T027",
+      "type": "star",
+      "x": 0.704,
+      "y": 0.241,
+      "layer": 3,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T028",
+      "type": "gem",
+      "x": 0.173,
+      "y": 0.463,
+      "layer": 2,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T029",
+      "type": "heart",
+      "x": 0.305,
+      "y": 0.696,
+      "layer": 1,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T030",
+      "type": "moon",
+      "x": 0.168,
+      "y": 0.125,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T031",
+      "type": "candy",
+      "x": 0.546,
+      "y": 0.672,
+      "layer": 2,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T032",
+      "type": "berry",
+      "x": 0.309,
+      "y": 0.361,
+      "layer": 0,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T033",
+      "type": "star",
+      "x": 0.456,
+      "y": 0.469,
+      "layer": 3,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T034",
+      "type": "apple",
+      "x": 0.193,
+      "y": 0.248,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T035",
+      "type": "banana",
+      "x": 0.461,
+      "y": 0.396,
+      "layer": 5,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T036",
+      "type": "apple",
+      "x": 0.461,
+      "y": 0.351,
+      "layer": 3,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T037",
+      "type": "flower",
+      "x": 0.306,
+      "y": 0.467,
+      "layer": 1,
+      "width": 0.16,
+      "height": 0.16
+    },
+    {
+      "id": "L8_T038",
+      "type": "shell",
+      "x": 0.593,
+      "y": 0.251,
+      "layer": 3,
+      "width": 0.16,
+      "height": 0.16
+    }
+  ]
+}
