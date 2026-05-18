@@ -124,8 +124,7 @@ class _GameScreenState extends State<GameScreen> {
               );
               final tileSize = _tileSize(constraints.maxWidth);
               engine.updateBoardGeometry(boardSize, tileSize);
-              final sortedBoardTiles = engine.boardTiles.toList()
-                ..sort((a, b) => a.layer.compareTo(b.layer));
+              final renderedBoardTiles = engine.renderedBoardTiles;
               return Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -153,7 +152,7 @@ class _GameScreenState extends State<GameScreen> {
                                   ),
                                 ),
                               ),
-                              for (final tile in sortedBoardTiles)
+                              for (final tile in renderedBoardTiles)
                                 AnimatedPositioned(
                                   key: ValueKey(tile.id),
                                   duration: const Duration(milliseconds: 260),
