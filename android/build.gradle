@@ -1,0 +1,20 @@
+ext.kotlin_version = '1.9.24'
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.layout.buildDirectory = file('../build')
+subprojects {
+    project.layout.buildDirectory = rootProject.layout.buildDirectory.dir(project.name)
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}
