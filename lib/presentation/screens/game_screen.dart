@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -39,6 +40,7 @@ class _GameScreenState extends State<GameScreen> {
   final Random _animationRandom = Random();
   bool _animatingAction = false;
   bool _gameOverDialogShowing = false;
+  int _actionGeneration = 0;
 
   @override
   void didChangeDependencies() {
@@ -48,6 +50,23 @@ class _GameScreenState extends State<GameScreen> {
     _levelFuture = _scope.levelRepository.loadLevel(widget.level);
   }
 
+  @override
+  void didUpdateWidget(covariant GameScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.level != widget.level) {
+      _levelFuture = _scope.levelRepository.loadLevel(widget.level);
+      _engine = null;
+      _resetAnimationState();
+      _actionGeneration++;
+    }
+  }
+
+  @override
+  void dispose() {
+    _actionGeneration++;
+    super.dispose();
+  }
+
   void _ensureEngine(LevelDefinition level) {
     _engine ??= GameEngine(level.tiles);
   }
@@ -55,6 +74,22 @@ class _GameScreenState extends State<GameScreen> {
   Size _tileSize(double width) {
     final side = (width * 0.16).clamp(50.0, 70.0).toDouble();
     return Size(side, side);
+  }
+
+  bool _safeSetState(VoidCallback update) {
+    if (!mounted) return false;
+    setState(update);
+    return true;
+  }
+
+  bool _isCurrentAction(int token) => mounted && token == _actionGeneration;
+
+  void _playSfx(Future<void> Function() play, String cue) {
+    unawaited(
+      play().catchError((Object error, StackTrace stackTrace) {
+        debugPrint('SFX $cue failed: $error');
+      }),
+    );
   }
 
   void _resetAnimationState() {
@@ -74,56 +109,97 @@ class _GameScreenState extends State<GameScreen> {
     Size boardSize,
     Size tileSize,
   ) async {
-    if (_animatingAction) return;
-    final scope = _scope;
-    final beforeTrayIds = List<String>.from(_engine!.tray);
-
-    setState(() {
-      _animatingAction = true;
-      _pickedUpTileId = tile.id;
-      _hintedTileId = null;
-    });
-    await scope.audioService.playTap();
-    await Future<void>.delayed(const Duration(milliseconds: 115));
-    if (!mounted) return;
-
-    final moved = _engine!.tapTile(tile.id, boardSize, tileSize);
-    if (!moved) {
-      setState(() {
-        _pickedUpTileId = null;
-        _animatingAction = false;
-      });
+    final engine = _engine;
+    if (_animatingAction || engine == null || engine.result != GameResult.playing) {
       return;
     }
 
-    _showMatchRemovalIfNeeded(beforeTrayIds, tile.id);
-    setState(() {
-      _pickedUpTileId = null;
-      _flyingTile = tile;
-      _flyingTrayIndex = beforeTrayIds.length
-          .clamp(0, GameEngine.trayLimit - 1)
-          .toInt();
+    final canonicalTile = engine.tileById(tile.id);
+    if (canonicalTile == null ||
+        canonicalTile.state != TileState.board ||
+        engine.isTileCovered(canonicalTile)) {
+      debugPrint('Tile selection ignored: id=${tile.id}, selectable=false');
+      return;
+    }
+
+    final token = ++_actionGeneration;
+    final beforeTrayIds = List<String>.from(engine.tray);
+    debugPrint('Tile selection started: id=${canonicalTile.id}, tray=${beforeTrayIds.length}');
+
+    if (!_safeSetState(() {
+      _animatingAction = true;
+      _pickedUpTileId = canonicalTile.id;
+      _hintedTileId = null;
+      _matchingTileIds.clear();
+      _flyingTile = null;
       _flightSettled = false;
-    });
+    })) {
+      return;
+    }
+    _playSfx(_scope.audioService.playTap, 'tap');
+    await Future<void>.delayed(const Duration(milliseconds: 115));
+    if (!_isCurrentAction(token)) return;
+
+    final moved = engine.tapTile(canonicalTile.id, boardSize, tileSize);
+    if (!moved) {
+      debugPrint('Tile selection aborted: id=${canonicalTile.id}, engine rejected move');
+      _safeSetState(() {
+        _pickedUpTileId = null;
+        _animatingAction = false;
+      });
+      if (engine.result == GameResult.lost) {
+        await _handleGameOver(level: level);
+      }
+      return;
+    }
+
+    final removedIds = _matchedIdsAfterMove(
+      beforeTrayIds,
+      collectedId: canonicalTile.id,
+    );
+    final trayIndex = beforeTrayIds.length.clamp(0, GameEngine.trayLimit - 1).toInt();
+    debugPrint('Tray insertion: id=${canonicalTile.id}, slot=$trayIndex, tray=${engine.tray.length}');
+    if (removedIds.isNotEmpty) {
+      debugPrint('Match removal queued: ids=${removedIds.join(',')}');
+    }
+
+    if (!_safeSetState(() {
+      _pickedUpTileId = null;
+      _flyingTile = canonicalTile;
+      _flyingTrayIndex = trayIndex;
+      _flightSettled = false;
+      _matchingTileIds
+        ..clear()
+        ..addAll(removedIds);
+    })) {
+      return;
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _flyingTile?.id == tile.id) {
-        setState(() => _flightSettled = true);
+      if (_isCurrentAction(token) && _flyingTile?.id == canonicalTile.id) {
+        _safeSetState(() => _flightSettled = true);
       }
     });
-    await Future<void>.delayed(const Duration(milliseconds: 260));
-    if (!mounted) return;
 
-    if (_matchingTileIds.isNotEmpty) await scope.audioService.playMatch();
-    if (!mounted) return;
-    setState(() {
+    await Future<void>.delayed(const Duration(milliseconds: 310));
+    if (!_isCurrentAction(token)) return;
+
+    if (_matchingTileIds.isNotEmpty) {
+      _playSfx(_scope.audioService.playMatch, 'match');
+    }
+    debugPrint('Tile animation completed: id=${canonicalTile.id}');
+    if (!_safeSetState(() {
       _matchingTileIds.clear();
       _flyingTile = null;
       _flightSettled = false;
       _animatingAction = false;
-    });
-    if (_engine!.result == GameResult.won) await _handleWin();
+    })) {
+      return;
+    }
+
+    if (engine.result == GameResult.won) await _handleWin();
     if (!mounted) return;
-    if (_engine!.result == GameResult.lost) await _handleGameOver(level: level);
+    if (engine.result == GameResult.lost) await _handleGameOver(level: level);
   }
 
   Future<void> _useCatPowerUp(
@@ -131,57 +207,78 @@ class _GameScreenState extends State<GameScreen> {
     Size boardSize,
     Size tileSize,
   ) async {
-    if (_animatingAction) return;
-    final scope = _scope;
+    final engine = _engine;
+    if (_animatingAction || engine == null || engine.result != GameResult.playing) return;
     final catIds = _availableTripleIds(boardSize, tileSize);
     if (catIds == null) {
-      setState(() => _hintedTileId = _engine!.hint(boardSize, tileSize));
-      await scope.audioService.playBooster();
+      final hintId = engine.hint(boardSize, tileSize);
+      debugPrint('Cat helper hint: id=$hintId');
+      _safeSetState(() => _hintedTileId = hintId);
+      _playSfx(_scope.audioService.playBooster, 'booster');
       return;
     }
 
-    final beforeTrayIds = List<String>.from(_engine!.tray);
-    setState(() {
+    final token = ++_actionGeneration;
+    final beforeTrayIds = List<String>.from(engine.tray);
+    debugPrint('Cat helper started: ids=${catIds.join(',')}');
+    if (!_safeSetState(() {
       _animatingAction = true;
       _hintedTileId = null;
+      _matchingTileIds.clear();
       _catPulseTileIds
         ..clear()
         ..addAll(catIds);
-    });
-    await scope.audioService.playBooster();
+    })) {
+      return;
+    }
+    _playSfx(_scope.audioService.playBooster, 'booster');
     await Future<void>.delayed(const Duration(milliseconds: 240));
-    if (!mounted) return;
+    if (!_isCurrentAction(token)) return;
 
-    final collected = _engine!.collectAvailableTriple(boardSize, tileSize);
+    final collected = engine.collectAvailableTriple(boardSize, tileSize);
     if (!collected) {
-      setState(() {
+      debugPrint('Cat helper aborted: no triple was collected');
+      _safeSetState(() {
         _catPulseTileIds.clear();
         _animatingAction = false;
       });
       return;
     }
 
-    _showMatchRemovalIfNeeded(beforeTrayIds, null, preferredIds: catIds.toSet());
-    setState(() => _catPulseTileIds.clear());
+    final removedIds = _matchedIdsAfterMove(beforeTrayIds, preferredIds: catIds.toSet());
+    debugPrint('Cat helper tray insertion: ids=${catIds.join(',')}, tray=${engine.tray.length}');
+    if (removedIds.isNotEmpty) {
+      debugPrint('Match removal queued: ids=${removedIds.join(',')}');
+    }
+    _safeSetState(() {
+      _catPulseTileIds.clear();
+      _matchingTileIds
+        ..clear()
+        ..addAll(removedIds);
+    });
     await Future<void>.delayed(const Duration(milliseconds: 320));
-    if (!mounted) return;
+    if (!_isCurrentAction(token)) return;
 
-    await scope.audioService.playMatch();
-    if (!mounted) return;
-    setState(() {
+    if (_matchingTileIds.isNotEmpty) {
+      _playSfx(_scope.audioService.playMatch, 'match');
+    }
+    debugPrint('Cat helper animation completed');
+    _safeSetState(() {
       _matchingTileIds.clear();
       _animatingAction = false;
     });
-    if (_engine!.result == GameResult.won) await _handleWin();
+    if (engine.result == GameResult.won) await _handleWin();
     if (!mounted) return;
-    if (_engine!.result == GameResult.lost) await _handleGameOver(level: level);
+    if (engine.result == GameResult.lost) await _handleGameOver(level: level);
   }
 
   List<String>? _availableTripleIds(Size boardSize, Size tileSize) {
-    _engine!.updateBoardGeometry(boardSize, tileSize);
+    final engine = _engine;
+    if (engine == null || engine.result != GameResult.playing) return null;
+    engine.updateBoardGeometry(boardSize, tileSize);
     final idsByType = <String, List<String>>{};
-    for (final tile in _engine!.renderedBoardTiles.reversed) {
-      if (_engine!.isTileCovered(tile)) continue;
+    for (final tile in engine.renderedBoardTiles.reversed) {
+      if (engine.isTileCovered(tile)) continue;
       idsByType.putIfAbsent(tile.type, () => <String>[]).add(tile.id);
     }
     for (final ids in idsByType.values) {
@@ -190,35 +287,31 @@ class _GameScreenState extends State<GameScreen> {
     return null;
   }
 
-  void _showMatchRemovalIfNeeded(
-    List<String> beforeTrayIds,
-    String? collectedId, {
+  Set<String> _matchedIdsAfterMove(
+    List<String> beforeTrayIds, {
+    String? collectedId,
     Set<String>? preferredIds,
   }) {
-    if (!mounted) return;
-    final afterTrayIds = _engine!.tray.toSet();
+    final engine = _engine;
+    if (engine == null) return <String>{};
+    final afterTrayIds = engine.tray.toSet();
     final candidateIds = <String>{
       ...beforeTrayIds,
       if (collectedId != null) collectedId,
+      if (preferredIds != null) ...preferredIds,
     };
-    if (preferredIds != null) candidateIds.addAll(preferredIds);
-    final removedIds = candidateIds
-        .where((id) => !afterTrayIds.contains(id))
-        .toSet();
-    if (removedIds.length >= 3) {
-      setState(() {
-        _matchingTileIds
-          ..clear()
-          ..addAll(removedIds.take(3));
-      });
-    }
+    return candidateIds.where((id) {
+      final tile = engine.tileById(id);
+      return tile != null &&
+          tile.state == TileState.matched &&
+          !afterTrayIds.contains(id);
+    }).take(3).toSet();
   }
 
   Future<void> _handleGameOver({required LevelDefinition? level}) async {
     if (_gameOverDialogShowing || !mounted) return;
     _gameOverDialogShowing = true;
-    final audioService = _scope.audioService;
-    await audioService.playLose();
+    _playSfx(_scope.audioService.playLose, 'lose');
     if (!mounted) return;
 
     await showDialog<void>(
@@ -241,7 +334,8 @@ class _GameScreenState extends State<GameScreen> {
                 : () {
                     _navigator.pop();
                     if (!mounted) return;
-                    setState(() {
+                    _actionGeneration++;
+                    _safeSetState(() {
                       _engine = GameEngine(level.tiles);
                       _resetAnimationState();
                     });
@@ -259,8 +353,8 @@ class _GameScreenState extends State<GameScreen> {
     if (!mounted) return;
     final scope = _scope;
     await scope.progressRepository.unlockNextLevel(widget.level);
-    await scope.audioService.playWin();
     if (!mounted) return;
+    _playSfx(scope.audioService.playWin, 'win');
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -298,6 +392,13 @@ class _GameScreenState extends State<GameScreen> {
     return FutureBuilder<LevelDefinition>(
       future: _levelFuture,
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          debugPrint('Game build failed to load level: ${snapshot.error}');
+          return _FallbackGameScaffold(
+            title: 'Level ${widget.level}',
+            message: 'We could not load this level. Please go back and try again.',
+          );
+        }
         if (!snapshot.hasData) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
@@ -322,6 +423,7 @@ class _GameScreenState extends State<GameScreen> {
           ),
           body: LayoutBuilder(
             builder: (context, constraints) {
+              try {
               final boardHeight = constraints.maxHeight - 156;
               final boardSize = Size(
                 constraints.maxWidth,
@@ -440,7 +542,9 @@ class _GameScreenState extends State<GameScreen> {
                     _BoosterBar(
                       onShuffle: () async {
                         if (_animatingAction) return;
-                        setState(() {
+                        final token = ++_actionGeneration;
+                        debugPrint('Shuffle started');
+                        _safeSetState(() {
                           _animatingAction = true;
                           _hintedTileId = null;
                           _shuffleOffsets
@@ -454,25 +558,29 @@ class _GameScreenState extends State<GameScreen> {
                               );
                             }));
                         });
-                        await _scope.audioService.playBooster();
-                        if (!mounted) return;
+                        _playSfx(_scope.audioService.playBooster, 'booster');
                         await Future<void>.delayed(const Duration(milliseconds: 170));
-                        if (!mounted) return;
-                        setState(() {
+                        if (!_isCurrentAction(token)) return;
+                        _safeSetState(() {
                           engine.shuffleBoard();
                           _shuffleOffsets.clear();
                         });
                         await Future<void>.delayed(const Duration(milliseconds: 280));
-                        if (mounted) setState(() => _animatingAction = false);
+                        if (_isCurrentAction(token)) {
+                          debugPrint('Shuffle animation completed');
+                          _safeSetState(() => _animatingAction = false);
+                        }
                       },
                       onHint: () => _useCatPowerUp(level, boardSize, tileSize),
                       onUndo: engine.canUndo
-                          ? () async {
-                              setState(() {
+                          ? () {
+                              debugPrint('Undo requested');
+                              _actionGeneration++;
+                              _safeSetState(() {
                                 engine.undo();
                                 _resetAnimationState();
                               });
-                              await _scope.audioService.playBooster();
+                              _playSfx(_scope.audioService.playBooster, 'booster');
                             }
                           : null,
                     ),
@@ -480,10 +588,60 @@ class _GameScreenState extends State<GameScreen> {
                   ],
                 ),
               );
+              } catch (error, stackTrace) {
+                debugPrint('Game build fallback: $error');
+                debugPrint('$stackTrace');
+                return const _FallbackGameBody();
+              }
             },
           ),
         );
       },
+    );
+  }
+}
+
+
+class _FallbackGameScaffold extends StatelessWidget {
+  const _FallbackGameScaffold({required this.title, required this.message});
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: _FallbackGameBody(message: message),
+    );
+  }
+}
+
+class _FallbackGameBody extends StatelessWidget {
+  const _FallbackGameBody({
+    this.message = 'The board hit an invalid state. Please leave and reopen the level.',
+  });
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.warning_amber_rounded, size: 44),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -552,10 +710,13 @@ class _Tray extends StatelessWidget {
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12)],
       ),
       child: Row(
-        children: List.generate(GameEngine.trayLimit, (index) {
-          final visibleTray = <String>[...engine.tray, ...matchingTileIds]
-              .take(GameEngine.trayLimit)
-              .toList();
+        children: () {
+          final visibleTray = <String>[
+            ...engine.tray,
+            ...matchingTileIds,
+          ].where((id) => engine.tileById(id) != null).take(GameEngine.trayLimit).toList();
+
+          return List.generate(GameEngine.trayLimit, (index) {
           final hasTile = index < visibleTray.length;
           final tile = hasTile ? engine.tileById(visibleTray[index]) : null;
           final matching = tile != null && matchingTileIds.contains(tile.id);
@@ -608,7 +769,8 @@ class _Tray extends StatelessWidget {
               ),
             ),
           );
-        }),
+          });
+        }(),
       ),
     );
   }
