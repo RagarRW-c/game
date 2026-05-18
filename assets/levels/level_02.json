@@ -1,0 +1,154 @@
+{
+  "level": 2,
+  "name": "Level 2",
+  "timeBonusSeconds": 170,
+  "tiles": [
+    {
+      "id": "L2_T000",
+      "type": "berry",
+      "x": 0.619,
+      "y": 0.607,
+      "layer": 2
+    },
+    {
+      "id": "L2_T001",
+      "type": "shell",
+      "x": 0.48,
+      "y": 0.362,
+      "layer": 1
+    },
+    {
+      "id": "L2_T002",
+      "type": "banana",
+      "x": 0.629,
+      "y": 0.693,
+      "layer": 1
+    },
+    {
+      "id": "L2_T003",
+      "type": "banana",
+      "x": 0.429,
+      "y": 0.733,
+      "layer": 0
+    },
+    {
+      "id": "L2_T004",
+      "type": "berry",
+      "x": 0.122,
+      "y": 0.137,
+      "layer": 0
+    },
+    {
+      "id": "L2_T005",
+      "type": "shell",
+      "x": 0.177,
+      "y": 0.194,
+      "layer": 2
+    },
+    {
+      "id": "L2_T006",
+      "type": "carrot",
+      "x": 0.571,
+      "y": 0.167,
+      "layer": 1
+    },
+    {
+      "id": "L2_T007",
+      "type": "flower",
+      "x": 0.532,
+      "y": 0.492,
+      "layer": 2
+    },
+    {
+      "id": "L2_T008",
+      "type": "star",
+      "x": 0.623,
+      "y": 0.679,
+      "layer": 2
+    },
+    {
+      "id": "L2_T009",
+      "type": "apple",
+      "x": 0.28,
+      "y": 0.724,
+      "layer": 2
+    },
+    {
+      "id": "L2_T010",
+      "type": "shell",
+      "x": 0.631,
+      "y": 0.644,
+      "layer": 2
+    },
+    {
+      "id": "L2_T011",
+      "type": "apple",
+      "x": 0.177,
+      "y": 0.164,
+      "layer": 0
+    },
+    {
+      "id": "L2_T012",
+      "type": "banana",
+      "x": 0.267,
+      "y": 0.171,
+      "layer": 0
+    },
+    {
+      "id": "L2_T013",
+      "type": "berry",
+      "x": 0.678,
+      "y": 0.116,
+      "layer": 2
+    },
+    {
+      "id": "L2_T014",
+      "type": "apple",
+      "x": 0.427,
+      "y": 0.252,
+      "layer": 2
+    },
+    {
+      "id": "L2_T015",
+      "type": "carrot",
+      "x": 0.103,
+      "y": 0.133,
+      "layer": 2
+    },
+    {
+      "id": "L2_T016",
+      "type": "star",
+      "x": 0.444,
+      "y": 0.253,
+      "layer": 2
+    },
+    {
+      "id": "L2_T017",
+      "type": "carrot",
+      "x": 0.655,
+      "y": 0.118,
+      "layer": 1
+    },
+    {
+      "id": "L2_T018",
+      "type": "star",
+      "x": 0.256,
+      "y": 0.39,
+      "layer": 0
+    },
+    {
+      "id": "L2_T019",
+      "type": "flower",
+      "x": 0.225,
+      "y": 0.218,
+      "layer": 1
+    },
+    {
+      "id": "L2_T020",
+      "type": "flower",
+      "x": 0.655,
+      "y": 0.663,
+      "layer": 2
+    }
+  ]
+}
