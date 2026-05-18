@@ -25,6 +25,8 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> {
   late Future<LevelDefinition> _levelFuture;
+  late AppScope _scope;
+  late NavigatorState _navigator;
   GameEngine? _engine;
   String? _hintedTileId;
   String? _pickedUpTileId;
@@ -41,7 +43,9 @@ class _GameScreenState extends State<GameScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _levelFuture = AppScope.of(context).levelRepository.loadLevel(widget.level);
+    _scope = AppScope.of(context);
+    _navigator = Navigator.of(context);
+    _levelFuture = _scope.levelRepository.loadLevel(widget.level);
   }
 
   void _ensureEngine(LevelDefinition level) {
@@ -53,6 +57,17 @@ class _GameScreenState extends State<GameScreen> {
     return Size(side, side);
   }
 
+  void _resetAnimationState() {
+    _hintedTileId = null;
+    _pickedUpTileId = null;
+    _flyingTile = null;
+    _flightSettled = false;
+    _catPulseTileIds.clear();
+    _matchingTileIds.clear();
+    _shuffleOffsets.clear();
+    _animatingAction = false;
+  }
+
   Future<void> _onTileTap(
     LevelDefinition level,
     Tile tile,
@@ -60,7 +75,7 @@ class _GameScreenState extends State<GameScreen> {
     Size tileSize,
   ) async {
     if (_animatingAction) return;
-    final scope = AppScope.of(context);
+    final scope = _scope;
     final beforeTrayIds = List<String>.from(_engine!.tray);
 
     setState(() {
@@ -85,7 +100,9 @@ class _GameScreenState extends State<GameScreen> {
     setState(() {
       _pickedUpTileId = null;
       _flyingTile = tile;
-      _flyingTrayIndex = beforeTrayIds.length.clamp(0, GameEngine.trayLimit - 1).toInt();
+      _flyingTrayIndex = beforeTrayIds.length
+          .clamp(0, GameEngine.trayLimit - 1)
+          .toInt();
       _flightSettled = false;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -97,6 +114,7 @@ class _GameScreenState extends State<GameScreen> {
     if (!mounted) return;
 
     if (_matchingTileIds.isNotEmpty) await scope.audioService.playMatch();
+    if (!mounted) return;
     setState(() {
       _matchingTileIds.clear();
       _flyingTile = null;
@@ -104,6 +122,7 @@ class _GameScreenState extends State<GameScreen> {
       _animatingAction = false;
     });
     if (_engine!.result == GameResult.won) await _handleWin();
+    if (!mounted) return;
     if (_engine!.result == GameResult.lost) await _handleGameOver(level: level);
   }
 
@@ -113,7 +132,7 @@ class _GameScreenState extends State<GameScreen> {
     Size tileSize,
   ) async {
     if (_animatingAction) return;
-    final scope = AppScope.of(context);
+    final scope = _scope;
     final catIds = _availableTripleIds(boardSize, tileSize);
     if (catIds == null) {
       setState(() => _hintedTileId = _engine!.hint(boardSize, tileSize));
@@ -148,11 +167,13 @@ class _GameScreenState extends State<GameScreen> {
     if (!mounted) return;
 
     await scope.audioService.playMatch();
+    if (!mounted) return;
     setState(() {
       _matchingTileIds.clear();
       _animatingAction = false;
     });
     if (_engine!.result == GameResult.won) await _handleWin();
+    if (!mounted) return;
     if (_engine!.result == GameResult.lost) await _handleGameOver(level: level);
   }
 
@@ -174,10 +195,16 @@ class _GameScreenState extends State<GameScreen> {
     String? collectedId, {
     Set<String>? preferredIds,
   }) {
+    if (!mounted) return;
     final afterTrayIds = _engine!.tray.toSet();
-    final candidateIds = <String>{...beforeTrayIds, if (collectedId != null) collectedId};
+    final candidateIds = <String>{
+      ...beforeTrayIds,
+      if (collectedId != null) collectedId,
+    };
     if (preferredIds != null) candidateIds.addAll(preferredIds);
-    final removedIds = candidateIds.where((id) => !afterTrayIds.contains(id)).toSet();
+    final removedIds = candidateIds
+        .where((id) => !afterTrayIds.contains(id))
+        .toSet();
     if (removedIds.length >= 3) {
       setState(() {
         _matchingTileIds
@@ -190,23 +217,21 @@ class _GameScreenState extends State<GameScreen> {
   Future<void> _handleGameOver({required LevelDefinition? level}) async {
     if (_gameOverDialogShowing || !mounted) return;
     _gameOverDialogShowing = true;
-    await AppScope.of(context).audioService.playLose();
+    final audioService = _scope.audioService;
+    await audioService.playLose();
     if (!mounted) return;
 
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
+      builder: (_) => AlertDialog(
         title: const Text('Game Over'),
         content: const Text('The tray is full. Restart the level or return to the menu.'),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(dialogContext);
-              Navigator.popUntil(
-                context,
-                ModalRoute.withName(MainMenuScreen.route),
-              );
+              _navigator.pop();
+              _navigator.popUntil(ModalRoute.withName(MainMenuScreen.route));
             },
             child: const Text('Return to Menu'),
           ),
@@ -214,16 +239,11 @@ class _GameScreenState extends State<GameScreen> {
             onPressed: level == null
                 ? null
                 : () {
-                    Navigator.pop(dialogContext);
+                    _navigator.pop();
+                    if (!mounted) return;
                     setState(() {
                       _engine = GameEngine(level.tiles);
-                      _hintedTileId = null;
-                      _pickedUpTileId = null;
-                      _flyingTile = null;
-                      _catPulseTileIds.clear();
-                      _matchingTileIds.clear();
-                      _shuffleOffsets.clear();
-                      _animatingAction = false;
+                      _resetAnimationState();
                     });
                   },
             icon: const Icon(Icons.refresh_rounded),
@@ -232,11 +252,12 @@ class _GameScreenState extends State<GameScreen> {
         ],
       ),
     );
-    _gameOverDialogShowing = false;
+    if (mounted) _gameOverDialogShowing = false;
   }
 
   Future<void> _handleWin() async {
-    final scope = AppScope.of(context);
+    if (!mounted) return;
+    final scope = _scope;
     await scope.progressRepository.unlockNextLevel(widget.level);
     await scope.audioService.playWin();
     if (!mounted) return;
@@ -247,22 +268,22 @@ class _GameScreenState extends State<GameScreen> {
         level: widget.level,
         isFinalLevel: widget.level == LevelRepository.levelCount,
         onMap: () {
-          Navigator.pop(context);
-          Navigator.pop(context);
+          if (!mounted) return;
+          _navigator.pop();
+          _navigator.pop();
         },
         onNext: () async {
-          Navigator.pop(context);
+          if (!mounted) return;
+          _navigator.pop();
           if (widget.level == LevelRepository.levelCount) {
             final code = await scope.progressRepository.finalCode();
-            if (mounted) {
-              await Navigator.pushReplacement(
-                context,
-                MaterialPageRoute<void>(builder: (_) => FinalCodeScreen(code: code)),
-              );
-            }
-          } else if (mounted) {
-            await Navigator.pushReplacementNamed(
-              context,
+            if (!mounted) return;
+            await _navigator.pushReplacement(
+              MaterialPageRoute<void>(builder: (_) => FinalCodeScreen(code: code)),
+            );
+          } else {
+            if (!mounted) return;
+            await _navigator.pushReplacementNamed(
               GameScreen.route,
               arguments: widget.level + 1,
             );
@@ -343,7 +364,10 @@ class _GameScreenState extends State<GameScreen> {
                                 AnimatedPositioned(
                                   key: ValueKey(tile.id),
                                   duration: Duration(
-                                    milliseconds: _shuffleOffsets.containsKey(tile.id) ? 190 : 310,
+                                    milliseconds:
+                                        _shuffleOffsets.containsKey(tile.id)
+                                            ? 190
+                                            : 310,
                                   ),
                                   curve: _shuffleOffsets.containsKey(tile.id)
                                       ? Curves.easeInOut
@@ -430,7 +454,8 @@ class _GameScreenState extends State<GameScreen> {
                               );
                             }));
                         });
-                        await AppScope.of(context).audioService.playBooster();
+                        await _scope.audioService.playBooster();
+                        if (!mounted) return;
                         await Future<void>.delayed(const Duration(milliseconds: 170));
                         if (!mounted) return;
                         setState(() {
@@ -445,15 +470,9 @@ class _GameScreenState extends State<GameScreen> {
                           ? () async {
                               setState(() {
                                 engine.undo();
-                                _hintedTileId = null;
-                                _pickedUpTileId = null;
-                                _flyingTile = null;
-                                _catPulseTileIds.clear();
-                                _matchingTileIds.clear();
-                                _shuffleOffsets.clear();
-                                _animatingAction = false;
+                                _resetAnimationState();
                               });
-                              await AppScope.of(context).audioService.playBooster();
+                              await _scope.audioService.playBooster();
                             }
                           : null,
                     ),
