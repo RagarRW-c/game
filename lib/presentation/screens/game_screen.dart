@@ -836,7 +836,8 @@ class _Tray extends StatelessWidget {
               ),
             ),
           );
-        }),
+          });
+        }(),
       ),
     );
   }
