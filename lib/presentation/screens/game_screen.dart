@@ -157,6 +157,7 @@ class _GameScreenState extends State<GameScreen> {
       beforeTrayIds,
       collectedId: canonicalTile.id,
     );
+    final flightTile = canonicalTile.copyWith(state: TileState.board);
     final trayIndex = beforeTrayIds.length.clamp(0, GameEngine.trayLimit - 1).toInt();
     debugPrint('Tray insertion: id=${canonicalTile.id}, slot=$trayIndex, tray=${engine.tray.length}');
     if (removedIds.isNotEmpty) {
@@ -165,7 +166,7 @@ class _GameScreenState extends State<GameScreen> {
 
     if (!_safeSetState(() {
       _pickedUpTileId = null;
-      _flyingTile = canonicalTile;
+      _flyingTile = flightTile;
       _flyingTrayIndex = trayIndex;
       _flightSettled = false;
       _matchingTileIds
@@ -277,7 +278,7 @@ class _GameScreenState extends State<GameScreen> {
     if (engine == null || engine.result != GameResult.playing) return null;
     engine.updateBoardGeometry(boardSize, tileSize);
     final idsByType = <String, List<String>>{};
-    for (final tile in engine.renderedBoardTiles.reversed) {
+    for (final tile in List<Tile>.from(engine.renderedBoardTiles).reversed) {
       if (engine.isTileCovered(tile)) continue;
       idsByType.putIfAbsent(tile.type, () => <String>[]).add(tile.id);
     }
@@ -387,6 +388,58 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  List<Tile> _renderedBoardSnapshot(
+    GameEngine engine,
+    Size boardSize,
+    Size tileSize,
+  ) {
+    engine.updateBoardGeometry(boardSize, tileSize);
+    final canonicalTiles = List<Tile>.from(engine.tiles);
+    final boardIds = canonicalTiles
+        .where((tile) => tile.state == TileState.board)
+        .map((tile) => tile.id)
+        .toSet();
+    return List<Tile>.from(engine.renderedBoardTiles)
+        .where((tile) => boardIds.contains(tile.id))
+        .toList(growable: false);
+  }
+
+  Map<String, bool> _coveredByIdSnapshot(
+    List<Tile> renderedBoardTiles,
+    Size boardSize,
+    Size tileSize,
+  ) {
+    final tiles = List<Tile>.from(renderedBoardTiles);
+    final coveredById = <String, bool>{};
+    for (var index = 0; index < tiles.length; index++) {
+      final tile = tiles[index];
+      coveredById[tile.id] = tiles
+          .skip(index + 1)
+          .any((other) => tile.overlaps(other, boardSize, tileSize));
+    }
+    return coveredById;
+  }
+
+  List<Tile?> _traySnapshot(GameEngine engine) {
+    final tilesById = <String, Tile>{
+      for (final tile in List<Tile>.from(engine.tiles)) tile.id: tile,
+    };
+    final seenIds = <String>{};
+    final visibleIds = <String>[
+      ...List<String>.from(engine.tray),
+      ...List<String>.from(_matchingTileIds),
+    ]
+        .where((id) => tilesById.containsKey(id) && seenIds.add(id))
+        .take(GameEngine.trayLimit)
+        .toList(growable: false);
+
+    return List<Tile?>.generate(
+      GameEngine.trayLimit,
+      (index) => index < visibleIds.length ? tilesById[visibleIds[index]] : null,
+      growable: false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<LevelDefinition>(
@@ -405,6 +458,7 @@ class _GameScreenState extends State<GameScreen> {
         final level = snapshot.data!;
         _ensureEngine(level);
         final engine = _engine!;
+        final boardCount = List<Tile>.from(engine.boardTiles).length;
 
         return Scaffold(
           appBar: AppBar(
@@ -414,7 +468,7 @@ class _GameScreenState extends State<GameScreen> {
                 padding: const EdgeInsets.only(right: 14),
                 child: Center(
                   child: Text(
-                    '${engine.boardTiles.length} left',
+                    '$boardCount left',
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
@@ -424,18 +478,35 @@ class _GameScreenState extends State<GameScreen> {
           body: LayoutBuilder(
             builder: (context, constraints) {
               try {
-              final boardHeight = constraints.maxHeight - 156;
+                final boardHeight = constraints.maxHeight - 156;
               final boardSize = Size(
                 constraints.maxWidth,
                 boardHeight.clamp(360.0, 620.0).toDouble(),
               );
-              final tileSize = _tileSize(constraints.maxWidth);
-              engine.updateBoardGeometry(boardSize, tileSize);
-              final renderedBoardTiles = engine.renderedBoardTiles;
-              final maxLayer = renderedBoardTiles.isEmpty
-                  ? 0
-                  : renderedBoardTiles.map((tile) => tile.layer).reduce(max);
-              return Container(
+                final tileSize = _tileSize(constraints.maxWidth);
+                final renderedBoardTiles = _renderedBoardSnapshot(
+                  engine,
+                  boardSize,
+                  tileSize,
+                );
+                final coveredById = _coveredByIdSnapshot(
+                  renderedBoardTiles,
+                  boardSize,
+                  tileSize,
+                );
+                final trayTiles = _traySnapshot(engine);
+                final matchingTileIds = Set<String>.from(_matchingTileIds);
+                final catPulseTileIds = Set<String>.from(_catPulseTileIds);
+                final shuffleOffsets = Map<String, Offset>.from(_shuffleOffsets);
+                final hintedTileId = _hintedTileId;
+                final pickedUpTileId = _pickedUpTileId;
+                final flyingTile = _flyingTile;
+                final flightSettled = _flightSettled;
+                final flyingTrayIndex = _flyingTrayIndex;
+                final maxLayer = renderedBoardTiles.isEmpty
+                    ? 0
+                    : renderedBoardTiles.map((tile) => tile.layer).reduce(max);
+                return Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     colors: [Color(0xFFB8F7FF), Color(0xFFFFF6C7)],
@@ -467,24 +538,24 @@ class _GameScreenState extends State<GameScreen> {
                                   key: ValueKey(tile.id),
                                   duration: Duration(
                                     milliseconds:
-                                        _shuffleOffsets.containsKey(tile.id)
+                                        shuffleOffsets.containsKey(tile.id)
                                             ? 190
                                             : 310,
                                   ),
-                                  curve: _shuffleOffsets.containsKey(tile.id)
+                                  curve: shuffleOffsets.containsKey(tile.id)
                                       ? Curves.easeInOut
                                       : Curves.easeOutCubic,
                                   left: tile.x * boardSize.width +
-                                      (_shuffleOffsets[tile.id]?.dx ?? 0),
+                                      (shuffleOffsets[tile.id]?.dx ?? 0),
                                   top: tile.y * boardSize.height +
-                                      (_shuffleOffsets[tile.id]?.dy ?? 0),
+                                      (shuffleOffsets[tile.id]?.dy ?? 0),
                                   width: tileSize.width,
                                   height: tileSize.height,
                                   child: Builder(
                                     builder: (context) {
-                                      final covered = engine.isTileCovered(tile);
+                                      final covered = coveredById[tile.id] ?? true;
                                       final depth = maxLayer == 0 ? 1.0 : tile.layer / maxLayer;
-                                      final pulsing = _catPulseTileIds.contains(tile.id);
+                                      final pulsing = catPulseTileIds.contains(tile.id);
                                       return IgnorePointer(
                                         ignoring: covered || _animatingAction,
                                         child: GameTileWidget(
@@ -492,8 +563,8 @@ class _GameScreenState extends State<GameScreen> {
                                           enabled: !covered,
                                           blocked: covered,
                                           depth: depth,
-                                          pickedUp: _pickedUpTileId == tile.id,
-                                          highlighted: _hintedTileId == tile.id || pulsing,
+                                          pickedUp: pickedUpTileId == tile.id,
+                                          highlighted: hintedTileId == tile.id || pulsing,
                                           matching: pulsing,
                                           onTap: covered
                                               ? null
@@ -508,28 +579,28 @@ class _GameScreenState extends State<GameScreen> {
                                     },
                                   ),
                                 ),
-                              if (_flyingTile != null)
+                              if (flyingTile != null)
                                 AnimatedPositioned(
-                                  key: ValueKey('flight_${_flyingTile!.id}'),
+                                  key: ValueKey('flight_${flyingTile.id}'),
                                   duration: const Duration(milliseconds: 310),
                                   curve: Curves.easeInOutCubic,
-                                  left: _flightSettled
+                                  left: flightSettled
                                       ? 22 +
-                                          (_flyingTrayIndex *
+                                          (flyingTrayIndex *
                                               ((boardSize.width - 44) /
                                                   GameEngine.trayLimit))
-                                      : _flyingTile!.x * boardSize.width,
-                                  top: _flightSettled
+                                      : flyingTile.x * boardSize.width,
+                                  top: flightSettled
                                       ? boardSize.height + 62
-                                      : (_flyingTile!.y * boardSize.height) - 8,
+                                      : (flyingTile.y * boardSize.height) - 8,
                                   width: tileSize.width,
                                   height: tileSize.height,
                                   child: IgnorePointer(
                                     child: GameTileWidget(
-                                      tile: _flyingTile!,
+                                      tile: flyingTile,
                                       enabled: true,
                                       highlighted: true,
-                                      pickedUp: !_flightSettled,
+                                      pickedUp: !flightSettled,
                                       depth: 1,
                                     ),
                                   ),
@@ -549,7 +620,7 @@ class _GameScreenState extends State<GameScreen> {
                           _hintedTileId = null;
                           _shuffleOffsets
                             ..clear()
-                            ..addEntries(engine.boardTiles.map((tile) {
+                            ..addEntries(List<Tile>.from(engine.boardTiles).map((tile) {
                               final angle = _animationRandom.nextDouble() * pi * 2;
                               final distance = 14 + _animationRandom.nextDouble() * 22;
                               return MapEntry(
@@ -584,7 +655,10 @@ class _GameScreenState extends State<GameScreen> {
                             }
                           : null,
                     ),
-                    _Tray(engine: engine, matchingTileIds: _matchingTileIds),
+                    _Tray(
+                      trayTiles: trayTiles,
+                      matchingTileIds: matchingTileIds,
+                    ),
                   ],
                 ),
               );
@@ -693,9 +767,9 @@ class _BoosterBar extends StatelessWidget {
 }
 
 class _Tray extends StatelessWidget {
-  const _Tray({required this.engine, required this.matchingTileIds});
+  const _Tray({required this.trayTiles, required this.matchingTileIds});
 
-  final GameEngine engine;
+  final List<Tile?> trayTiles;
   final Set<String> matchingTileIds;
 
   @override
@@ -710,15 +784,8 @@ class _Tray extends StatelessWidget {
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12)],
       ),
       child: Row(
-        children: () {
-          final visibleTray = <String>[
-            ...engine.tray,
-            ...matchingTileIds,
-          ].where((id) => engine.tileById(id) != null).take(GameEngine.trayLimit).toList();
-
-          return List.generate(GameEngine.trayLimit, (index) {
-          final hasTile = index < visibleTray.length;
-          final tile = hasTile ? engine.tileById(visibleTray[index]) : null;
+        children: List.generate(GameEngine.trayLimit, (index) {
+          final tile = index < trayTiles.length ? trayTiles[index] : null;
           final matching = tile != null && matchingTileIds.contains(tile.id);
           return Expanded(
             child: AnimatedPadding(

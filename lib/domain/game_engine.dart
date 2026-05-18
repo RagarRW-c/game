@@ -170,7 +170,7 @@ class GameEngine {
 
   void shuffleBoard() {
     if (result != GameResult.playing) return;
-    final active = boardTiles;
+    final active = List<Tile>.from(boardTiles);
     if (active.length < 2) return;
 
     _saveSnapshot();
@@ -185,9 +185,9 @@ class GameEngine {
 
   String? hint(Size boardSize, Size tileSize) {
     if (result != GameResult.playing) return null;
-    final uncovered = renderedBoardTiles
+    final uncovered = List<Tile>.from(renderedBoardTiles)
         .where((tile) => isUncovered(tile, boardSize, tileSize))
-        .toList();
+        .toList(growable: false);
     if (uncovered.isEmpty) return null;
 
     final trayTypes = tray.map((id) => tileById(id)?.type).whereType<String>();
@@ -203,7 +203,7 @@ class GameEngine {
     if (result != GameResult.playing) return false;
     updateBoardGeometry(boardSize, tileSize);
     final idsByType = <String, List<String>>{};
-    for (final tile in renderedBoardTiles) {
+    for (final tile in List<Tile>.from(renderedBoardTiles)) {
       if (isTileCovered(tile)) continue;
       idsByType.putIfAbsent(tile.type, () => <String>[]).add(tile.id);
     }
