@@ -13,3 +13,4 @@ android/app/*.keystore
 android/app/debug.keystore
 assets/audio/*.wav
 android/app/src/main/res/mipmap-*/ic_launcher.png
+android/gradle/wrapper/gradle-wrapper.jar

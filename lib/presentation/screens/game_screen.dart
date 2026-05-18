@@ -168,6 +168,7 @@ class _GameScreenState extends State<GameScreen> {
                                     onTap: () => _onTileTap(tile, boardSize, tileSize),
                                   ),
                                 ),
+                            ],
                           ),
                         ),
                       ),
