@@ -42,4 +42,9 @@ class Tile {
         tileSize.width,
         tileSize.height,
       );
+
+  bool overlaps(Tile other, Size boardSize, Size tileSize) =>
+      boardRect(boardSize, tileSize).overlaps(
+        other.boardRect(boardSize, tileSize),
+      );
 }
