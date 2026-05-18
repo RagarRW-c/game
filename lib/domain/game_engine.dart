@@ -36,24 +36,46 @@ class GameEngine {
     return null;
   }
 
-  /// A board tile is uncovered when no higher-layer active tile overlaps it.
-  /// The overlap check uses the rendered board and tile sizes so level JSON can
-  /// stay responsive with normalized 0..1 coordinates on any Android phone.
-  bool isUncovered(Tile candidate, Size boardSize, Size tileSize) {
-    if (candidate.state != TileState.board) return false;
-    final candidateRect = candidate.boardRect(boardSize, tileSize);
-    return boardTiles.every((other) {
-      if (other.id == candidate.id || other.layer <= candidate.layer) {
-        return true;
-      }
-      return !candidateRect.overlaps(other.boardRect(boardSize, tileSize));
+  Size _boardSize = Size.zero;
+  Size _tileSize = Size.zero;
+
+  /// Updates the rendered board geometry used for tile overlap checks.
+  ///
+  /// Level data stores normalized coordinates, so coverage has to be evaluated
+  /// against the current rendered board and tile dimensions.
+  void updateBoardGeometry(Size boardSize, Size tileSize) {
+    _boardSize = boardSize;
+    _tileSize = tileSize;
+  }
+
+  /// A board tile is covered when any higher-layer active tile has a visible
+  /// rectangular overlap with it.
+  bool isTileCovered(Tile tile) {
+    if (tile.state != TileState.board ||
+        _boardSize == Size.zero ||
+        _tileSize == Size.zero) {
+      return false;
+    }
+
+    return boardTiles.any((other) {
+      if (other.id == tile.id || other.layer <= tile.layer) return false;
+      return tile.overlaps(other, _boardSize, _tileSize);
     });
+  }
+
+  /// A board tile is uncovered only when no higher-layer active tile overlaps it.
+  bool isUncovered(Tile candidate, Size boardSize, Size tileSize) {
+    updateBoardGeometry(boardSize, tileSize);
+    return candidate.state == TileState.board && !isTileCovered(candidate);
   }
 
   bool tapTile(String id, Size boardSize, Size tileSize) {
     if (result != GameResult.playing) return false;
+    updateBoardGeometry(boardSize, tileSize);
     final tile = tileById(id);
-    if (tile == null || !isUncovered(tile, boardSize, tileSize)) return false;
+    if (tile == null || tile.state != TileState.board || isTileCovered(tile)) {
+      return false;
+    }
 
     _saveSnapshot();
     tiles = tiles

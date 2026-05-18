@@ -123,6 +123,7 @@ class _GameScreenState extends State<GameScreen> {
                 boardHeight.clamp(360.0, 620.0).toDouble(),
               );
               final tileSize = _tileSize(constraints.maxWidth);
+              engine.updateBoardGeometry(boardSize, tileSize);
               final sortedBoardTiles = engine.boardTiles.toList()
                 ..sort((a, b) => a.layer.compareTo(b.layer));
               return Container(
@@ -161,11 +162,29 @@ class _GameScreenState extends State<GameScreen> {
                                   top: tile.y * boardSize.height,
                                   width: tileSize.width,
                                   height: tileSize.height,
-                                  child: GameTileWidget(
-                                    tile: tile,
-                                    enabled: engine.isUncovered(tile, boardSize, tileSize),
-                                    highlighted: _hintedTileId == tile.id,
-                                    onTap: () => _onTileTap(tile, boardSize, tileSize),
+                                  child: Builder(
+                                    builder: (context) {
+                                      final covered = engine.isTileCovered(tile);
+                                      return IgnorePointer(
+                                        ignoring: covered,
+                                        child: AnimatedOpacity(
+                                          duration: const Duration(milliseconds: 180),
+                                          opacity: covered ? 0.74 : 1,
+                                          child: GameTileWidget(
+                                            tile: tile,
+                                            enabled: true,
+                                            highlighted: _hintedTileId == tile.id,
+                                            onTap: covered
+                                                ? null
+                                                : () => _onTileTap(
+                                                      tile,
+                                                      boardSize,
+                                                      tileSize,
+                                                    ),
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
                             ],
