@@ -8,6 +8,7 @@ import '../../domain/tile.dart';
 import '../../main.dart';
 import '../widgets/game_tile.dart';
 import 'final_code_screen.dart';
+import 'main_menu_screen.dart';
 import 'win_screen.dart';
 
 class GameScreen extends StatefulWidget {
@@ -24,6 +25,7 @@ class _GameScreenState extends State<GameScreen> {
   late Future<LevelDefinition> _levelFuture;
   GameEngine? _engine;
   String? _hintedTileId;
+  bool _gameOverDialogShowing = false;
 
   @override
   void didChangeDependencies() {
@@ -40,7 +42,12 @@ class _GameScreenState extends State<GameScreen> {
     return Size(side, side);
   }
 
-  Future<void> _onTileTap(Tile tile, Size boardSize, Size tileSize) async {
+  Future<void> _onTileTap(
+    LevelDefinition level,
+    Tile tile,
+    Size boardSize,
+    Size tileSize,
+  ) async {
     final scope = AppScope.of(context);
     final beforeTray = _engine!.tray.length;
     if (!_engine!.tapTile(tile.id, boardSize, tileSize)) return;
@@ -48,7 +55,69 @@ class _GameScreenState extends State<GameScreen> {
     await scope.audioService.playTap();
     if (_engine!.tray.length < beforeTray + 1) await scope.audioService.playMatch();
     if (_engine!.result == GameResult.won) await _handleWin();
-    if (_engine!.result == GameResult.lost) await scope.audioService.playLose();
+    if (_engine!.result == GameResult.lost) await _handleGameOver(level: level);
+  }
+
+  Future<void> _useCatPowerUp(
+    LevelDefinition level,
+    Size boardSize,
+    Size tileSize,
+  ) async {
+    final scope = AppScope.of(context);
+    final collected = _engine!.collectAvailableTriple(boardSize, tileSize);
+    if (!collected) {
+      setState(() => _hintedTileId = _engine!.hint(boardSize, tileSize));
+      await scope.audioService.playBooster();
+      return;
+    }
+
+    setState(() => _hintedTileId = null);
+    await scope.audioService.playBooster();
+    await scope.audioService.playMatch();
+    if (_engine!.result == GameResult.won) await _handleWin();
+    if (_engine!.result == GameResult.lost) await _handleGameOver(level: level);
+  }
+
+  Future<void> _handleGameOver({required LevelDefinition? level}) async {
+    if (_gameOverDialogShowing || !mounted) return;
+    _gameOverDialogShowing = true;
+    await AppScope.of(context).audioService.playLose();
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Game Over'),
+        content: const Text('The tray is full. Restart the level or return to the menu.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.popUntil(
+                context,
+                ModalRoute.withName(MainMenuScreen.route),
+              );
+            },
+            child: const Text('Return to Menu'),
+          ),
+          FilledButton.icon(
+            onPressed: level == null
+                ? null
+                : () {
+                    Navigator.pop(dialogContext);
+                    setState(() {
+                      _engine = GameEngine(level.tiles);
+                      _hintedTileId = null;
+                    });
+                  },
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Restart Level'),
+          ),
+        ],
+      ),
+    );
+    _gameOverDialogShowing = false;
   }
 
   Future<void> _handleWin() async {
@@ -176,6 +245,7 @@ class _GameScreenState extends State<GameScreen> {
                                             onTap: covered
                                                 ? null
                                                 : () => _onTileTap(
+                                                      level,
                                                       tile,
                                                       boardSize,
                                                       tileSize,
@@ -193,30 +263,24 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                     _BoosterBar(
                       onShuffle: () async {
-                        setState(() => engine.shuffleBoard());
+                        setState(() {
+                          engine.shuffleBoard();
+                          _hintedTileId = null;
+                        });
                         await AppScope.of(context).audioService.playBooster();
                       },
-                      onHint: () async {
-                        setState(() => _hintedTileId = engine.hint(boardSize, tileSize));
-                        await AppScope.of(context).audioService.playBooster();
-                      },
+                      onHint: () => _useCatPowerUp(level, boardSize, tileSize),
                       onUndo: engine.canUndo
                           ? () async {
-                              setState(() => engine.undo());
+                              setState(() {
+                                engine.undo();
+                                _hintedTileId = null;
+                              });
                               await AppScope.of(context).audioService.playBooster();
                             }
                           : null,
                     ),
                     _Tray(engine: engine),
-                    if (engine.result == GameResult.lost)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: FilledButton.icon(
-                          onPressed: () => setState(() => _engine = GameEngine(level.tiles)),
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Tray full! Try again'),
-                        ),
-                      ),
                   ],
                 ),
               );
@@ -229,7 +293,11 @@ class _GameScreenState extends State<GameScreen> {
 }
 
 class _BoosterBar extends StatelessWidget {
-  const _BoosterBar({required this.onShuffle, required this.onHint, required this.onUndo});
+  const _BoosterBar({
+    required this.onShuffle,
+    required this.onHint,
+    required this.onUndo,
+  });
 
   final VoidCallback onShuffle;
   final VoidCallback onHint;
@@ -241,11 +309,29 @@ class _BoosterBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
         children: [
-          Expanded(child: FilledButton.tonalIcon(onPressed: onShuffle, icon: const Icon(Icons.shuffle_rounded), label: const Text('Shuffle'))),
+          Expanded(
+            child: FilledButton.tonalIcon(
+              onPressed: onUndo,
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('Undo'),
+            ),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: FilledButton.tonalIcon(onPressed: onHint, icon: const Icon(Icons.lightbulb_rounded), label: const Text('Hint'))),
+          Expanded(
+            child: FilledButton.tonalIcon(
+              onPressed: onHint,
+              icon: const Icon(Icons.pets_rounded),
+              label: const Text('Hint'),
+            ),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: FilledButton.tonalIcon(onPressed: onUndo, icon: const Icon(Icons.undo_rounded), label: const Text('Undo'))),
+          Expanded(
+            child: FilledButton.tonalIcon(
+              onPressed: onShuffle,
+              icon: const Icon(Icons.shuffle_rounded),
+              label: const Text('Shuffle'),
+            ),
+          ),
         ],
       ),
     );

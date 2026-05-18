@@ -101,6 +101,11 @@ class GameEngine {
       return false;
     }
 
+    if (tray.length >= trayLimit) {
+      result = GameResult.lost;
+      return true;
+    }
+
     _saveSnapshot();
     tiles = tiles
         .map((item) => item.id == id ? item.copyWith(state: TileState.tray) : item)
@@ -111,17 +116,31 @@ class GameEngine {
     return true;
   }
 
-  /// Triple-match resolution happens immediately after every tap. Keeping tray
-  /// IDs instead of tile objects lets animations locate the canonical tile data.
-  void _removeTriplesFromTray() {
+  /// Triple-match resolution happens immediately after every collection. Keeping
+  /// tray IDs instead of tile objects lets animations locate canonical tile data.
+  void _removeTriplesFromTray({Set<String>? preferredMatchedIds}) {
+    final matchedIds = <String>{};
+
+    if (preferredMatchedIds != null && preferredMatchedIds.length >= 3) {
+      final preferredByType = <String, List<String>>{};
+      for (final id in preferredMatchedIds) {
+        final tile = tileById(id);
+        if (tile == null) continue;
+        preferredByType.putIfAbsent(tile.type, () => <String>[]).add(id);
+      }
+      for (final ids in preferredByType.values) {
+        if (ids.length >= 3) matchedIds.addAll(ids.take(3));
+      }
+    }
+
     final idsByType = <String, List<String>>{};
     for (final id in tray) {
+      if (matchedIds.contains(id)) continue;
       final tile = tileById(id);
       if (tile == null) continue;
       idsByType.putIfAbsent(tile.type, () => <String>[]).add(id);
     }
 
-    final matchedIds = <String>{};
     for (final entry in idsByType.entries) {
       if (entry.value.length >= 3) {
         matchedIds.addAll(entry.value.take(3));
@@ -139,22 +158,16 @@ class GameEngine {
 
   void shuffleBoard() {
     if (result != GameResult.playing) return;
-    _saveSnapshot();
     final active = boardTiles;
-    final positions = active.map((tile) => (x: tile.x, y: tile.y, layer: tile.layer)).toList()
+    if (active.length < 2) return;
+
+    _saveSnapshot();
+    final shuffledTypes = active.map((tile) => tile.type).toList()
       ..shuffle(_random);
-    var positionIndex = 0;
+    var typeIndex = 0;
     tiles = tiles.map((tile) {
       if (tile.state != TileState.board) return tile;
-      final position = positions[positionIndex++];
-      return Tile(
-        id: tile.id,
-        type: tile.type,
-        x: position.x,
-        y: position.y,
-        layer: position.layer,
-        state: tile.state,
-      );
+      return tile.copyWith(type: shuffledTypes[typeIndex++]);
     }).toList();
   }
 
@@ -172,6 +185,38 @@ class GameEngine {
       }
     }
     return uncovered.last.id;
+  }
+
+  bool collectAvailableTriple(Size boardSize, Size tileSize) {
+    if (result != GameResult.playing) return false;
+    updateBoardGeometry(boardSize, tileSize);
+    final idsByType = <String, List<String>>{};
+    for (final tile in renderedBoardTiles) {
+      if (isTileCovered(tile)) continue;
+      idsByType.putIfAbsent(tile.type, () => <String>[]).add(tile.id);
+    }
+
+    List<String>? triple;
+    for (final entry in idsByType.entries) {
+      if (entry.value.length >= 3) {
+        triple = entry.value;
+        break;
+      }
+    }
+    if (triple == null) return false;
+
+    final tripleIds = triple.take(3).toList();
+    final tripleIdSet = tripleIds.toSet();
+    _saveSnapshot();
+    tiles = tiles
+        .map((tile) => tripleIdSet.contains(tile.id)
+            ? tile.copyWith(state: TileState.tray)
+            : tile)
+        .toList();
+    tray = <String>[...tray, ...tripleIds];
+    _removeTriplesFromTray(preferredMatchedIds: tripleIdSet);
+    _updateResult();
+    return true;
   }
 
   void undo() {
