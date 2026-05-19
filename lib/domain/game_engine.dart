@@ -42,7 +42,9 @@ class GameEngine {
       ..sort((a, b) {
         final layerComparison = a.layer.compareTo(b.layer);
         if (layerComparison != 0) return layerComparison;
-        return originalIndexById[a.id]!.compareTo(originalIndexById[b.id]!);
+        return (originalIndexById[a.id] ?? 0).compareTo(
+          originalIndexById[b.id] ?? 0,
+        );
       });
   }
 
@@ -63,8 +65,16 @@ class GameEngine {
   /// Level data stores normalized coordinates, so coverage has to be evaluated
   /// against the current rendered board and tile dimensions.
   void updateBoardGeometry(Size boardSize, Size tileSize) {
-    _boardSize = boardSize;
-    _tileSize = tileSize;
+    final validBoard = boardSize.width.isFinite &&
+        boardSize.height.isFinite &&
+        boardSize.width > 0 &&
+        boardSize.height > 0;
+    final validTile = tileSize.width.isFinite &&
+        tileSize.height.isFinite &&
+        tileSize.width > 0 &&
+        tileSize.height > 0;
+    _boardSize = validBoard ? boardSize : Size.zero;
+    _tileSize = validTile ? tileSize : Size.zero;
   }
 
   /// A board tile is covered when any active tile rendered above it has a
@@ -101,9 +111,10 @@ class GameEngine {
       return false;
     }
 
+    _sanitizeTray();
     if (tray.length >= trayLimit) {
       result = GameResult.lost;
-      return true;
+      return false;
     }
 
     _saveSnapshot();
@@ -133,8 +144,9 @@ class GameEngine {
       }
     }
 
+    _sanitizeTray();
     final idsByType = <String, List<String>>{};
-    for (final id in tray) {
+    for (final id in List<String>.from(tray)) {
       if (matchedIds.contains(id)) continue;
       final tile = tileById(id);
       if (tile == null) continue;
@@ -158,7 +170,7 @@ class GameEngine {
 
   void shuffleBoard() {
     if (result != GameResult.playing) return;
-    final active = boardTiles;
+    final active = List<Tile>.from(boardTiles);
     if (active.length < 2) return;
 
     _saveSnapshot();
@@ -173,9 +185,9 @@ class GameEngine {
 
   String? hint(Size boardSize, Size tileSize) {
     if (result != GameResult.playing) return null;
-    final uncovered = renderedBoardTiles
+    final uncovered = List<Tile>.from(renderedBoardTiles)
         .where((tile) => isUncovered(tile, boardSize, tileSize))
-        .toList();
+        .toList(growable: false);
     if (uncovered.isEmpty) return null;
 
     final trayTypes = tray.map((id) => tileById(id)?.type).whereType<String>();
@@ -191,7 +203,7 @@ class GameEngine {
     if (result != GameResult.playing) return false;
     updateBoardGeometry(boardSize, tileSize);
     final idsByType = <String, List<String>>{};
-    for (final tile in renderedBoardTiles) {
+    for (final tile in List<Tile>.from(renderedBoardTiles)) {
       if (isTileCovered(tile)) continue;
       idsByType.putIfAbsent(tile.type, () => <String>[]).add(tile.id);
     }
@@ -213,7 +225,7 @@ class GameEngine {
             ? tile.copyWith(state: TileState.tray)
             : tile)
         .toList();
-    tray = <String>[...tray, ...tripleIds];
+    tray = <String>[...tray, ...tripleIds].take(trayLimit + 1).toList();
     _removeTriplesFromTray(preferredMatchedIds: tripleIdSet);
     _updateResult();
     return true;
@@ -224,7 +236,14 @@ class GameEngine {
     final snapshot = _history.removeLast();
     tiles = List<Tile>.from(snapshot.tiles);
     tray = List<String>.from(snapshot.tray);
+    _sanitizeTray();
     result = GameResult.playing;
+  }
+
+  void _sanitizeTray() {
+    final knownIds = tiles.map((tile) => tile.id).toSet();
+    final seenIds = <String>{};
+    tray = tray.where((id) => knownIds.contains(id) && seenIds.add(id)).toList();
   }
 
   void _saveSnapshot() {
@@ -236,6 +255,7 @@ class GameEngine {
   }
 
   void _updateResult() {
+    _sanitizeTray();
     if (tray.length > trayLimit) {
       result = GameResult.lost;
     } else if (tiles.every((tile) => tile.state == TileState.matched)) {
