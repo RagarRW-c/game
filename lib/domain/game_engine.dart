@@ -197,70 +197,92 @@ class GameEngine {
 
   String? hint(Size boardSize, Size tileSize) {
     if (result != GameResult.playing) return null;
-    final uncovered = List<Tile>.from(renderedBoardTiles)
-        .where((tile) => isUncovered(tile, boardSize, tileSize))
-        .toList(growable: false);
-    if (uncovered.isEmpty) return null;
-
-    final trayTypes = tray.map((id) => tileById(id)?.type).whereType<String>();
-    for (final type in trayTypes) {
-      for (final tile in uncovered) {
-        if (tile.type == type) return tile.id;
-      }
-    }
-    return uncovered.last.id;
+    updateBoardGeometry(boardSize, tileSize);
+    final hintIds = findBestHintTileIds();
+    return hintIds.isEmpty ? null : hintIds.first;
   }
 
-  bool collectAvailableTriple(
-    Size boardSize,
-    Size tileSize, {
-    Set<String>? preferredIds,
-  }) {
-    if (result != GameResult.playing) return false;
-    updateBoardGeometry(boardSize, tileSize);
-    final idsByType = <String, List<String>>{};
-    for (final tile in List<Tile>.from(renderedBoardTiles)) {
+  List<String> findBestHintTileIds() {
+    if (result != GameResult.playing) return <String>[];
+    if (_boardSize == Size.zero || _tileSize == Size.zero) return <String>[];
+
+    final selectableByType = <String, List<String>>{};
+    for (final tile in List<Tile>.from(renderedBoardTiles).reversed) {
       if (isTileCovered(tile)) continue;
-      idsByType.putIfAbsent(tile.type, () => <String>[]).add(tile.id);
+      selectableByType.putIfAbsent(tile.type, () => <String>[]).add(tile.id);
+    }
+    if (selectableByType.isEmpty) return <String>[];
+
+    final trayCounts = <String, int>{};
+    final trayTypeOrder = <String>[];
+    for (final id in List<String>.from(tray)) {
+      final tile = tileById(id);
+      if (tile == null || tile.state == TileState.matched) continue;
+      trayCounts[tile.type] = (trayCounts[tile.type] ?? 0) + 1;
+      if (!trayTypeOrder.contains(tile.type)) trayTypeOrder.add(tile.type);
     }
 
-    List<String>? triple;
-    if (preferredIds != null && preferredIds.length >= 3) {
-      final preferredByType = <String, List<String>>{};
-      for (final id in preferredIds) {
-        final tile = tileById(id);
-        if (tile == null || !_isRenderedOnBoard(tile) || isTileCovered(tile)) {
-          continue;
-        }
-        preferredByType.putIfAbsent(tile.type, () => <String>[]).add(id);
-      }
-      for (final ids in preferredByType.values) {
-        if (ids.length >= 3) {
-          triple = ids.take(3).toList();
-          break;
+    for (final needed in const <int>[1, 2]) {
+      final currentCount = 3 - needed;
+      for (final type in trayTypeOrder) {
+        if (trayCounts[type] != currentCount) continue;
+        final selectableIds = selectableByType[type] ?? const <String>[];
+        if (selectableIds.length >= needed) {
+          final hintIds = selectableIds.take(needed).toList(growable: false);
+          debugPrint(
+            'Hint found tray-aware move: type=$type, needed=$needed, ids=${hintIds.join(',')}',
+          );
+          return hintIds;
         }
       }
     }
 
-    for (final entry in idsByType.entries) {
-      if (triple != null) break;
+    for (final entry in selectableByType.entries) {
       if (entry.value.length >= 3) {
-        triple = entry.value;
+        final hintIds = entry.value.take(3).toList(growable: false);
+        debugPrint(
+          'Hint found new triple: type=${entry.key}, ids=${hintIds.join(',')}',
+        );
+        return hintIds;
       }
     }
-    if (triple == null) return false;
 
-    final tripleIds = triple.take(3).toList();
-    final tripleIdSet = tripleIds.toSet();
+    return <String>[];
+  }
+
+  bool collectHintTileIds(List<String> ids) {
+    if (result != GameResult.playing || ids.isEmpty) return false;
+    final uniqueIds = <String>[];
+    final seenIds = <String>{};
+    for (final id in ids) {
+      if (seenIds.add(id)) uniqueIds.add(id);
+    }
+
+    for (final id in uniqueIds) {
+      final tile = tileById(id);
+      if (tile == null || !_isRenderedOnBoard(tile) || isTileCovered(tile)) {
+        debugPrint('Hint/Cat rejected non-selectable tile: id=$id');
+        return false;
+      }
+    }
+
+    _sanitizeTray();
+    if (tray.length + uniqueIds.length > trayLimit) {
+      result = GameResult.lost;
+      return false;
+    }
+
+    final idSet = uniqueIds.toSet();
     tiles = tiles
-        .map((tile) => tripleIdSet.contains(tile.id)
+        .map((tile) => idSet.contains(tile.id)
             ? tile.copyWith(state: TileState.tray)
             : tile)
         .toList();
-    tray = <String>[...tray, ...tripleIds];
+    tray = <String>[...tray, ...uniqueIds];
+    _selectionHistory.addAll(uniqueIds);
     debugPrint(
-        'Hint/Cat moved selectable tiles to tray: ids=${tripleIds.join(',')}');
-    _removeTriplesFromTray(preferredMatchedIds: tripleIdSet);
+        'Hint/Cat collected selectable tiles: ids=${uniqueIds.join(',')}');
+    _removeTriplesFromTray(preferredMatchedIds: idSet);
     _updateResult();
     return true;
   }

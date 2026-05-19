@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../main.dart';
 
@@ -72,9 +73,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             controller: _codeController,
             maxLength: 4,
             keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(4),
+            ],
             decoration: const InputDecoration(
               labelText: 'Final 4-digit reward code',
-              helperText: 'Also configurable at build time with --dart-define=FINAL_CODE=1234.',
+              helperText:
+                  'Also configurable at build time with --dart-define=FINAL_CODE=1234.',
             ),
           ),
           FilledButton(

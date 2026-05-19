@@ -7,6 +7,11 @@ class ProgressRepository {
   static const _codeKey = 'final_code';
   static const defaultFinalCode = '4286';
 
+  String _normalizeFinalCode(String value) {
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    return digits.padLeft(4, '0').substring(0, 4);
+  }
+
   Future<int> highestUnlockedLevel() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_highestLevelKey) ?? 1;
@@ -45,12 +50,12 @@ class ProgressRepository {
       defaultValue: defaultFinalCode,
     );
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_codeKey) ?? compileTimeCode;
+    return _normalizeFinalCode(prefs.getString(_codeKey) ?? compileTimeCode);
   }
 
   Future<void> setFinalCode(String code) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_codeKey, code.padLeft(4, '0').substring(0, 4));
+    await prefs.setString(_codeKey, _normalizeFinalCode(code));
   }
 
   Future<void> reset() async {

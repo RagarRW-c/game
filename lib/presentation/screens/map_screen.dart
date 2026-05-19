@@ -19,7 +19,8 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _highestFuture = AppScope.of(context).progressRepository.highestUnlockedLevel();
+    _highestFuture =
+        AppScope.of(context).progressRepository.highestUnlockedLevel();
   }
 
   @override
@@ -74,7 +75,7 @@ class _MapScreenState extends State<MapScreen> {
                       borderRadius: BorderRadius.circular(28),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.deepOrange.withOpacity(0.18),
+                          color: Colors.deepOrange.withValues(alpha: 0.18),
                           blurRadius: 14,
                           offset: const Offset(0, 8),
                         ),
@@ -83,13 +84,19 @@ class _MapScreenState extends State<MapScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(unlocked ? '⭐' : '🔒', style: const TextStyle(fontSize: 42)),
+                        Text(unlocked ? '⭐' : '🔒',
+                            style: const TextStyle(fontSize: 42)),
                         const SizedBox(height: 8),
                         Text(
                           'Level $level',
-                          style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
+                          style: const TextStyle(
+                              fontSize: 23, fontWeight: FontWeight.w900),
                         ),
-                        Text(level < highest ? 'Cleared' : unlocked ? 'Ready' : 'Locked'),
+                        Text(level < highest
+                            ? 'Cleared'
+                            : unlocked
+                                ? 'Ready'
+                                : 'Locked'),
                       ],
                     ),
                   ),

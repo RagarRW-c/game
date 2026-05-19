@@ -32,11 +32,12 @@ class _GameScreenState extends State<GameScreen> {
   late AppScope _scope;
   late NavigatorState _navigator;
   GameEngine? _engine;
-  String? _hintedTileId;
+  final Set<String> _hintedTileIds = <String>{};
   int _undoUsesRemaining = _maxBoosterUses;
   int _hintUsesRemaining = _maxBoosterUses;
   int _shuffleUsesRemaining = _maxBoosterUses;
   bool _gameOverDialogShowing = false;
+  bool _winDialogShowing = false;
 
   @override
   void didChangeDependencies() {
@@ -54,6 +55,8 @@ class _GameScreenState extends State<GameScreen> {
       _engine = null;
       _resetAnimationState();
       _resetBoosterUses();
+      _gameOverDialogShowing = false;
+      _winDialogShowing = false;
     }
   }
 
@@ -81,7 +84,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _resetAnimationState() {
-    _hintedTileId = null;
+    _hintedTileIds.clear();
   }
 
   void _resetBoosterUses() {
@@ -180,7 +183,7 @@ class _GameScreenState extends State<GameScreen> {
 
     late final bool moved;
     if (!_safeSetState(() {
-      _hintedTileId = null;
+      _hintedTileIds.clear();
       moved = engine.tapTile(canonicalTile.id, boardSize, tileSize);
     })) {
       return;
@@ -225,30 +228,24 @@ class _GameScreenState extends State<GameScreen> {
         engine.result != GameResult.playing) {
       return;
     }
-    final catIds = _availableTripleIds(boardSize, tileSize);
-    if (catIds == null) {
-      final hintId = engine.hint(boardSize, tileSize);
-      debugPrint('Cat helper hint: id=$hintId');
-      if (hintId == null) return;
-      _safeSetState(() {
-        _hintedTileId = hintId;
-        _hintUsesRemaining--;
-      });
-      _debugValidateTiles('hint-highlight', engine);
-      _playSfx(_scope.audioService.playBooster, 'booster');
+    engine.updateBoardGeometry(boardSize, tileSize);
+    final hintIds = engine.findBestHintTileIds();
+    if (hintIds.isEmpty) {
+      debugPrint('Cat helper hint unavailable');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No hint available')),
+        );
+      }
       return;
     }
 
     final beforeTrayIds = List<String>.from(engine.tray);
-    debugPrint('Cat helper started: ids=${catIds.join(',')}');
+    debugPrint('Cat helper started: ids=${hintIds.join(',')}');
     late final bool collected;
     if (!_safeSetState(() {
-      _hintedTileId = null;
-      collected = engine.collectAvailableTriple(
-        boardSize,
-        tileSize,
-        preferredIds: catIds.toSet(),
-      );
+      _hintedTileIds.clear();
+      collected = engine.collectHintTileIds(hintIds);
       if (collected) _hintUsesRemaining--;
     })) {
       return;
@@ -256,15 +253,16 @@ class _GameScreenState extends State<GameScreen> {
     _playSfx(_scope.audioService.playBooster, 'booster');
 
     if (!collected) {
-      debugPrint('Cat helper aborted: no triple was collected');
+      debugPrint('Cat helper aborted: hint tiles were not collected');
       _debugValidateTiles('cat-rejected', engine);
+      if (engine.result == GameResult.lost) await _handleGameOver(level: level);
       return;
     }
 
     final removedIds =
-        _matchedIdsAfterMove(beforeTrayIds, preferredIds: catIds.toSet());
+        _matchedIdsAfterMove(beforeTrayIds, preferredIds: hintIds.toSet());
     debugPrint(
-        'Cat helper tray insertion: ids=${catIds.join(',')}, tray=${engine.tray.length}');
+        'Cat helper tray insertion: ids=${hintIds.join(',')}, tray=${engine.tray.length}');
     if (removedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${removedIds.join(',')}');
       _playSfx(_scope.audioService.playMatch, 'match');
@@ -274,21 +272,6 @@ class _GameScreenState extends State<GameScreen> {
     if (engine.result == GameResult.won) await _handleWin();
     if (!mounted) return;
     if (engine.result == GameResult.lost) await _handleGameOver(level: level);
-  }
-
-  List<String>? _availableTripleIds(Size boardSize, Size tileSize) {
-    final engine = _engine;
-    if (engine == null || engine.result != GameResult.playing) return null;
-    engine.updateBoardGeometry(boardSize, tileSize);
-    final idsByType = <String, List<String>>{};
-    for (final tile in List<Tile>.from(engine.renderedBoardTiles).reversed) {
-      if (engine.isTileCovered(tile)) continue;
-      idsByType.putIfAbsent(tile.type, () => <String>[]).add(tile.id);
-    }
-    for (final ids in idsByType.values) {
-      if (ids.length >= 3) return ids.take(3).toList();
-    }
-    return null;
   }
 
   Set<String> _matchedIdsAfterMove(
@@ -358,10 +341,14 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _handleWin() async {
-    if (!mounted) return;
+    if (_winDialogShowing || !mounted) return;
+    _winDialogShowing = true;
     final scope = _scope;
     await scope.progressRepository.unlockNextLevel(widget.level);
-    if (!mounted) return;
+    if (!mounted) {
+      _winDialogShowing = false;
+      return;
+    }
     _playSfx(scope.audioService.playWin, 'win');
     await showDialog<void>(
       context: context,
@@ -369,6 +356,15 @@ class _GameScreenState extends State<GameScreen> {
       builder: (_) => WinScreen(
         level: widget.level,
         isFinalLevel: widget.level == LevelRepository.levelCount,
+        onRestart: () {
+          if (!mounted) return;
+          _navigator.pop();
+          _safeSetState(() {
+            _engine = null;
+            _resetAnimationState();
+            _resetBoosterUses();
+          });
+        },
         onMap: () {
           if (!mounted) return;
           _navigator.pop();
@@ -394,6 +390,7 @@ class _GameScreenState extends State<GameScreen> {
         },
       ),
     );
+    if (mounted) _winDialogShowing = false;
   }
 
   List<Tile> _renderedBoardSnapshot(
@@ -536,7 +533,7 @@ class _GameScreenState extends State<GameScreen> {
                   tileSize,
                 );
                 final trayTiles = _traySnapshot(engine);
-                final hintedTileId = _hintedTileId;
+                final hintedTileIds = Set<String>.from(_hintedTileIds);
                 final maxLayer = renderedBoardTiles.isEmpty
                     ? 0
                     : renderedBoardTiles.map((tile) => tile.layer).reduce(max);
@@ -590,7 +587,7 @@ class _GameScreenState extends State<GameScreen> {
                                             blocked: covered,
                                             depth: depth,
                                             highlighted:
-                                                hintedTileId == tile.id,
+                                                hintedTileIds.contains(tile.id),
                                             onTap: covered
                                                 ? null
                                                 : () => _onTileTap(
@@ -615,7 +612,7 @@ class _GameScreenState extends State<GameScreen> {
                                 debugPrint('Shuffle started');
                                 late final bool shuffled;
                                 _safeSetState(() {
-                                  _hintedTileId = null;
+                                  _hintedTileIds.clear();
                                   shuffled = engine.shuffleBoard();
                                   if (shuffled) _shuffleUsesRemaining--;
                                 });

@@ -23,21 +23,38 @@ class FinalCodeScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('🏆', style: TextStyle(fontSize: 88)),
+                const Icon(
+                  Icons.emoji_events_rounded,
+                  color: Colors.white,
+                  size: 92,
+                ),
+                const SizedBox(height: 12),
                 const Text(
                   'Adventure Complete!',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.white),
+                  style: TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 24),
-                const Text('Your reward code is', style: TextStyle(fontSize: 20)),
+                const Text(
+                  'Your reward code is',
+                  style: TextStyle(fontSize: 20),
+                ),
                 const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 34,
+                    vertical: 18,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(26),
-                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 18)],
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black26, blurRadius: 18),
+                    ],
                   ),
                   child: Text(
                     code,
@@ -49,9 +66,12 @@ class FinalCodeScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 34),
-                FilledButton(
-                  onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
-                  child: const Text('Back to Menu'),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.popUntil(context, (route) => route.isFirst);
+                  },
+                  icon: const Icon(Icons.home_rounded),
+                  label: const Text('Back to Menu'),
                 ),
               ],
             ),
