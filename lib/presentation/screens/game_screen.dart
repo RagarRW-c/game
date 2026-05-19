@@ -774,6 +774,66 @@ class _Tray extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final slots = List<Tile?>.from(trayTiles);
+    final slotWidgets = <Widget>[];
+
+    for (var index = 0; index < GameEngine.trayLimit; index++) {
+      final tile = index < slots.length ? slots[index] : null;
+      final matching = tile != null && matchingTileIds.contains(tile.id);
+
+      slotWidgets.add(
+        Expanded(
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.symmetric(horizontal: matching ? 1 : 3),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              switchInCurve: Curves.easeOutBack,
+              switchOutCurve: Curves.easeInOut,
+              transitionBuilder: (child, animation) {
+                final curved = CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutBack,
+                  reverseCurve: Curves.easeInOut,
+                );
+                return FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.72, end: 1).animate(curved),
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, -0.18),
+                        end: Offset.zero,
+                      ).animate(curved),
+                      child: child,
+                    ),
+                  ),
+                );
+              },
+              child: tile == null
+                  ? Container(
+                      key: ValueKey('empty_$index'),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                    )
+                  : GameTileWidget(
+                      key: ValueKey('${tile.id}_$matching'),
+                      tile: tile,
+                      enabled: true,
+                      highlighted: false,
+                      matching: matching,
+                      trayTile: true,
+                    ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
       height: 92,
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
@@ -783,62 +843,7 @@ class _Tray extends StatelessWidget {
         borderRadius: BorderRadius.circular(26),
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12)],
       ),
-      child: Row(
-        children: List.generate(GameEngine.trayLimit, (index) {
-          final tile = index < trayTiles.length ? trayTiles[index] : null;
-          final matching = tile != null && matchingTileIds.contains(tile.id);
-          return Expanded(
-            child: AnimatedPadding(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOut,
-              padding: EdgeInsets.symmetric(horizontal: matching ? 1 : 3),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                switchInCurve: Curves.easeOutBack,
-                switchOutCurve: Curves.easeInOut,
-                transitionBuilder: (child, animation) {
-                  final curved = CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutBack,
-                    reverseCurve: Curves.easeInOut,
-                  );
-                  return FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(
-                      scale: Tween<double>(begin: 0.72, end: 1).animate(curved),
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, -0.18),
-                          end: Offset.zero,
-                        ).animate(curved),
-                        child: child,
-                      ),
-                    ),
-                  );
-                },
-                child: tile == null
-                    ? Container(
-                        key: ValueKey('empty_$index'),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                      )
-                    : GameTileWidget(
-                        key: ValueKey('${tile.id}_$matching'),
-                        tile: tile,
-                        enabled: true,
-                        highlighted: false,
-                        matching: matching,
-                        trayTile: true,
-                      ),
-              ),
-            ),
-          );
-          });
-        }(),
-      ),
+      child: Row(children: slotWidgets),
     );
   }
 }
