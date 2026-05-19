@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:math' show max;
 
 import 'package:flutter/material.dart';
 
+import '../../core/tile_catalog.dart';
 import '../../data/level_repository.dart';
 import '../../domain/game_engine.dart';
 import '../../domain/game_result.dart';
@@ -25,22 +26,17 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> {
+  static const int _maxBoosterUses = 2;
+
   late Future<LevelDefinition> _levelFuture;
   late AppScope _scope;
   late NavigatorState _navigator;
   GameEngine? _engine;
   String? _hintedTileId;
-  String? _pickedUpTileId;
-  Tile? _flyingTile;
-  int _flyingTrayIndex = 0;
-  bool _flightSettled = false;
-  final Set<String> _catPulseTileIds = <String>{};
-  final Set<String> _matchingTileIds = <String>{};
-  final Map<String, Offset> _shuffleOffsets = <String, Offset>{};
-  final Random _animationRandom = Random();
-  bool _animatingAction = false;
+  int _undoUsesRemaining = _maxBoosterUses;
+  int _hintUsesRemaining = _maxBoosterUses;
+  int _shuffleUsesRemaining = _maxBoosterUses;
   bool _gameOverDialogShowing = false;
-  int _actionGeneration = 0;
 
   @override
   void didChangeDependencies() {
@@ -57,14 +53,8 @@ class _GameScreenState extends State<GameScreen> {
       _levelFuture = _scope.levelRepository.loadLevel(widget.level);
       _engine = null;
       _resetAnimationState();
-      _actionGeneration++;
+      _resetBoosterUses();
     }
-  }
-
-  @override
-  void dispose() {
-    _actionGeneration++;
-    super.dispose();
   }
 
   void _ensureEngine(LevelDefinition level) {
@@ -82,8 +72,6 @@ class _GameScreenState extends State<GameScreen> {
     return true;
   }
 
-  bool _isCurrentAction(int token) => mounted && token == _actionGeneration;
-
   void _playSfx(Future<void> Function() play, String cue) {
     unawaited(
       play().catchError((Object error, StackTrace stackTrace) {
@@ -94,13 +82,78 @@ class _GameScreenState extends State<GameScreen> {
 
   void _resetAnimationState() {
     _hintedTileId = null;
-    _pickedUpTileId = null;
-    _flyingTile = null;
-    _flightSettled = false;
-    _catPulseTileIds.clear();
-    _matchingTileIds.clear();
-    _shuffleOffsets.clear();
-    _animatingAction = false;
+  }
+
+  void _resetBoosterUses() {
+    _undoUsesRemaining = _maxBoosterUses;
+    _hintUsesRemaining = _maxBoosterUses;
+    _shuffleUsesRemaining = _maxBoosterUses;
+  }
+
+  void _debugValidateTiles(String source, GameEngine engine) {
+    final trayIds = List<String>.from(engine.tray);
+    final trayIdSet = trayIds.toSet();
+    final seenTileIds = <String>{};
+    final duplicateTileIds = <String>{};
+    final seenTrayIds = <String>{};
+    final duplicateTrayIds = <String>{};
+    final unknownTrayIds = <String>[];
+    final invalidTypeIds = <String>[];
+    final boardTrayConflicts = <String>[];
+    final activeButNotBoardOrTray = <String>[];
+
+    for (final id in trayIds) {
+      if (!seenTrayIds.add(id)) duplicateTrayIds.add(id);
+      if (engine.tileById(id) == null) unknownTrayIds.add(id);
+    }
+
+    for (final tile in engine.tiles) {
+      if (!seenTileIds.add(tile.id)) duplicateTileIds.add(tile.id);
+      if (tile.state != TileState.matched &&
+          !tileCatalog.containsKey(tile.type)) {
+        invalidTypeIds.add('${tile.id}:${tile.type}');
+      }
+      if (tile.state == TileState.board && trayIdSet.contains(tile.id)) {
+        boardTrayConflicts.add(tile.id);
+      }
+    }
+
+    final boardVisibleCount = engine.tiles
+        .where((tile) =>
+            tile.state != TileState.matched && !trayIdSet.contains(tile.id))
+        .length;
+    final removedCount =
+        engine.tiles.where((tile) => tile.state == TileState.matched).length;
+
+    debugPrint(
+      'Tile validation [$source]: total=${engine.tiles.length}, '
+      'boardVisible=$boardVisibleCount, tray=${trayIds.length}, '
+      'removed=$removedCount, activeNeither=${activeButNotBoardOrTray.length}',
+    );
+    if (duplicateTileIds.isNotEmpty) {
+      debugPrint(
+          'Tile validation [$source]: duplicate tile ids=${duplicateTileIds.join(',')}');
+    }
+    if (duplicateTrayIds.isNotEmpty) {
+      debugPrint(
+          'Tile validation [$source]: duplicate tray ids=${duplicateTrayIds.join(',')}');
+    }
+    if (unknownTrayIds.isNotEmpty) {
+      debugPrint(
+          'Tile validation [$source]: unknown tray ids=${unknownTrayIds.join(',')}');
+    }
+    if (invalidTypeIds.isNotEmpty) {
+      debugPrint(
+          'Tile validation [$source]: active invalid type/icon=${invalidTypeIds.join(',')}');
+    }
+    if (boardTrayConflicts.isNotEmpty) {
+      debugPrint(
+          'Tile validation [$source]: board/tray conflicts=${boardTrayConflicts.join(',')}');
+    }
+    if (activeButNotBoardOrTray.isNotEmpty) {
+      debugPrint(
+          'Tile validation [$source]: active neither board nor tray=${activeButNotBoardOrTray.join(',')}');
+    }
   }
 
   Future<void> _onTileTap(
@@ -110,93 +163,51 @@ class _GameScreenState extends State<GameScreen> {
     Size tileSize,
   ) async {
     final engine = _engine;
-    if (_animatingAction || engine == null || engine.result != GameResult.playing) {
+    if (engine == null || engine.result != GameResult.playing) {
       return;
     }
 
     final canonicalTile = engine.tileById(tile.id);
     if (canonicalTile == null ||
-        canonicalTile.state != TileState.board ||
-        engine.isTileCovered(canonicalTile)) {
+        !engine.isUncovered(canonicalTile, boardSize, tileSize)) {
       debugPrint('Tile selection ignored: id=${tile.id}, selectable=false');
       return;
     }
 
-    final token = ++_actionGeneration;
     final beforeTrayIds = List<String>.from(engine.tray);
-    debugPrint('Tile selection started: id=${canonicalTile.id}, tray=${beforeTrayIds.length}');
+    debugPrint(
+        'Tile selection started: id=${canonicalTile.id}, tray=${beforeTrayIds.length}');
 
+    late final bool moved;
     if (!_safeSetState(() {
-      _animatingAction = true;
-      _pickedUpTileId = canonicalTile.id;
       _hintedTileId = null;
-      _matchingTileIds.clear();
-      _flyingTile = null;
-      _flightSettled = false;
+      moved = engine.tapTile(canonicalTile.id, boardSize, tileSize);
     })) {
       return;
     }
     _playSfx(_scope.audioService.playTap, 'tap');
-    await Future<void>.delayed(const Duration(milliseconds: 115));
-    if (!_isCurrentAction(token)) return;
 
-    final moved = engine.tapTile(canonicalTile.id, boardSize, tileSize);
     if (!moved) {
-      debugPrint('Tile selection aborted: id=${canonicalTile.id}, engine rejected move');
-      _safeSetState(() {
-        _pickedUpTileId = null;
-        _animatingAction = false;
-      });
+      debugPrint(
+          'Tile selection aborted: id=${canonicalTile.id}, engine rejected move');
+      _debugValidateTiles('tap-rejected', engine);
       if (engine.result == GameResult.lost) {
         await _handleGameOver(level: level);
       }
       return;
     }
 
-    final removedIds = _matchedIdsAfterMove(
+    final matchedIds = _matchedIdsAfterMove(
       beforeTrayIds,
       collectedId: canonicalTile.id,
     );
-    final flightTile = canonicalTile.copyWith(state: TileState.board);
-    final trayIndex = beforeTrayIds.length.clamp(0, GameEngine.trayLimit - 1).toInt();
-    debugPrint('Tray insertion: id=${canonicalTile.id}, slot=$trayIndex, tray=${engine.tray.length}');
-    if (removedIds.isNotEmpty) {
-      debugPrint('Match removal queued: ids=${removedIds.join(',')}');
-    }
-
-    if (!_safeSetState(() {
-      _pickedUpTileId = null;
-      _flyingTile = flightTile;
-      _flyingTrayIndex = trayIndex;
-      _flightSettled = false;
-      _matchingTileIds
-        ..clear()
-        ..addAll(removedIds);
-    })) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_isCurrentAction(token) && _flyingTile?.id == canonicalTile.id) {
-        _safeSetState(() => _flightSettled = true);
-      }
-    });
-
-    await Future<void>.delayed(const Duration(milliseconds: 310));
-    if (!_isCurrentAction(token)) return;
-
-    if (_matchingTileIds.isNotEmpty) {
+    debugPrint(
+        'Tray insertion complete: id=${canonicalTile.id}, tray=${engine.tray.length}');
+    if (matchedIds.isNotEmpty) {
+      debugPrint('Match removed: ids=${matchedIds.join(',')}');
       _playSfx(_scope.audioService.playMatch, 'match');
     }
-    debugPrint('Tile animation completed: id=${canonicalTile.id}');
-    if (!_safeSetState(() {
-      _matchingTileIds.clear();
-      _flyingTile = null;
-      _flightSettled = false;
-      _animatingAction = false;
-    })) {
-      return;
-    }
+    _debugValidateTiles('tap', engine);
 
     if (engine.result == GameResult.won) await _handleWin();
     if (!mounted) return;
@@ -209,65 +220,57 @@ class _GameScreenState extends State<GameScreen> {
     Size tileSize,
   ) async {
     final engine = _engine;
-    if (_animatingAction || engine == null || engine.result != GameResult.playing) return;
+    if (_hintUsesRemaining <= 0 ||
+        engine == null ||
+        engine.result != GameResult.playing) {
+      return;
+    }
     final catIds = _availableTripleIds(boardSize, tileSize);
     if (catIds == null) {
       final hintId = engine.hint(boardSize, tileSize);
       debugPrint('Cat helper hint: id=$hintId');
-      _safeSetState(() => _hintedTileId = hintId);
+      if (hintId == null) return;
+      _safeSetState(() {
+        _hintedTileId = hintId;
+        _hintUsesRemaining--;
+      });
+      _debugValidateTiles('hint-highlight', engine);
       _playSfx(_scope.audioService.playBooster, 'booster');
       return;
     }
 
-    final token = ++_actionGeneration;
     final beforeTrayIds = List<String>.from(engine.tray);
     debugPrint('Cat helper started: ids=${catIds.join(',')}');
+    late final bool collected;
     if (!_safeSetState(() {
-      _animatingAction = true;
       _hintedTileId = null;
-      _matchingTileIds.clear();
-      _catPulseTileIds
-        ..clear()
-        ..addAll(catIds);
+      collected = engine.collectAvailableTriple(
+        boardSize,
+        tileSize,
+        preferredIds: catIds.toSet(),
+      );
+      if (collected) _hintUsesRemaining--;
     })) {
       return;
     }
     _playSfx(_scope.audioService.playBooster, 'booster');
-    await Future<void>.delayed(const Duration(milliseconds: 240));
-    if (!_isCurrentAction(token)) return;
 
-    final collected = engine.collectAvailableTriple(boardSize, tileSize);
     if (!collected) {
       debugPrint('Cat helper aborted: no triple was collected');
-      _safeSetState(() {
-        _catPulseTileIds.clear();
-        _animatingAction = false;
-      });
+      _debugValidateTiles('cat-rejected', engine);
       return;
     }
 
-    final removedIds = _matchedIdsAfterMove(beforeTrayIds, preferredIds: catIds.toSet());
-    debugPrint('Cat helper tray insertion: ids=${catIds.join(',')}, tray=${engine.tray.length}');
+    final removedIds =
+        _matchedIdsAfterMove(beforeTrayIds, preferredIds: catIds.toSet());
+    debugPrint(
+        'Cat helper tray insertion: ids=${catIds.join(',')}, tray=${engine.tray.length}');
     if (removedIds.isNotEmpty) {
-      debugPrint('Match removal queued: ids=${removedIds.join(',')}');
-    }
-    _safeSetState(() {
-      _catPulseTileIds.clear();
-      _matchingTileIds
-        ..clear()
-        ..addAll(removedIds);
-    });
-    await Future<void>.delayed(const Duration(milliseconds: 320));
-    if (!_isCurrentAction(token)) return;
-
-    if (_matchingTileIds.isNotEmpty) {
+      debugPrint('Match removed: ids=${removedIds.join(',')}');
       _playSfx(_scope.audioService.playMatch, 'match');
     }
-    debugPrint('Cat helper animation completed');
-    _safeSetState(() {
-      _matchingTileIds.clear();
-      _animatingAction = false;
-    });
+    debugPrint('Cat helper complete');
+    _debugValidateTiles('cat', engine);
     if (engine.result == GameResult.won) await _handleWin();
     if (!mounted) return;
     if (engine.result == GameResult.lost) await _handleGameOver(level: level);
@@ -301,12 +304,15 @@ class _GameScreenState extends State<GameScreen> {
       if (collectedId != null) collectedId,
       if (preferredIds != null) ...preferredIds,
     };
-    return candidateIds.where((id) {
-      final tile = engine.tileById(id);
-      return tile != null &&
-          tile.state == TileState.matched &&
-          !afterTrayIds.contains(id);
-    }).take(3).toSet();
+    return candidateIds
+        .where((id) {
+          final tile = engine.tileById(id);
+          return tile != null &&
+              tile.state == TileState.matched &&
+              !afterTrayIds.contains(id);
+        })
+        .take(3)
+        .toSet();
   }
 
   Future<void> _handleGameOver({required LevelDefinition? level}) async {
@@ -320,7 +326,8 @@ class _GameScreenState extends State<GameScreen> {
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         title: const Text('Game Over'),
-        content: const Text('The tray is full. Restart the level or return to the menu.'),
+        content: const Text(
+            'The tray is full. Restart the level or return to the menu.'),
         actions: [
           TextButton(
             onPressed: () {
@@ -335,10 +342,10 @@ class _GameScreenState extends State<GameScreen> {
                 : () {
                     _navigator.pop();
                     if (!mounted) return;
-                    _actionGeneration++;
                     _safeSetState(() {
                       _engine = GameEngine(level.tiles);
                       _resetAnimationState();
+                      _resetBoosterUses();
                     });
                   },
             icon: const Icon(Icons.refresh_rounded),
@@ -374,7 +381,8 @@ class _GameScreenState extends State<GameScreen> {
             final code = await scope.progressRepository.finalCode();
             if (!mounted) return;
             await _navigator.pushReplacement(
-              MaterialPageRoute<void>(builder: (_) => FinalCodeScreen(code: code)),
+              MaterialPageRoute<void>(
+                  builder: (_) => FinalCodeScreen(code: code)),
             );
           } else {
             if (!mounted) return;
@@ -394,9 +402,26 @@ class _GameScreenState extends State<GameScreen> {
     Size tileSize,
   ) {
     engine.updateBoardGeometry(boardSize, tileSize);
-    final canonicalTiles = List<Tile>.from(engine.tiles);
-    final boardIds = canonicalTiles
-        .where((tile) => tile.state == TileState.board)
+    final trayIds = List<String>.from(engine.tray).toSet();
+    final seenIds = <String>{};
+    final boardIds = List<Tile>.from(engine.tiles)
+        .where((tile) {
+          if (!seenIds.add(tile.id)) {
+            debugPrint('Board render skipped duplicate tile id=${tile.id}');
+            return false;
+          }
+          if (tile.state == TileState.matched) return false;
+          if (trayIds.contains(tile.id)) {
+            debugPrint('Board render skipped tray tile id=${tile.id}');
+            return false;
+          }
+          if (!tileCatalog.containsKey(tile.type)) {
+            debugPrint(
+              'Board render active tile has unknown type/icon id=${tile.id}, type=${tile.type}',
+            );
+          }
+          return true;
+        })
         .map((tile) => tile.id)
         .toSet();
     return List<Tile>.from(engine.renderedBoardTiles)
@@ -425,17 +450,31 @@ class _GameScreenState extends State<GameScreen> {
       for (final tile in List<Tile>.from(engine.tiles)) tile.id: tile,
     };
     final seenIds = <String>{};
-    final visibleIds = <String>[
-      ...List<String>.from(engine.tray),
-      ...List<String>.from(_matchingTileIds),
-    ]
-        .where((id) => tilesById.containsKey(id) && seenIds.add(id))
+    final visibleIds = List<String>.from(engine.tray)
+        .where((id) {
+          final tile = tilesById[id];
+          if (tile == null) {
+            debugPrint('Tray render skipped unknown tile id=$id');
+            return false;
+          }
+          if (!seenIds.add(id)) {
+            debugPrint('Tray render skipped duplicate tile id=$id');
+            return false;
+          }
+          if (!tileCatalog.containsKey(tile.type)) {
+            debugPrint(
+              'Tray render tile has unknown type/icon id=$id, type=${tile.type}',
+            );
+          }
+          return true;
+        })
         .take(GameEngine.trayLimit)
         .toList(growable: false);
 
     return List<Tile?>.generate(
       GameEngine.trayLimit,
-      (index) => index < visibleIds.length ? tilesById[visibleIds[index]] : null,
+      (index) =>
+          index < visibleIds.length ? tilesById[visibleIds[index]] : null,
       growable: false,
     );
   }
@@ -449,11 +488,13 @@ class _GameScreenState extends State<GameScreen> {
           debugPrint('Game build failed to load level: ${snapshot.error}');
           return _FallbackGameScaffold(
             title: 'Level ${widget.level}',
-            message: 'We could not load this level. Please go back and try again.',
+            message:
+                'We could not load this level. Please go back and try again.',
           );
         }
         if (!snapshot.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         final level = snapshot.data!;
         _ensureEngine(level);
@@ -479,10 +520,10 @@ class _GameScreenState extends State<GameScreen> {
             builder: (context, constraints) {
               try {
                 final boardHeight = constraints.maxHeight - 156;
-              final boardSize = Size(
-                constraints.maxWidth,
-                boardHeight.clamp(360.0, 620.0).toDouble(),
-              );
+                final boardSize = Size(
+                  constraints.maxWidth,
+                  boardHeight.clamp(360.0, 620.0).toDouble(),
+                );
                 final tileSize = _tileSize(constraints.maxWidth);
                 final renderedBoardTiles = _renderedBoardSnapshot(
                   engine,
@@ -495,173 +536,128 @@ class _GameScreenState extends State<GameScreen> {
                   tileSize,
                 );
                 final trayTiles = _traySnapshot(engine);
-                final matchingTileIds = Set<String>.from(_matchingTileIds);
-                final catPulseTileIds = Set<String>.from(_catPulseTileIds);
-                final shuffleOffsets = Map<String, Offset>.from(_shuffleOffsets);
                 final hintedTileId = _hintedTileId;
-                final pickedUpTileId = _pickedUpTileId;
-                final flyingTile = _flyingTile;
-                final flightSettled = _flightSettled;
-                final flyingTrayIndex = _flyingTrayIndex;
                 final maxLayer = renderedBoardTiles.isEmpty
                     ? 0
                     : renderedBoardTiles.map((tile) => tile.layer).reduce(max);
                 return Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFFB8F7FF), Color(0xFFFFF6C7)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFFB8F7FF), Color(0xFFFFF6C7)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
                   ),
-                ),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Center(
-                        child: SizedBox(
-                          width: boardSize.width,
-                          height: boardSize.height,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Positioned.fill(
-                                child: Container(
-                                  margin: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.34),
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                ),
-                              ),
-                              for (final tile in renderedBoardTiles)
-                                AnimatedPositioned(
-                                  key: ValueKey(tile.id),
-                                  duration: Duration(
-                                    milliseconds:
-                                        shuffleOffsets.containsKey(tile.id)
-                                            ? 190
-                                            : 310,
-                                  ),
-                                  curve: shuffleOffsets.containsKey(tile.id)
-                                      ? Curves.easeInOut
-                                      : Curves.easeOutCubic,
-                                  left: tile.x * boardSize.width +
-                                      (shuffleOffsets[tile.id]?.dx ?? 0),
-                                  top: tile.y * boardSize.height +
-                                      (shuffleOffsets[tile.id]?.dy ?? 0),
-                                  width: tileSize.width,
-                                  height: tileSize.height,
-                                  child: Builder(
-                                    builder: (context) {
-                                      final covered = coveredById[tile.id] ?? true;
-                                      final depth = maxLayer == 0 ? 1.0 : tile.layer / maxLayer;
-                                      final pulsing = catPulseTileIds.contains(tile.id);
-                                      return IgnorePointer(
-                                        ignoring: covered || _animatingAction,
-                                        child: GameTileWidget(
-                                          tile: tile,
-                                          enabled: !covered,
-                                          blocked: covered,
-                                          depth: depth,
-                                          pickedUp: pickedUpTileId == tile.id,
-                                          highlighted: hintedTileId == tile.id || pulsing,
-                                          matching: pulsing,
-                                          onTap: covered
-                                              ? null
-                                              : () => _onTileTap(
-                                                    level,
-                                                    tile,
-                                                    boardSize,
-                                                    tileSize,
-                                                  ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              if (flyingTile != null)
-                                AnimatedPositioned(
-                                  key: ValueKey('flight_${flyingTile.id}'),
-                                  duration: const Duration(milliseconds: 310),
-                                  curve: Curves.easeInOutCubic,
-                                  left: flightSettled
-                                      ? 22 +
-                                          (flyingTrayIndex *
-                                              ((boardSize.width - 44) /
-                                                  GameEngine.trayLimit))
-                                      : flyingTile.x * boardSize.width,
-                                  top: flightSettled
-                                      ? boardSize.height + 62
-                                      : (flyingTile.y * boardSize.height) - 8,
-                                  width: tileSize.width,
-                                  height: tileSize.height,
-                                  child: IgnorePointer(
-                                    child: GameTileWidget(
-                                      tile: flyingTile,
-                                      enabled: true,
-                                      highlighted: true,
-                                      pickedUp: !flightSettled,
-                                      depth: 1,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: SizedBox(
+                            width: boardSize.width,
+                            height: boardSize.height,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Positioned.fill(
+                                  child: Container(
+                                    margin: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.34),
+                                      borderRadius: BorderRadius.circular(30),
                                     ),
                                   ),
                                 ),
-                            ],
+                                for (final tile in renderedBoardTiles)
+                                  Positioned(
+                                    key: ValueKey(tile.id),
+                                    left: tile.x * boardSize.width,
+                                    top: tile.y * boardSize.height,
+                                    width: tileSize.width,
+                                    height: tileSize.height,
+                                    child: Builder(
+                                      builder: (context) {
+                                        final covered =
+                                            coveredById[tile.id] ?? true;
+                                        final depth = maxLayer == 0
+                                            ? 1.0
+                                            : tile.layer / maxLayer;
+                                        return IgnorePointer(
+                                          ignoring: covered,
+                                          child: GameTileWidget(
+                                            tile: tile,
+                                            enabled: !covered,
+                                            blocked: covered,
+                                            depth: depth,
+                                            highlighted:
+                                                hintedTileId == tile.id,
+                                            onTap: covered
+                                                ? null
+                                                : () => _onTileTap(
+                                                      level,
+                                                      tile,
+                                                      boardSize,
+                                                      tileSize,
+                                                    ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    _BoosterBar(
-                      onShuffle: () async {
-                        if (_animatingAction) return;
-                        final token = ++_actionGeneration;
-                        debugPrint('Shuffle started');
-                        _safeSetState(() {
-                          _animatingAction = true;
-                          _hintedTileId = null;
-                          _shuffleOffsets
-                            ..clear()
-                            ..addEntries(List<Tile>.from(engine.boardTiles).map((tile) {
-                              final angle = _animationRandom.nextDouble() * pi * 2;
-                              final distance = 14 + _animationRandom.nextDouble() * 22;
-                              return MapEntry(
-                                tile.id,
-                                Offset(cos(angle) * distance, sin(angle) * distance),
-                              );
-                            }));
-                        });
-                        _playSfx(_scope.audioService.playBooster, 'booster');
-                        await Future<void>.delayed(const Duration(milliseconds: 170));
-                        if (!_isCurrentAction(token)) return;
-                        _safeSetState(() {
-                          engine.shuffleBoard();
-                          _shuffleOffsets.clear();
-                        });
-                        await Future<void>.delayed(const Duration(milliseconds: 280));
-                        if (_isCurrentAction(token)) {
-                          debugPrint('Shuffle animation completed');
-                          _safeSetState(() => _animatingAction = false);
-                        }
-                      },
-                      onHint: () => _useCatPowerUp(level, boardSize, tileSize),
-                      onUndo: engine.canUndo
-                          ? () {
-                              debugPrint('Undo requested');
-                              _actionGeneration++;
-                              _safeSetState(() {
-                                engine.undo();
-                                _resetAnimationState();
-                              });
-                              _playSfx(_scope.audioService.playBooster, 'booster');
-                            }
-                          : null,
-                    ),
-                    _Tray(
-                      trayTiles: trayTiles,
-                      matchingTileIds: matchingTileIds,
-                    ),
-                  ],
-                ),
-              );
+                      _BoosterBar(
+                        onShuffle: _shuffleUsesRemaining > 0
+                            ? () {
+                                debugPrint('Shuffle started');
+                                late final bool shuffled;
+                                _safeSetState(() {
+                                  _hintedTileId = null;
+                                  shuffled = engine.shuffleBoard();
+                                  if (shuffled) _shuffleUsesRemaining--;
+                                });
+                                if (shuffled) {
+                                  _playSfx(_scope.audioService.playBooster,
+                                      'booster');
+                                  _debugValidateTiles('shuffle', engine);
+                                }
+                                debugPrint('Shuffle completed');
+                              }
+                            : null,
+                        onHint: _hintUsesRemaining > 0
+                            ? () => _useCatPowerUp(level, boardSize, tileSize)
+                            : null,
+                        undoRemaining: _undoUsesRemaining,
+                        hintRemaining: _hintUsesRemaining,
+                        shuffleRemaining: _shuffleUsesRemaining,
+                        onUndo: engine.canUndo && _undoUsesRemaining > 0
+                            ? () {
+                                debugPrint('Undo requested');
+                                late final bool undone;
+                                _safeSetState(() {
+                                  undone = engine.undo();
+                                  if (undone) {
+                                    _resetAnimationState();
+                                    _undoUsesRemaining--;
+                                  }
+                                });
+                                if (undone) {
+                                  _playSfx(_scope.audioService.playBooster,
+                                      'booster');
+                                  _debugValidateTiles('undo', engine);
+                                }
+                              }
+                            : null,
+                      ),
+                      _Tray(
+                        trayTiles: trayTiles,
+                      ),
+                    ],
+                  ),
+                );
               } catch (error, stackTrace) {
                 debugPrint('Game build fallback: $error');
                 debugPrint('$stackTrace');
@@ -674,7 +670,6 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 }
-
 
 class _FallbackGameScaffold extends StatelessWidget {
   const _FallbackGameScaffold({required this.title, required this.message});
@@ -693,7 +688,8 @@ class _FallbackGameScaffold extends StatelessWidget {
 
 class _FallbackGameBody extends StatelessWidget {
   const _FallbackGameBody({
-    this.message = 'The board hit an invalid state. Please leave and reopen the level.',
+    this.message =
+        'The board hit an invalid state. Please leave and reopen the level.',
   });
 
   final String message;
@@ -725,11 +721,17 @@ class _BoosterBar extends StatelessWidget {
     required this.onShuffle,
     required this.onHint,
     required this.onUndo,
+    required this.undoRemaining,
+    required this.hintRemaining,
+    required this.shuffleRemaining,
   });
 
-  final VoidCallback onShuffle;
-  final VoidCallback onHint;
+  final VoidCallback? onShuffle;
+  final VoidCallback? onHint;
   final VoidCallback? onUndo;
+  final int undoRemaining;
+  final int hintRemaining;
+  final int shuffleRemaining;
 
   @override
   Widget build(BuildContext context) {
@@ -741,7 +743,7 @@ class _BoosterBar extends StatelessWidget {
             child: FilledButton.tonalIcon(
               onPressed: onUndo,
               icon: const Icon(Icons.arrow_back_rounded),
-              label: const Text('Undo'),
+              label: Text('Undo ($undoRemaining)'),
             ),
           ),
           const SizedBox(width: 8),
@@ -749,7 +751,7 @@ class _BoosterBar extends StatelessWidget {
             child: FilledButton.tonalIcon(
               onPressed: onHint,
               icon: const Icon(Icons.pets_rounded),
-              label: const Text('Hint'),
+              label: Text('Hint ($hintRemaining)'),
             ),
           ),
           const SizedBox(width: 8),
@@ -757,7 +759,7 @@ class _BoosterBar extends StatelessWidget {
             child: FilledButton.tonalIcon(
               onPressed: onShuffle,
               icon: const Icon(Icons.shuffle_rounded),
-              label: const Text('Shuffle'),
+              label: Text('Shuffle ($shuffleRemaining)'),
             ),
           ),
         ],
@@ -767,10 +769,9 @@ class _BoosterBar extends StatelessWidget {
 }
 
 class _Tray extends StatelessWidget {
-  const _Tray({required this.trayTiles, required this.matchingTileIds});
+  const _Tray({required this.trayTiles});
 
   final List<Tile?> trayTiles;
-  final Set<String> matchingTileIds;
 
   @override
   Widget build(BuildContext context) {
@@ -779,56 +780,26 @@ class _Tray extends StatelessWidget {
 
     for (var index = 0; index < GameEngine.trayLimit; index++) {
       final tile = index < slots.length ? slots[index] : null;
-      final matching = tile != null && matchingTileIds.contains(tile.id);
 
       slotWidgets.add(
         Expanded(
-          child: AnimatedPadding(
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOut,
-            padding: EdgeInsets.symmetric(horizontal: matching ? 1 : 3),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              switchInCurve: Curves.easeOutBack,
-              switchOutCurve: Curves.easeInOut,
-              transitionBuilder: (child, animation) {
-                final curved = CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOutBack,
-                  reverseCurve: Curves.easeInOut,
-                );
-                return FadeTransition(
-                  opacity: animation,
-                  child: ScaleTransition(
-                    scale: Tween<double>(begin: 0.72, end: 1).animate(curved),
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, -0.18),
-                        end: Offset.zero,
-                      ).animate(curved),
-                      child: child,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: tile == null
+                ? Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey.shade300),
                     ),
+                  )
+                : GameTileWidget(
+                    key: ValueKey('tray_${tile.id}'),
+                    tile: tile,
+                    enabled: true,
+                    highlighted: false,
+                    trayTile: true,
                   ),
-                );
-              },
-              child: tile == null
-                  ? Container(
-                      key: ValueKey('empty_$index'),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.shade300),
-                      ),
-                    )
-                  : GameTileWidget(
-                      key: ValueKey('${tile.id}_$matching'),
-                      tile: tile,
-                      enabled: true,
-                      highlighted: false,
-                      matching: matching,
-                      trayTile: true,
-                    ),
-            ),
           ),
         ),
       );

@@ -1,15 +1,10 @@
 import 'dart:math';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
+
 import 'game_result.dart';
 import 'tile.dart';
-
-class GameSnapshot {
-  const GameSnapshot({required this.tiles, required this.tray});
-
-  final List<Tile> tiles;
-  final List<String> tray;
-}
 
 class GameEngine {
   GameEngine(List<Tile> startingTiles)
@@ -18,14 +13,18 @@ class GameEngine {
 
   static const int trayLimit = 7;
   final Random _random = Random();
-  final List<GameSnapshot> _history = <GameSnapshot>[];
+  final List<String> _selectionHistory = <String>[];
 
   List<Tile> tiles;
   List<String> tray;
   GameResult result = GameResult.playing;
 
+  bool _isRenderedOnBoard(Tile tile) {
+    return tile.state != TileState.matched && !tray.contains(tile.id);
+  }
+
   List<Tile> get boardTiles =>
-      tiles.where((tile) => tile.state == TileState.board).toList();
+      tiles.where((tile) => _isRenderedOnBoard(tile)).toList();
 
   /// Board tiles in the same order Flutter paints them in the board Stack.
   ///
@@ -48,7 +47,10 @@ class GameEngine {
       });
   }
 
-  bool get canUndo => _history.isNotEmpty && result == GameResult.playing;
+  bool get canUndo =>
+      result == GameResult.playing &&
+      _selectionHistory.isNotEmpty &&
+      tray.contains(_selectionHistory.last);
 
   Tile? tileById(String id) {
     for (final tile in tiles) {
@@ -80,7 +82,7 @@ class GameEngine {
   /// A board tile is covered when any active tile rendered above it has a
   /// visible rectangular overlap with it.
   bool isTileCovered(Tile tile) {
-    if (tile.state != TileState.board ||
+    if (!_isRenderedOnBoard(tile) ||
         _boardSize == Size.zero ||
         _tileSize == Size.zero) {
       return false;
@@ -100,14 +102,14 @@ class GameEngine {
   /// A board tile is uncovered only when no tile rendered above it overlaps it.
   bool isUncovered(Tile candidate, Size boardSize, Size tileSize) {
     updateBoardGeometry(boardSize, tileSize);
-    return candidate.state == TileState.board && !isTileCovered(candidate);
+    return _isRenderedOnBoard(candidate) && !isTileCovered(candidate);
   }
 
   bool tapTile(String id, Size boardSize, Size tileSize) {
     if (result != GameResult.playing) return false;
     updateBoardGeometry(boardSize, tileSize);
     final tile = tileById(id);
-    if (tile == null || tile.state != TileState.board || isTileCovered(tile)) {
+    if (tile == null || !_isRenderedOnBoard(tile) || isTileCovered(tile)) {
       return false;
     }
 
@@ -117,11 +119,13 @@ class GameEngine {
       return false;
     }
 
-    _saveSnapshot();
     tiles = tiles
-        .map((item) => item.id == id ? item.copyWith(state: TileState.tray) : item)
+        .map((item) =>
+            item.id == id ? item.copyWith(state: TileState.tray) : item)
         .toList();
     tray = <String>[...tray, id];
+    _selectionHistory.add(id);
+    debugPrint('Tile hidden from board and inserted into tray: id=$id');
     _removeTriplesFromTray();
     _updateResult();
     return true;
@@ -166,21 +170,29 @@ class GameEngine {
             : tile)
         .toList();
     tray = tray.where((id) => !matchedIds.contains(id)).toList();
+    debugPrint('Matched tiles hidden/removed: ids=${matchedIds.join(',')}');
   }
 
-  void shuffleBoard() {
-    if (result != GameResult.playing) return;
+  bool shuffleBoard() {
+    if (result != GameResult.playing) return false;
     final active = List<Tile>.from(boardTiles);
-    if (active.length < 2) return;
+    if (active.length < 2) return false;
 
-    _saveSnapshot();
     final shuffledTypes = active.map((tile) => tile.type).toList()
       ..shuffle(_random);
+    final activeIds = active.map((tile) => tile.id).toSet();
     var typeIndex = 0;
     tiles = tiles.map((tile) {
-      if (tile.state != TileState.board) return tile;
-      return tile.copyWith(type: shuffledTypes[typeIndex++]);
+      if (!activeIds.contains(tile.id)) return tile;
+      final newType = shuffledTypes[typeIndex++];
+      if (tile.type != newType) {
+        debugPrint('Tile shuffled: id=${tile.id}, ${tile.type}->$newType');
+      } else {
+        debugPrint('Tile shuffled unchanged: id=${tile.id}, type=${tile.type}');
+      }
+      return tile.copyWith(type: newType);
     }).toList();
+    return true;
   }
 
   String? hint(Size boardSize, Size tileSize) {
@@ -199,7 +211,11 @@ class GameEngine {
     return uncovered.last.id;
   }
 
-  bool collectAvailableTriple(Size boardSize, Size tileSize) {
+  bool collectAvailableTriple(
+    Size boardSize,
+    Size tileSize, {
+    Set<String>? preferredIds,
+  }) {
     if (result != GameResult.playing) return false;
     updateBoardGeometry(boardSize, tileSize);
     final idsByType = <String, List<String>>{};
@@ -209,49 +225,72 @@ class GameEngine {
     }
 
     List<String>? triple;
+    if (preferredIds != null && preferredIds.length >= 3) {
+      final preferredByType = <String, List<String>>{};
+      for (final id in preferredIds) {
+        final tile = tileById(id);
+        if (tile == null || !_isRenderedOnBoard(tile) || isTileCovered(tile)) {
+          continue;
+        }
+        preferredByType.putIfAbsent(tile.type, () => <String>[]).add(id);
+      }
+      for (final ids in preferredByType.values) {
+        if (ids.length >= 3) {
+          triple = ids.take(3).toList();
+          break;
+        }
+      }
+    }
+
     for (final entry in idsByType.entries) {
+      if (triple != null) break;
       if (entry.value.length >= 3) {
         triple = entry.value;
-        break;
       }
     }
     if (triple == null) return false;
 
     final tripleIds = triple.take(3).toList();
     final tripleIdSet = tripleIds.toSet();
-    _saveSnapshot();
     tiles = tiles
         .map((tile) => tripleIdSet.contains(tile.id)
             ? tile.copyWith(state: TileState.tray)
             : tile)
         .toList();
-    tray = <String>[...tray, ...tripleIds].take(trayLimit + 1).toList();
+    tray = <String>[...tray, ...tripleIds];
+    debugPrint(
+        'Hint/Cat moved selectable tiles to tray: ids=${tripleIds.join(',')}');
     _removeTriplesFromTray(preferredMatchedIds: tripleIdSet);
     _updateResult();
     return true;
   }
 
-  void undo() {
-    if (!canUndo) return;
-    final snapshot = _history.removeLast();
-    tiles = List<Tile>.from(snapshot.tiles);
-    tray = List<String>.from(snapshot.tray);
+  bool undo() {
+    if (result != GameResult.playing) return false;
+    if (_selectionHistory.isEmpty) return false;
+    final id = _selectionHistory.last;
+    final tile = tileById(id);
+    if (tile == null || tile.state != TileState.tray || !tray.contains(id)) {
+      return false;
+    }
+
+    _selectionHistory.removeLast();
+    tiles = tiles
+        .map((item) =>
+            item.id == id ? item.copyWith(state: TileState.board) : item)
+        .toList();
+    tray = tray.where((item) => item != id).toList();
     _sanitizeTray();
     result = GameResult.playing;
+    debugPrint('Undo restored tile to board: id=$id');
+    return true;
   }
 
   void _sanitizeTray() {
     final knownIds = tiles.map((tile) => tile.id).toSet();
     final seenIds = <String>{};
-    tray = tray.where((id) => knownIds.contains(id) && seenIds.add(id)).toList();
-  }
-
-  void _saveSnapshot() {
-    _history.add(GameSnapshot(
-      tiles: List<Tile>.from(tiles),
-      tray: List<String>.from(tray),
-    ));
-    if (_history.length > 20) _history.removeAt(0);
+    tray =
+        tray.where((id) => knownIds.contains(id) && seenIds.add(id)).toList();
   }
 
   void _updateResult() {
