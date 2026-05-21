@@ -1,15 +1,80 @@
 import 'package:flutter/material.dart';
 
+import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
 import '../widgets/primary_button.dart';
 import 'map_screen.dart';
 import 'settings_screen.dart';
 
-class MainMenuScreen extends StatelessWidget {
+class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
 
   static const route = '/';
+
+  @override
+  State<MainMenuScreen> createState() => _MainMenuScreenState();
+}
+
+class _MainMenuScreenState extends State<MainMenuScreen> {
+  bool _dailyRewardAvailable = false;
+  int _coins = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadRewards();
+  }
+
+  Future<void> _loadRewards() async {
+    final repository = AppScope.of(context).progressRepository;
+    final coins = await repository.coins();
+    final available = await repository.dailyRewardAvailable(DateTime.now());
+    if (!mounted) return;
+    setState(() {
+      _coins = coins;
+      _dailyRewardAvailable = available;
+    });
+  }
+
+  Future<void> _claimDailyReward() async {
+    final repository = AppScope.of(context).progressRepository;
+    final updated = await repository.claimDailyReward(DateTime.now());
+    if (!mounted) return;
+    if (updated == null) {
+      setState(() => _dailyRewardAvailable = false);
+      return;
+    }
+    setState(() {
+      _coins = updated;
+      _dailyRewardAvailable = false;
+    });
+    await showDialog<void>(
+      context: context,
+      builder: (_) => GameDialogFrame(
+        title: 'Daily Reward',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.monetization_on_rounded,
+              color: GameColors.accentGold,
+              size: 72,
+            ),
+            const SizedBox(height: GameSpacing.md),
+            const Text('+100 coins', style: GameTextStyles.h2),
+            const SizedBox(height: GameSpacing.xl),
+            GameButton(
+              label: 'Claimed',
+              icon: Icons.check_rounded,
+              onPressed: () => Navigator.of(context).pop(),
+              variant: GameButtonVariant.success,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +108,26 @@ class MainMenuScreen extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: GameTextStyles.h1,
                   ),
+                  const SizedBox(height: GameSpacing.md),
+                  GameBadge(
+                    icon: Icons.monetization_on_rounded,
+                    gradient: GameGradients.badge,
+                    child: Text(
+                      '$_coins',
+                      style: GameTextStyles.button.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: GameSpacing.xxl),
+                  if (_dailyRewardAvailable) ...[
+                    PrimaryButton(
+                      label: 'Claim Daily Reward',
+                      icon: Icons.card_giftcard_rounded,
+                      onPressed: _claimDailyReward,
+                    ),
+                    const SizedBox(height: GameSpacing.md),
+                  ],
                   PrimaryButton(
                     label: 'Play',
                     icon: Icons.map_rounded,

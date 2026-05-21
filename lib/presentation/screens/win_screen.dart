@@ -12,6 +12,8 @@ class WinScreen extends StatelessWidget {
     required this.undoUsed,
     required this.hintUsed,
     required this.shuffleUsed,
+    required this.starsEarned,
+    required this.coinsEarned,
     required this.onNext,
     required this.onRestart,
     required this.onMap,
@@ -23,6 +25,8 @@ class WinScreen extends StatelessWidget {
   final int undoUsed;
   final int hintUsed;
   final int shuffleUsed;
+  final int starsEarned;
+  final int coinsEarned;
   final VoidCallback onNext;
   final VoidCallback onRestart;
   final VoidCallback onMap;
@@ -76,6 +80,26 @@ class WinScreen extends StatelessWidget {
                 style: GameTextStyles.body,
               ),
               const SizedBox(height: GameSpacing.lg),
+              Row(
+                children: [
+                  Expanded(
+                    child: _RewardBadge(
+                      icon: Icons.star_rounded,
+                      label: 'Stars',
+                      value: '$starsEarned',
+                    ),
+                  ),
+                  const SizedBox(width: GameSpacing.md),
+                  Expanded(
+                    child: _RewardBadge(
+                      icon: Icons.monetization_on_rounded,
+                      label: 'Coins',
+                      value: '+$coinsEarned',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: GameSpacing.lg),
               _StatsPanel(
                 tilesCleared: tilesCleared,
                 undoUsed: undoUsed,
@@ -98,12 +122,48 @@ class WinScreen extends StatelessWidget {
                 onPressed: onRestart,
                 variant: GameButtonVariant.secondary,
               ),
-              TextButton.icon(
+              const SizedBox(height: GameSpacing.md),
+              GameButton(
+                label: 'Back to Map',
+                icon: Icons.map_rounded,
                 onPressed: onMap,
-                icon: const Icon(Icons.map_rounded),
-                label: const Text('Back to Map'),
+                variant: GameButtonVariant.secondary,
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RewardBadge extends StatelessWidget {
+  const _RewardBadge({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return GameBadge(
+      icon: icon,
+      gradient: GameGradients.badge,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GameTextStyles.caption.copyWith(color: Colors.white),
+          ),
+          Text(
+            value,
+            style: GameTextStyles.button.copyWith(color: Colors.white),
           ),
         ],
       ),

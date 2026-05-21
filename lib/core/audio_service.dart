@@ -3,28 +3,69 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 
 class GameAudioService {
+  static const String _backgroundMusicAsset = 'audio/background.mp3';
+  static const int _sfxPoolSize = 4;
+
   final AudioPlayer _music = AudioPlayer();
-  final AudioPlayer _sfx = AudioPlayer();
+  final List<AudioPlayer> _sfxPlayers = List<AudioPlayer>.generate(
+    _sfxPoolSize,
+    (_) => AudioPlayer(),
+  );
   final Map<String, String> _generatedAudioPaths = <String, String>{};
   bool musicEnabled = true;
   bool sfxEnabled = true;
+  bool _musicConfigured = false;
+  bool _sfxConfigured = false;
+  bool _musicPlaying = false;
+  int _nextSfxPlayer = 0;
 
   Future<void> startMusic() async {
+    await _configureMusic();
+    if (!musicEnabled || _musicPlaying) return;
+
+    await _music.resume();
+    _musicPlaying = true;
+    debugPrint('Music started');
+  }
+
+  Future<void> _configureMusic() async {
+    if (_musicConfigured) return;
+
     await _music.setReleaseMode(ReleaseMode.loop);
     await _music.setVolume(0.35);
-    if (musicEnabled) {
-      await _music.play(DeviceFileSource(await _audioPath('background')));
-    }
+    await _music.setSource(AssetSource(_backgroundMusicAsset));
+    _musicConfigured = true;
+    debugPrint('Asset loaded successfully: assets/$_backgroundMusicAsset');
+  }
+
+  Future<void> _resumeMusic() async {
+    await _configureMusic();
+    if (_musicPlaying) return;
+
+    await _music.resume();
+    _musicPlaying = true;
+    debugPrint('Music resumed');
+  }
+
+  Future<void> _stopMusic() async {
+    if (!_musicConfigured && !_musicPlaying) return;
+
+    await _music.pause();
+    _musicPlaying = false;
+    debugPrint('Music stopped');
   }
 
   Future<void> setMusicEnabled(bool enabled) async {
+    if (musicEnabled == enabled) return;
+
     musicEnabled = enabled;
     if (enabled) {
-      await startMusic();
+      await _resumeMusic();
     } else {
-      await _music.stop();
+      await _stopMusic();
     }
   }
 
@@ -36,8 +77,29 @@ class GameAudioService {
 
   Future<void> _play(String cue) async {
     if (!sfxEnabled) return;
-    await _sfx.stop();
-    await _sfx.play(DeviceFileSource(await _audioPath(cue)));
+    await _configureSfx();
+
+    final player = _sfxPlayers[_nextSfxPlayer];
+    _nextSfxPlayer = (_nextSfxPlayer + 1) % _sfxPlayers.length;
+
+    await player.stop();
+    await player.play(DeviceFileSource(await _audioPath(cue)));
+  }
+
+  Future<void> _configureSfx() async {
+    if (_sfxConfigured) return;
+
+    final sfxContext = AudioContextConfig(
+      focus: AudioContextConfigFocus.mixWithOthers,
+    ).build();
+
+    for (final player in _sfxPlayers) {
+      await player.setReleaseMode(ReleaseMode.stop);
+      await player.setPlayerMode(PlayerMode.lowLatency);
+      await player.setAudioContext(sfxContext);
+      await player.setVolume(1);
+    }
+    _sfxConfigured = true;
   }
 
   Future<String> _audioPath(String cue) async {
@@ -50,8 +112,7 @@ class GameAudioService {
     return file.path;
   }
 
-  /// Generates tiny WAV cues at runtime so the repository stays text-only while
-  /// still shipping sound effects and looping background music in the app.
+  /// Generates tiny WAV cues at runtime for short sound effects.
   Uint8List _buildWav(List<({double frequency, double seconds})> notes) {
     const sampleRate = 22050;
     final samples = <int>[];
@@ -113,21 +174,22 @@ class GameAudioService {
           (frequency: 700, seconds: 0.05),
           (frequency: 1000, seconds: 0.08),
         ];
-      case 'background':
       default:
-        return [
-          for (final frequency in <double>[392, 523, 659, 784, 659, 523, 440, 587])
-            (frequency: frequency, seconds: 0.25),
-        ];
+        return [(frequency: 880, seconds: 0.07)];
     }
   }
 
-  Uint8List _u16(int value) => Uint8List(2)..buffer.asByteData().setUint16(0, value, Endian.little);
-  Uint8List _u32(int value) => Uint8List(4)..buffer.asByteData().setUint32(0, value, Endian.little);
-  Uint8List _i16(int value) => Uint8List(2)..buffer.asByteData().setInt16(0, value, Endian.little);
+  Uint8List _u16(int value) =>
+      Uint8List(2)..buffer.asByteData().setUint16(0, value, Endian.little);
+  Uint8List _u32(int value) =>
+      Uint8List(4)..buffer.asByteData().setUint32(0, value, Endian.little);
+  Uint8List _i16(int value) =>
+      Uint8List(2)..buffer.asByteData().setInt16(0, value, Endian.little);
 
   Future<void> dispose() async {
     await _music.dispose();
-    await _sfx.dispose();
+    for (final player in _sfxPlayers) {
+      await player.dispose();
+    }
   }
 }

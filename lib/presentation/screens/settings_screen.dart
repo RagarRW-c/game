@@ -16,6 +16,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _music = true;
   bool _sfx = true;
+  bool _vibration = true;
 
   @override
   void didChangeDependencies() {
@@ -27,11 +28,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final scope = AppScope.of(context);
     final music = await scope.progressRepository.musicEnabled();
     final sfx = await scope.progressRepository.sfxEnabled();
+    final vibration = await scope.progressRepository.vibrationEnabled();
     if (!mounted) return;
     setState(() {
       _music = music;
       _sfx = sfx;
+      _vibration = vibration;
     });
+  }
+
+  Future<void> _setMusicEnabled(bool value) async {
+    final scope = AppScope.of(context);
+    setState(() => _music = value);
+    await scope.progressRepository.setMusicEnabled(value);
+    await scope.audioService.setMusicEnabled(value);
+  }
+
+  Future<void> _setSfxEnabled(bool value) async {
+    final scope = AppScope.of(context);
+    setState(() => _sfx = value);
+    scope.audioService.sfxEnabled = value;
+    await scope.progressRepository.setSfxEnabled(value);
+  }
+
+  Future<void> _setVibrationEnabled(bool value) async {
+    final scope = AppScope.of(context);
+    setState(() => _vibration = value);
+    await scope.progressRepository.setVibrationEnabled(value);
   }
 
   @override
@@ -53,12 +76,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     GameCard(
                       child: Column(
                         children: [
-                          const Row(
+                          Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              _SettingsIcon(icon: Icons.music_note_rounded),
-                              _SettingsIcon(icon: Icons.volume_up_rounded),
-                              _SettingsIcon(icon: Icons.notifications_rounded),
+                              _SettingsIcon(
+                                icon: Icons.music_note_rounded,
+                                label: 'Music',
+                                enabled: _music,
+                                onTap: () => _setMusicEnabled(!_music),
+                              ),
+                              _SettingsIcon(
+                                icon: Icons.volume_up_rounded,
+                                label: 'Sound effects',
+                                enabled: _sfx,
+                                onTap: () => _setSfxEnabled(!_sfx),
+                              ),
+                              _SettingsIcon(
+                                icon: Icons.vibration_rounded,
+                                label: 'Vibration',
+                                enabled: _vibration,
+                                onTap: () => _setVibrationEnabled(!_vibration),
+                              ),
                             ],
                           ),
                           const SizedBox(height: GameSpacing.lg),
@@ -66,24 +104,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             icon: Icons.music_note_rounded,
                             label: 'Background music',
                             value: _music,
-                            onChanged: (value) async {
-                              setState(() => _music = value);
-                              await scope.progressRepository
-                                  .setMusicEnabled(value);
-                              await scope.audioService.setMusicEnabled(value);
-                            },
+                            onChanged: _setMusicEnabled,
                           ),
                           const SizedBox(height: GameSpacing.sm),
                           _SettingsSwitch(
                             icon: Icons.volume_up_rounded,
                             label: 'Sound effects',
                             value: _sfx,
-                            onChanged: (value) async {
-                              setState(() => _sfx = value);
-                              scope.audioService.sfxEnabled = value;
-                              await scope.progressRepository
-                                  .setSfxEnabled(value);
-                            },
+                            onChanged: _setSfxEnabled,
+                          ),
+                          const SizedBox(height: GameSpacing.sm),
+                          _SettingsSwitch(
+                            icon: Icons.vibration_rounded,
+                            label: 'Vibration',
+                            value: _vibration,
+                            onChanged: _setVibrationEnabled,
                           ),
                         ],
                       ),
@@ -114,22 +149,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 class _SettingsIcon extends StatelessWidget {
-  const _SettingsIcon({required this.icon});
+  const _SettingsIcon({
+    required this.icon,
+    required this.label,
+    required this.enabled,
+    required this.onTap,
+  });
 
   final IconData icon;
+  final String label;
+  final bool enabled;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 58,
-      height: 58,
-      decoration: BoxDecoration(
-        gradient: GameGradients.successButton,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: GameShadows.medium(GameColors.successGreen),
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: AnimatedOpacity(
+          duration: GameDurations.quick,
+          opacity: enabled ? 1 : 0.62,
+          child: AnimatedContainer(
+            duration: GameDurations.normal,
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              gradient: enabled
+                  ? GameGradients.successButton
+                  : GameGradients.disabled,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: GameShadows.medium(
+                enabled ? GameColors.successGreen : GameColors.mutedInk,
+              ),
+            ),
+            child: Icon(icon, color: Colors.white, size: 30),
+          ),
+        ),
       ),
-      child: Icon(icon, color: Colors.white, size: 30),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' show max;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/tile_catalog.dart';
 import '../../data/level_repository.dart';
@@ -14,7 +15,7 @@ import '../theme/game_theme.dart';
 import '../widgets/game_tile.dart';
 import '../widgets/game_ui.dart';
 import 'final_code_screen.dart';
-import 'main_menu_screen.dart';
+import 'settings_screen.dart';
 import 'win_screen.dart';
 
 class GameScreen extends StatefulWidget {
@@ -29,6 +30,8 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> {
   static const int _maxBoosterUses = 2;
+  static const int _boosterCoinCost = 150;
+  static const int _levelCompleteCoinReward = 50;
 
   late Future<LevelDefinition> _levelFuture;
   late AppScope _scope;
@@ -38,8 +41,11 @@ class _GameScreenState extends State<GameScreen> {
   int _undoUsesRemaining = _maxBoosterUses;
   int _hintUsesRemaining = _maxBoosterUses;
   int _shuffleUsesRemaining = _maxBoosterUses;
+  int _coins = 0;
+  bool _vibrationEnabled = true;
   bool _gameOverDialogShowing = false;
   bool _winDialogShowing = false;
+  bool _tutorialQueued = false;
 
   @override
   void didChangeDependencies() {
@@ -47,6 +53,7 @@ class _GameScreenState extends State<GameScreen> {
     _scope = AppScope.of(context);
     _navigator = Navigator.of(context);
     _levelFuture = _scope.levelRepository.loadLevel(widget.level);
+    unawaited(_loadPlayerState());
   }
 
   @override
@@ -59,11 +66,67 @@ class _GameScreenState extends State<GameScreen> {
       _resetBoosterUses();
       _gameOverDialogShowing = false;
       _winDialogShowing = false;
+      _tutorialQueued = false;
+      unawaited(_loadPlayerState());
     }
+  }
+
+  Future<void> _loadPlayerState() async {
+    final coins = await _scope.progressRepository.coins();
+    final vibration = await _scope.progressRepository.vibrationEnabled();
+    if (!mounted) return;
+    setState(() {
+      _coins = coins;
+      _vibrationEnabled = vibration;
+    });
   }
 
   void _ensureEngine(LevelDefinition level) {
     _engine ??= GameEngine(level.tiles);
+  }
+
+  void _queueLevelOneTutorial() {
+    if (_tutorialQueued || widget.level != 1) return;
+    _tutorialQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final seen = await _scope.progressRepository.levelOneTutorialSeen();
+      if (!mounted || seen) return;
+      await _scope.progressRepository.setLevelOneTutorialSeen();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => GameDialogFrame(
+          title: 'How to Play',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _TutorialTip(
+                icon: Icons.touch_app_rounded,
+                text: 'Tap 3 matching tiles',
+              ),
+              const SizedBox(height: GameSpacing.md),
+              const _TutorialTip(
+                icon: Icons.inventory_2_rounded,
+                text: "Don't fill the tray",
+              ),
+              const SizedBox(height: GameSpacing.md),
+              const _TutorialTip(
+                icon: Icons.auto_fix_high_rounded,
+                text: 'Use boosters if stuck',
+              ),
+              const SizedBox(height: GameSpacing.xl),
+              GameButton(
+                label: 'Got it',
+                icon: Icons.check_rounded,
+                onPressed: () => Navigator.of(context).pop(),
+                variant: GameButtonVariant.success,
+              ),
+            ],
+          ),
+        ),
+      );
+    });
   }
 
   Size _tileSize(double width) {
@@ -85,6 +148,18 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  void _haptic(Future<void> Function() feedback) {
+    if (!_vibrationEnabled) return;
+    unawaited(feedback());
+  }
+
+  void _showNotEnoughCoins() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Not enough coins')),
+    );
+  }
+
   void _resetAnimationState() {
     _hintedTileIds.clear();
   }
@@ -93,6 +168,25 @@ class _GameScreenState extends State<GameScreen> {
     _undoUsesRemaining = _maxBoosterUses;
     _hintUsesRemaining = _maxBoosterUses;
     _shuffleUsesRemaining = _maxBoosterUses;
+  }
+
+  bool _canUseBooster(int freeUsesRemaining) {
+    return freeUsesRemaining > 0 || _coins >= _boosterCoinCost;
+  }
+
+  Future<bool> _payForBoosterIfNeeded(int freeUsesRemaining) async {
+    if (freeUsesRemaining > 0) return true;
+    final spent = await _scope.progressRepository.spendCoins(_boosterCoinCost);
+    if (!spent) {
+      _showNotEnoughCoins();
+      return false;
+    }
+    if (mounted) setState(() => _coins -= _boosterCoinCost);
+    return true;
+  }
+
+  String _boosterCostLabel(int freeUsesRemaining) {
+    return freeUsesRemaining > 0 ? 'x$freeUsesRemaining' : '$_boosterCoinCost';
   }
 
   void _debugValidateTiles(String source, GameEngine engine) {
@@ -191,6 +285,7 @@ class _GameScreenState extends State<GameScreen> {
       return;
     }
     _playSfx(_scope.audioService.playTap, 'tap');
+    _haptic(HapticFeedback.lightImpact);
 
     if (!moved) {
       debugPrint(
@@ -211,6 +306,7 @@ class _GameScreenState extends State<GameScreen> {
     if (matchedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${matchedIds.join(',')}');
       _playSfx(_scope.audioService.playMatch, 'match');
+      _haptic(HapticFeedback.mediumImpact);
     }
     _debugValidateTiles('tap', engine);
 
@@ -225,9 +321,7 @@ class _GameScreenState extends State<GameScreen> {
     Size tileSize,
   ) async {
     final engine = _engine;
-    if (_hintUsesRemaining <= 0 ||
-        engine == null ||
-        engine.result != GameResult.playing) {
+    if (engine == null || engine.result != GameResult.playing) {
       return;
     }
     engine.updateBoardGeometry(boardSize, tileSize);
@@ -241,6 +335,8 @@ class _GameScreenState extends State<GameScreen> {
       }
       return;
     }
+    final usedFreeHint = _hintUsesRemaining > 0;
+    if (!await _payForBoosterIfNeeded(_hintUsesRemaining)) return;
 
     final beforeTrayIds = List<String>.from(engine.tray);
     debugPrint('Cat helper started: ids=${hintIds.join(',')}');
@@ -248,7 +344,7 @@ class _GameScreenState extends State<GameScreen> {
     if (!_safeSetState(() {
       _hintedTileIds.clear();
       collected = engine.collectHintTileIds(hintIds);
-      if (collected) _hintUsesRemaining--;
+      if (collected && usedFreeHint) _hintUsesRemaining--;
     })) {
       return;
     }
@@ -268,6 +364,7 @@ class _GameScreenState extends State<GameScreen> {
     if (removedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${removedIds.join(',')}');
       _playSfx(_scope.audioService.playMatch, 'match');
+      _haptic(HapticFeedback.mediumImpact);
     }
     debugPrint('Cat helper complete');
     _debugValidateTiles('cat', engine);
@@ -300,19 +397,73 @@ class _GameScreenState extends State<GameScreen> {
         .toSet();
   }
 
+  Future<bool> _useShuffle(GameEngine engine,
+      {bool fromGameOver = false}) async {
+    if (!fromGameOver && engine.result != GameResult.playing) return false;
+    if (engine.boardTiles.length < 2) return false;
+    final usedFreeShuffle = _shuffleUsesRemaining > 0;
+    if (!await _payForBoosterIfNeeded(_shuffleUsesRemaining)) return false;
+
+    debugPrint('Shuffle started');
+    late final bool shuffled;
+    if (!_safeSetState(() {
+      _hintedTileIds.clear();
+      if (fromGameOver && engine.result == GameResult.lost) {
+        engine.result = GameResult.playing;
+      }
+      shuffled = engine.shuffleBoard();
+      if (shuffled && usedFreeShuffle) _shuffleUsesRemaining--;
+    })) {
+      return false;
+    }
+    if (!shuffled) return false;
+    _playSfx(_scope.audioService.playBooster, 'booster');
+    _debugValidateTiles('shuffle', engine);
+    debugPrint('Shuffle completed');
+    return true;
+  }
+
+  Future<void> _useUndo(GameEngine engine) async {
+    if (!engine.canUndo) return;
+    final usedFreeUndo = _undoUsesRemaining > 0;
+    if (!await _payForBoosterIfNeeded(_undoUsesRemaining)) return;
+
+    debugPrint('Undo requested');
+    late final bool undone;
+    _safeSetState(() {
+      undone = engine.undo();
+      if (undone) {
+        _resetAnimationState();
+        if (usedFreeUndo) _undoUsesRemaining--;
+      }
+    });
+    if (undone) {
+      _playSfx(_scope.audioService.playBooster, 'booster');
+      _debugValidateTiles('undo', engine);
+    }
+  }
+
   Future<void> _handleGameOver({required LevelDefinition? level}) async {
     if (_gameOverDialogShowing || !mounted) return;
     _gameOverDialogShowing = true;
     _playSfx(_scope.audioService.playLose, 'lose');
+    _haptic(HapticFeedback.heavyImpact);
     if (!mounted) return;
 
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => _GameOverDialog(
-        onClose: () {
+        canUseShuffle: _canUseBooster(_shuffleUsesRemaining),
+        onBackToMap: () {
           _navigator.pop();
-          _navigator.popUntil(ModalRoute.withName(MainMenuScreen.route));
+          if (_navigator.canPop()) _navigator.pop();
+        },
+        onUseShuffle: () async {
+          final engine = _engine;
+          if (engine == null) return;
+          final shuffled = await _useShuffle(engine, fromGameOver: true);
+          if (shuffled && mounted) _navigator.pop();
         },
         onRestart: level == null
             ? null
@@ -330,16 +481,78 @@ class _GameScreenState extends State<GameScreen> {
     if (mounted) _gameOverDialogShowing = false;
   }
 
+  Future<void> _showPauseMenu(LevelDefinition level) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => GameDialogFrame(
+        title: 'Paused',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GameButton(
+              label: 'Resume',
+              icon: Icons.play_arrow_rounded,
+              onPressed: () => _navigator.pop(),
+              variant: GameButtonVariant.success,
+            ),
+            const SizedBox(height: GameSpacing.md),
+            GameButton(
+              label: 'Restart Level',
+              icon: Icons.refresh_rounded,
+              onPressed: () {
+                _navigator.pop();
+                if (!mounted) return;
+                _safeSetState(() {
+                  _engine = GameEngine(level.tiles);
+                  _resetAnimationState();
+                  _resetBoosterUses();
+                });
+              },
+              variant: GameButtonVariant.gold,
+            ),
+            const SizedBox(height: GameSpacing.md),
+            GameButton(
+              label: 'Settings',
+              icon: Icons.settings_rounded,
+              onPressed: () {
+                _navigator.pop();
+                unawaited(
+                  _navigator.pushNamed(SettingsScreen.route).then((_) {
+                    if (mounted) unawaited(_loadPlayerState());
+                  }),
+                );
+              },
+            ),
+            const SizedBox(height: GameSpacing.md),
+            GameButton(
+              label: 'Back to Map',
+              icon: Icons.map_rounded,
+              onPressed: () {
+                _navigator.pop();
+                if (_navigator.canPop()) _navigator.pop();
+              },
+              variant: GameButtonVariant.secondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleWin() async {
     if (_winDialogShowing || !mounted) return;
     _winDialogShowing = true;
     final scope = _scope;
     await scope.progressRepository.unlockNextLevel(widget.level);
+    final updatedCoins =
+        await scope.progressRepository.addCoins(_levelCompleteCoinReward);
     if (!mounted) {
       _winDialogShowing = false;
       return;
     }
+    setState(() => _coins = updatedCoins);
     _playSfx(scope.audioService.playWin, 'win');
+    _haptic(HapticFeedback.heavyImpact);
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -350,6 +563,8 @@ class _GameScreenState extends State<GameScreen> {
         undoUsed: _maxBoosterUses - _undoUsesRemaining,
         hintUsed: _maxBoosterUses - _hintUsesRemaining,
         shuffleUsed: _maxBoosterUses - _shuffleUsesRemaining,
+        starsEarned: 3,
+        coinsEarned: _levelCompleteCoinReward,
         onRestart: () {
           if (!mounted) return;
           _navigator.pop();
@@ -489,6 +704,7 @@ class _GameScreenState extends State<GameScreen> {
         }
         final level = snapshot.data!;
         _ensureEngine(level);
+        _queueLevelOneTutorial();
         final engine = _engine!;
         final boardCount = List<Tile>.from(engine.boardTiles).length;
 
@@ -527,16 +743,39 @@ class _GameScreenState extends State<GameScreen> {
                         GameHeader(
                           title: level.name,
                           onBack: () => Navigator.of(context).maybePop(),
-                          trailing: GameBadge(
-                            icon: Icons.track_changes_rounded,
-                            child: Text(
-                              '$boardCount left',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GameBadge(
+                                icon: Icons.monetization_on_rounded,
+                                gradient: GameGradients.badge,
+                                child: Text(
+                                  '$_coins',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: GameSpacing.sm),
+                              GameBadge(
+                                icon: Icons.track_changes_rounded,
+                                child: Text(
+                                  '$boardCount left',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: GameSpacing.sm),
+                              GameRoundIconButton(
+                                icon: Icons.pause_rounded,
+                                onPressed: () => _showPauseMenu(level),
+                              ),
+                            ],
                           ),
                         ),
                         Expanded(
@@ -627,46 +866,19 @@ class _GameScreenState extends State<GameScreen> {
                           ),
                         ),
                         _BoosterBar(
-                          onShuffle: _shuffleUsesRemaining > 0
-                              ? () {
-                                  debugPrint('Shuffle started');
-                                  late final bool shuffled;
-                                  _safeSetState(() {
-                                    _hintedTileIds.clear();
-                                    shuffled = engine.shuffleBoard();
-                                    if (shuffled) _shuffleUsesRemaining--;
-                                  });
-                                  if (shuffled) {
-                                    _playSfx(_scope.audioService.playBooster,
-                                        'booster');
-                                    _debugValidateTiles('shuffle', engine);
-                                  }
-                                  debugPrint('Shuffle completed');
-                                }
+                          onShuffle: _canUseBooster(_shuffleUsesRemaining)
+                              ? () => unawaited(_useShuffle(engine))
                               : null,
-                          onHint: _hintUsesRemaining > 0
+                          onHint: _canUseBooster(_hintUsesRemaining)
                               ? () => _useCatPowerUp(level, boardSize, tileSize)
                               : null,
-                          undoRemaining: _undoUsesRemaining,
-                          hintRemaining: _hintUsesRemaining,
-                          shuffleRemaining: _shuffleUsesRemaining,
-                          onUndo: engine.canUndo && _undoUsesRemaining > 0
-                              ? () {
-                                  debugPrint('Undo requested');
-                                  late final bool undone;
-                                  _safeSetState(() {
-                                    undone = engine.undo();
-                                    if (undone) {
-                                      _resetAnimationState();
-                                      _undoUsesRemaining--;
-                                    }
-                                  });
-                                  if (undone) {
-                                    _playSfx(_scope.audioService.playBooster,
-                                        'booster');
-                                    _debugValidateTiles('undo', engine);
-                                  }
-                                }
+                          undoLabel: _boosterCostLabel(_undoUsesRemaining),
+                          hintLabel: _boosterCostLabel(_hintUsesRemaining),
+                          shuffleLabel:
+                              _boosterCostLabel(_shuffleUsesRemaining),
+                          onUndo: engine.canUndo &&
+                                  _canUseBooster(_undoUsesRemaining)
+                              ? () => unawaited(_useUndo(engine))
                               : null,
                         ),
                         _Tray(
@@ -736,18 +948,22 @@ class _FallbackGameBody extends StatelessWidget {
 
 class _GameOverDialog extends StatelessWidget {
   const _GameOverDialog({
-    required this.onClose,
+    required this.canUseShuffle,
+    required this.onBackToMap,
+    required this.onUseShuffle,
     required this.onRestart,
   });
 
-  final VoidCallback onClose;
+  final bool canUseShuffle;
+  final VoidCallback onBackToMap;
+  final VoidCallback onUseShuffle;
   final VoidCallback? onRestart;
 
   @override
   Widget build(BuildContext context) {
     return GameDialogFrame(
       title: 'Game Over',
-      onClose: onClose,
+      onClose: onBackToMap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -774,18 +990,47 @@ class _GameOverDialog extends StatelessWidget {
           ),
           const SizedBox(height: GameSpacing.xl),
           GameButton(
-            label: 'Restart Level',
+            label: 'Restart',
             icon: Icons.refresh_rounded,
             onPressed: onRestart,
             variant: GameButtonVariant.success,
           ),
           const SizedBox(height: GameSpacing.md),
           GameButton(
-            label: 'Close',
-            icon: Icons.close_rounded,
-            onPressed: onClose,
+            label: 'Use Shuffle',
+            icon: Icons.air_rounded,
+            onPressed: canUseShuffle ? onUseShuffle : null,
+            variant: GameButtonVariant.gold,
+          ),
+          const SizedBox(height: GameSpacing.md),
+          GameButton(
+            label: 'Back to Map',
+            icon: Icons.map_rounded,
+            onPressed: onBackToMap,
             variant: GameButtonVariant.secondary,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TutorialTip extends StatelessWidget {
+  const _TutorialTip({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return GameCard(
+      padding: const EdgeInsets.all(GameSpacing.md),
+      shadow: GameShadows.light(),
+      child: Row(
+        children: [
+          Icon(icon, color: GameColors.primaryBlue, size: 28),
+          const SizedBox(width: GameSpacing.md),
+          Expanded(child: Text(text, style: GameTextStyles.body)),
         ],
       ),
     );
@@ -797,17 +1042,17 @@ class _BoosterBar extends StatelessWidget {
     required this.onShuffle,
     required this.onHint,
     required this.onUndo,
-    required this.undoRemaining,
-    required this.hintRemaining,
-    required this.shuffleRemaining,
+    required this.undoLabel,
+    required this.hintLabel,
+    required this.shuffleLabel,
   });
 
   final VoidCallback? onShuffle;
   final VoidCallback? onHint;
   final VoidCallback? onUndo;
-  final int undoRemaining;
-  final int hintRemaining;
-  final int shuffleRemaining;
+  final String undoLabel;
+  final String hintLabel;
+  final String shuffleLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -825,7 +1070,7 @@ class _BoosterBar extends StatelessWidget {
               onPressed: onUndo,
               icon: const Icon(Icons.arrow_back_rounded),
               label: 'Undo',
-              remaining: undoRemaining,
+              badge: undoLabel,
             ),
           ),
           const SizedBox(width: GameSpacing.sm),
@@ -834,7 +1079,7 @@ class _BoosterBar extends StatelessWidget {
               onPressed: onHint,
               icon: const Icon(Icons.pets_rounded),
               label: 'Hint',
-              remaining: hintRemaining,
+              badge: hintLabel,
               accent: GameColors.secondaryPurple,
             ),
           ),
@@ -844,7 +1089,7 @@ class _BoosterBar extends StatelessWidget {
               onPressed: onShuffle,
               icon: const Icon(Icons.air_rounded),
               label: 'Shuffle',
-              remaining: shuffleRemaining,
+              badge: shuffleLabel,
               accent: GameColors.primaryBlueLight,
             ),
           ),
@@ -859,19 +1104,19 @@ class _BoosterButton extends StatelessWidget {
     required this.onPressed,
     required this.icon,
     required this.label,
-    required this.remaining,
+    required this.badge,
     this.accent = GameColors.accentGold,
   });
 
   final VoidCallback? onPressed;
   final Widget icon;
   final String label;
-  final int remaining;
+  final String badge;
   final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = onPressed != null && remaining > 0;
+    final enabled = onPressed != null;
     return AnimatedOpacity(
       duration: GameDurations.quick,
       opacity: enabled ? 1 : 0.46,
@@ -917,7 +1162,7 @@ class _BoosterButton extends StatelessWidget {
                       boxShadow: GameShadows.light(),
                     ),
                     child: Text(
-                      '$label x$remaining',
+                      '$label $badge',
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
