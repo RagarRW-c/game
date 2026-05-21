@@ -4,20 +4,27 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 
 import 'game_result.dart';
+import 'level.dart';
 import 'tile.dart';
 
 class GameEngine {
-  GameEngine(List<Tile> startingTiles)
+  GameEngine(List<Tile> startingTiles, {this.objective})
       : tiles = List<Tile>.from(startingTiles),
         tray = <String>[];
 
   static const int trayLimit = 7;
   final Random _random = Random();
   final List<String> _selectionHistory = <String>[];
+  final LevelObjective? objective;
 
   List<Tile> tiles;
   List<String> tray;
   GameResult result = GameResult.playing;
+  int objectiveProgress = 0;
+
+  bool get hasObjective => objective != null;
+  bool get objectiveComplete =>
+      objective != null && objectiveProgress >= objective!.target;
 
   bool _isRenderedOnBoard(Tile tile) {
     return tile.state != TileState.matched && !tray.contains(tile.id);
@@ -164,6 +171,7 @@ class GameEngine {
     }
     if (matchedIds.isEmpty) return;
 
+    _updateObjectiveProgress(matchedIds);
     tiles = tiles
         .map((tile) => matchedIds.contains(tile.id)
             ? tile.copyWith(state: TileState.matched)
@@ -319,8 +327,20 @@ class GameEngine {
     _sanitizeTray();
     if (tray.length > trayLimit) {
       result = GameResult.lost;
-    } else if (tiles.every((tile) => tile.state == TileState.matched)) {
+    } else if (objectiveComplete ||
+        (!hasObjective &&
+            tiles.every((tile) => tile.state == TileState.matched))) {
       result = GameResult.won;
     }
+  }
+
+  void _updateObjectiveProgress(Set<String> matchedIds) {
+    final objective = this.objective;
+    if (objective == null || objectiveComplete) return;
+    final matchedObjectiveTiles = tiles.where(
+      (tile) => matchedIds.contains(tile.id) && tile.type == objective.type,
+    );
+    objectiveProgress =
+        min(objective.target, objectiveProgress + matchedObjectiveTiles.length);
   }
 }

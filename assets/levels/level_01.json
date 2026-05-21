@@ -2,6 +2,10 @@
   "level": 1,
   "name": "Level 1",
   "timeBonusSeconds": 180,
+  "objective": {
+    "type": "apple",
+    "target": 3
+  },
   "tiles": [
     {
       "id": "L1_T000",

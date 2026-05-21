@@ -94,7 +94,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _ensureEngine(LevelDefinition level) {
-    _engine ??= GameEngine(level.tiles);
+    _engine ??= GameEngine(level.tiles, objective: level.objective);
   }
 
   void _queueLevelOneTutorial() {
@@ -518,7 +518,7 @@ class _GameScreenState extends State<GameScreen> {
                 _navigator.pop();
                 if (!mounted) return;
                 _safeSetState(() {
-                  _engine = GameEngine(level.tiles);
+                  _engine = GameEngine(level.tiles, objective: level.objective);
                   _resetAnimationState();
                   _resetBoosterUses();
                 });
@@ -550,7 +550,7 @@ class _GameScreenState extends State<GameScreen> {
                 _navigator.pop();
                 if (!mounted) return;
                 _safeSetState(() {
-                  _engine = GameEngine(level.tiles);
+                  _engine = GameEngine(level.tiles, objective: level.objective);
                   _resetAnimationState();
                   _resetBoosterUses();
                 });
@@ -825,6 +825,23 @@ class _GameScreenState extends State<GameScreen> {
                             ],
                           ),
                         ),
+                        if (level.objective != null) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              GameSpacing.lg,
+                              0,
+                              GameSpacing.lg,
+                              GameSpacing.sm,
+                            ),
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: _ObjectiveBadge(
+                                objective: level.objective!,
+                                progress: engine.objectiveProgress,
+                              ),
+                            ),
+                          ),
+                        ],
                         Expanded(
                           child: Center(
                             child: Container(
@@ -1083,6 +1100,68 @@ class _TutorialTip extends StatelessWidget {
           Icon(icon, color: GameColors.primaryBlue, size: 28),
           const SizedBox(width: GameSpacing.md),
           Expanded(child: Text(text, style: GameTextStyles.body)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ObjectiveBadge extends StatelessWidget {
+  const _ObjectiveBadge({
+    required this.objective,
+    required this.progress,
+  });
+
+  final LevelObjective objective;
+  final int progress;
+
+  String get _label {
+    if (objective.type.isEmpty) return 'Goal';
+    return '${objective.type[0].toUpperCase()}${objective.type.substring(1)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final art = tileCatalog[objective.type];
+    final visibleProgress = progress.clamp(0, objective.target);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: GameSpacing.md,
+        vertical: GameSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        gradient: GameGradients.darkBadge,
+        borderRadius: GameRadius.largeRadius,
+        border: Border.all(color: Colors.white30, width: 1.5),
+        boxShadow: GameShadows.medium(),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              gradient: GameGradients.goldButton,
+              shape: BoxShape.circle,
+              boxShadow: GameShadows.light(),
+            ),
+            child: Icon(
+              art?.icon ?? Icons.flag_rounded,
+              color: art?.color ?? Colors.white,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: GameSpacing.sm),
+          Text(
+            '$_label $visibleProgress/${objective.target}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ],
       ),
     );

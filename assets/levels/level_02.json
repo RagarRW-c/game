@@ -2,6 +2,10 @@
   "level": 2,
   "name": "Level 2",
   "timeBonusSeconds": 170,
+  "objective": {
+    "type": "flower",
+    "target": 3
+  },
   "tiles": [
     {
       "id": "L2_T000",
