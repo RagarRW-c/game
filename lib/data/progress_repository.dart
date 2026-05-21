@@ -8,7 +8,11 @@ class ProgressRepository {
   static const _codeKey = 'final_code';
   static const _coinsKey = 'coins';
   static const _lastDailyRewardDateKey = 'last_daily_reward_date';
+  static const _lastDailySpinDateKey = 'last_daily_spin_date';
   static const _levelOneTutorialSeenKey = 'level_one_tutorial_seen';
+  static const _extraHintBoostersKey = 'extra_hint_boosters';
+  static const _extraShuffleBoostersKey = 'extra_shuffle_boosters';
+  static const _extraUndoBoostersKey = 'extra_undo_boosters';
   static const defaultFinalCode = '4286';
 
   String _normalizeFinalCode(String value) {
@@ -93,6 +97,58 @@ class ProgressRepository {
     return updated;
   }
 
+  Future<bool> dailySpinAvailable(DateTime now) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_lastDailySpinDateKey) != _dateKey(now);
+  }
+
+  Future<bool> markDailySpinClaimed(DateTime now) async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _dateKey(now);
+    if (prefs.getString(_lastDailySpinDateKey) == today) return false;
+    await prefs.setString(_lastDailySpinDateKey, today);
+    return true;
+  }
+
+  Future<int> extraHintBoosters() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_extraHintBoostersKey) ?? 0;
+  }
+
+  Future<int> extraShuffleBoosters() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_extraShuffleBoostersKey) ?? 0;
+  }
+
+  Future<int> extraUndoBoosters() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_extraUndoBoostersKey) ?? 0;
+  }
+
+  Future<int> addExtraHintBoosters(int amount) async {
+    return _addInventory(_extraHintBoostersKey, amount);
+  }
+
+  Future<int> addExtraShuffleBoosters(int amount) async {
+    return _addInventory(_extraShuffleBoostersKey, amount);
+  }
+
+  Future<int> addExtraUndoBoosters(int amount) async {
+    return _addInventory(_extraUndoBoostersKey, amount);
+  }
+
+  Future<bool> useExtraHintBooster() async {
+    return _spendInventory(_extraHintBoostersKey);
+  }
+
+  Future<bool> useExtraShuffleBooster() async {
+    return _spendInventory(_extraShuffleBoostersKey);
+  }
+
+  Future<bool> useExtraUndoBooster() async {
+    return _spendInventory(_extraUndoBoostersKey);
+  }
+
   Future<bool> levelOneTutorialSeen() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_levelOneTutorialSeenKey) ?? false;
@@ -126,5 +182,20 @@ class ProgressRepository {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year}-$month-$day';
+  }
+
+  Future<int> _addInventory(String key, int amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    final updated = (prefs.getInt(key) ?? 0) + amount;
+    await prefs.setInt(key, updated);
+    return updated;
+  }
+
+  Future<bool> _spendInventory(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt(key) ?? 0;
+    if (current <= 0) return false;
+    await prefs.setInt(key, current - 1);
+    return true;
   }
 }

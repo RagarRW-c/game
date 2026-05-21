@@ -42,6 +42,9 @@ class _GameScreenState extends State<GameScreen> {
   int _hintUsesRemaining = _maxBoosterUses;
   int _shuffleUsesRemaining = _maxBoosterUses;
   int _coins = 0;
+  int _extraHintBoosters = 0;
+  int _extraShuffleBoosters = 0;
+  int _extraUndoBoosters = 0;
   bool _vibrationEnabled = true;
   bool _gameOverDialogShowing = false;
   bool _winDialogShowing = false;
@@ -74,10 +77,19 @@ class _GameScreenState extends State<GameScreen> {
   Future<void> _loadPlayerState() async {
     final coins = await _scope.progressRepository.coins();
     final vibration = await _scope.progressRepository.vibrationEnabled();
+    final extraHintBoosters =
+        await _scope.progressRepository.extraHintBoosters();
+    final extraShuffleBoosters =
+        await _scope.progressRepository.extraShuffleBoosters();
+    final extraUndoBoosters =
+        await _scope.progressRepository.extraUndoBoosters();
     if (!mounted) return;
     setState(() {
       _coins = coins;
       _vibrationEnabled = vibration;
+      _extraHintBoosters = extraHintBoosters;
+      _extraShuffleBoosters = extraShuffleBoosters;
+      _extraUndoBoosters = extraUndoBoosters;
     });
   }
 
@@ -170,12 +182,23 @@ class _GameScreenState extends State<GameScreen> {
     _shuffleUsesRemaining = _maxBoosterUses;
   }
 
-  bool _canUseBooster(int freeUsesRemaining) {
-    return freeUsesRemaining > 0 || _coins >= _boosterCoinCost;
+  bool _canUseBooster(int freeUsesRemaining, int inventory) {
+    return freeUsesRemaining > 0 || inventory > 0 || _coins >= _boosterCoinCost;
   }
 
-  Future<bool> _payForBoosterIfNeeded(int freeUsesRemaining) async {
+  Future<bool> _payForBoosterIfNeeded(
+    int freeUsesRemaining,
+    int inventory,
+    Future<bool> Function() useInventory,
+    VoidCallback decrementInventory,
+  ) async {
     if (freeUsesRemaining > 0) return true;
+    if (inventory > 0) {
+      final used = await useInventory();
+      if (!used) return false;
+      if (mounted) setState(decrementInventory);
+      return true;
+    }
     final spent = await _scope.progressRepository.spendCoins(_boosterCoinCost);
     if (!spent) {
       _showNotEnoughCoins();
@@ -185,8 +208,10 @@ class _GameScreenState extends State<GameScreen> {
     return true;
   }
 
-  String _boosterCostLabel(int freeUsesRemaining) {
-    return freeUsesRemaining > 0 ? 'x$freeUsesRemaining' : '$_boosterCoinCost';
+  String _boosterCostLabel(int freeUsesRemaining, int inventory) {
+    if (freeUsesRemaining > 0) return 'x$freeUsesRemaining';
+    if (inventory > 0) return '+$inventory';
+    return '$_boosterCoinCost';
   }
 
   void _debugValidateTiles(String source, GameEngine engine) {
@@ -336,7 +361,14 @@ class _GameScreenState extends State<GameScreen> {
       return;
     }
     final usedFreeHint = _hintUsesRemaining > 0;
-    if (!await _payForBoosterIfNeeded(_hintUsesRemaining)) return;
+    if (!await _payForBoosterIfNeeded(
+      _hintUsesRemaining,
+      _extraHintBoosters,
+      _scope.progressRepository.useExtraHintBooster,
+      () => _extraHintBoosters--,
+    )) {
+      return;
+    }
 
     final beforeTrayIds = List<String>.from(engine.tray);
     debugPrint('Cat helper started: ids=${hintIds.join(',')}');
@@ -402,7 +434,14 @@ class _GameScreenState extends State<GameScreen> {
     if (!fromGameOver && engine.result != GameResult.playing) return false;
     if (engine.boardTiles.length < 2) return false;
     final usedFreeShuffle = _shuffleUsesRemaining > 0;
-    if (!await _payForBoosterIfNeeded(_shuffleUsesRemaining)) return false;
+    if (!await _payForBoosterIfNeeded(
+      _shuffleUsesRemaining,
+      _extraShuffleBoosters,
+      _scope.progressRepository.useExtraShuffleBooster,
+      () => _extraShuffleBoosters--,
+    )) {
+      return false;
+    }
 
     debugPrint('Shuffle started');
     late final bool shuffled;
@@ -426,7 +465,14 @@ class _GameScreenState extends State<GameScreen> {
   Future<void> _useUndo(GameEngine engine) async {
     if (!engine.canUndo) return;
     final usedFreeUndo = _undoUsesRemaining > 0;
-    if (!await _payForBoosterIfNeeded(_undoUsesRemaining)) return;
+    if (!await _payForBoosterIfNeeded(
+      _undoUsesRemaining,
+      _extraUndoBoosters,
+      _scope.progressRepository.useExtraUndoBooster,
+      () => _extraUndoBoosters--,
+    )) {
+      return;
+    }
 
     debugPrint('Undo requested');
     late final bool undone;
@@ -454,7 +500,8 @@ class _GameScreenState extends State<GameScreen> {
       context: context,
       barrierDismissible: false,
       builder: (_) => _GameOverDialog(
-        canUseShuffle: _canUseBooster(_shuffleUsesRemaining),
+        canUseShuffle:
+            _canUseBooster(_shuffleUsesRemaining, _extraShuffleBoosters),
         onBackToMap: () {
           _navigator.pop();
           if (_navigator.canPop()) _navigator.pop();
@@ -866,18 +913,23 @@ class _GameScreenState extends State<GameScreen> {
                           ),
                         ),
                         _BoosterBar(
-                          onShuffle: _canUseBooster(_shuffleUsesRemaining)
+                          onShuffle: _canUseBooster(
+                                  _shuffleUsesRemaining, _extraShuffleBoosters)
                               ? () => unawaited(_useShuffle(engine))
                               : null,
-                          onHint: _canUseBooster(_hintUsesRemaining)
+                          onHint: _canUseBooster(
+                                  _hintUsesRemaining, _extraHintBoosters)
                               ? () => _useCatPowerUp(level, boardSize, tileSize)
                               : null,
-                          undoLabel: _boosterCostLabel(_undoUsesRemaining),
-                          hintLabel: _boosterCostLabel(_hintUsesRemaining),
-                          shuffleLabel:
-                              _boosterCostLabel(_shuffleUsesRemaining),
+                          undoLabel: _boosterCostLabel(
+                              _undoUsesRemaining, _extraUndoBoosters),
+                          hintLabel: _boosterCostLabel(
+                              _hintUsesRemaining, _extraHintBoosters),
+                          shuffleLabel: _boosterCostLabel(
+                              _shuffleUsesRemaining, _extraShuffleBoosters),
                           onUndo: engine.canUndo &&
-                                  _canUseBooster(_undoUsesRemaining)
+                                  _canUseBooster(
+                                      _undoUsesRemaining, _extraUndoBoosters)
                               ? () => unawaited(_useUndo(engine))
                               : null,
                         ),

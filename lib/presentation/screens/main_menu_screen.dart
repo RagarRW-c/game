@@ -4,6 +4,7 @@ import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
 import '../widgets/primary_button.dart';
+import 'lucky_wheel_screen.dart';
 import 'map_screen.dart';
 import 'settings_screen.dart';
 
@@ -18,6 +19,7 @@ class MainMenuScreen extends StatefulWidget {
 
 class _MainMenuScreenState extends State<MainMenuScreen> {
   bool _dailyRewardAvailable = false;
+  bool _dailySpinAvailable = false;
   int _coins = 0;
 
   @override
@@ -30,10 +32,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     final repository = AppScope.of(context).progressRepository;
     final coins = await repository.coins();
     final available = await repository.dailyRewardAvailable(DateTime.now());
+    final spinAvailable = await repository.dailySpinAvailable(DateTime.now());
     if (!mounted) return;
     setState(() {
       _coins = coins;
       _dailyRewardAvailable = available;
+      _dailySpinAvailable = spinAvailable;
     });
   }
 
@@ -128,6 +132,22 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     ),
                     const SizedBox(height: GameSpacing.md),
                   ],
+                  PrimaryButton(
+                    label: _dailySpinAvailable
+                        ? 'Daily Spin'
+                        : 'Next Spin Tomorrow',
+                    icon: Icons.casino_rounded,
+                    onPressed: _dailySpinAvailable
+                        ? () async {
+                            await Navigator.pushNamed(
+                              context,
+                              LuckyWheelScreen.route,
+                            );
+                            if (mounted) await _loadRewards();
+                          }
+                        : null,
+                  ),
+                  const SizedBox(height: GameSpacing.md),
                   PrimaryButton(
                     label: 'Play',
                     icon: Icons.map_rounded,

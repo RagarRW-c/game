@@ -5,6 +5,7 @@ import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
 import 'game_screen.dart';
+import 'lucky_wheel_screen.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -17,12 +18,22 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   late Future<int> _highestFuture;
+  bool _dailySpinAvailable = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _highestFuture =
         AppScope.of(context).progressRepository.highestUnlockedLevel();
+    _loadDailySpin();
+  }
+
+  Future<void> _loadDailySpin() async {
+    final available = await AppScope.of(context)
+        .progressRepository
+        .dailySpinAvailable(DateTime.now());
+    if (!mounted) return;
+    setState(() => _dailySpinAvailable = available);
   }
 
   @override
@@ -35,6 +46,24 @@ class _MapScreenState extends State<MapScreen> {
               GameHeader(
                 title: 'Adventure Map',
                 onBack: () => Navigator.of(context).maybePop(),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: GameSpacing.lg),
+                child: GameButton(
+                  label:
+                      _dailySpinAvailable ? 'Daily Spin' : 'Next Spin Tomorrow',
+                  icon: Icons.casino_rounded,
+                  onPressed: _dailySpinAvailable
+                      ? () async {
+                          await Navigator.pushNamed(
+                            context,
+                            LuckyWheelScreen.route,
+                          );
+                          if (mounted) await _loadDailySpin();
+                        }
+                      : null,
+                  variant: GameButtonVariant.gold,
+                ),
               ),
               Expanded(
                 child: FutureBuilder<int>(

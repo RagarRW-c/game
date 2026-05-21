@@ -5,6 +5,7 @@ import 'core/audio_service.dart';
 import 'data/level_repository.dart';
 import 'data/progress_repository.dart';
 import 'presentation/screens/game_screen.dart';
+import 'presentation/screens/lucky_wheel_screen.dart';
 import 'presentation/screens/main_menu_screen.dart';
 import 'presentation/screens/map_screen.dart';
 import 'presentation/screens/settings_screen.dart';
@@ -63,6 +64,7 @@ class _TripleTileAppState extends State<TripleTileApp> {
         supportedLocales: const [Locale('en')],
         routes: {
           MainMenuScreen.route: (_) => const MainMenuScreen(),
+          LuckyWheelScreen.route: (_) => const LuckyWheelScreen(),
           MapScreen.route: (_) => const MapScreen(),
           SettingsScreen.route: (_) => const SettingsScreen(),
         },
