@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../theme/game_theme.dart';
+import '../widgets/game_ui.dart';
+
 class FinalCodeScreen extends StatelessWidget {
   const FinalCodeScreen({super.key, required this.code});
 
@@ -8,70 +11,62 @@ class FinalCodeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF00C9FF), Color(0xFF92FE9D)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
+      body: GameBackground(
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(28),
+            padding: const EdgeInsets.all(GameSpacing.xl),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.emoji_events_rounded,
-                  color: Colors.white,
-                  size: 92,
+                Container(
+                  width: 104,
+                  height: 104,
+                  decoration: BoxDecoration(
+                    gradient: GameGradients.badge,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 4),
+                    boxShadow: GameShadows.glow(GameColors.accentGold),
+                  ),
+                  child: const Icon(
+                    Icons.emoji_events_rounded,
+                    color: Colors.white,
+                    size: 62,
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: GameSpacing.lg),
                 const Text(
                   'Adventure Complete!',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
+                  style: GameTextStyles.h1,
                 ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Your reward code is',
-                  style: TextStyle(fontSize: 20),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 34,
-                    vertical: 18,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(26),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black26, blurRadius: 18),
+                const SizedBox(height: GameSpacing.xl),
+                GameCard(
+                  child: Column(
+                    children: [
+                      const Text('Your reward code is',
+                          style: GameTextStyles.body),
+                      const SizedBox(height: GameSpacing.md),
+                      GameBadge(
+                        gradient: GameGradients.badge,
+                        child: Text(
+                          code,
+                          style: GameTextStyles.h2.copyWith(
+                            letterSpacing: 10,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                  child: Text(
-                    code,
-                    style: const TextStyle(
-                      fontSize: 44,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 12,
-                    ),
-                  ),
                 ),
-                const SizedBox(height: 34),
-                FilledButton.icon(
+                const SizedBox(height: GameSpacing.xxl),
+                GameButton(
+                  label: 'Back to Menu',
+                  icon: Icons.home_rounded,
                   onPressed: () {
                     Navigator.popUntil(context, (route) => route.isFirst);
                   },
-                  icon: const Icon(Icons.home_rounded),
-                  label: const Text('Back to Menu'),
+                  variant: GameButtonVariant.success,
                 ),
               ],
             ),

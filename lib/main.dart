@@ -8,6 +8,7 @@ import 'presentation/screens/game_screen.dart';
 import 'presentation/screens/main_menu_screen.dart';
 import 'presentation/screens/map_screen.dart';
 import 'presentation/screens/settings_screen.dart';
+import 'presentation/theme/game_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,8 +36,10 @@ class _TripleTileAppState extends State<TripleTileApp> {
   }
 
   Future<void> _loadAudioPrefs() async {
-    widget.audioService.musicEnabled = await widget.progressRepository.musicEnabled();
-    widget.audioService.sfxEnabled = await widget.progressRepository.sfxEnabled();
+    widget.audioService.musicEnabled =
+        await widget.progressRepository.musicEnabled();
+    widget.audioService.sfxEnabled =
+        await widget.progressRepository.sfxEnabled();
     await widget.audioService.startMusic();
   }
 
@@ -55,14 +58,9 @@ class _TripleTileAppState extends State<TripleTileApp> {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Triple Tile Adventure',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF6C63FF),
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-          fontFamily: 'Roboto',
-        ),
+        theme: GameTheme.theme(),
+        locale: const Locale('en'),
+        supportedLocales: const [Locale('en')],
         routes: {
           MainMenuScreen.route: (_) => const MainMenuScreen(),
           MapScreen.route: (_) => const MapScreen(),

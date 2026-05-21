@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/game_theme.dart';
+import '../widgets/game_ui.dart';
 import '../widgets/primary_button.dart';
 import 'map_screen.dart';
 import 'settings_screen.dart';
@@ -12,44 +14,48 @@ class MainMenuScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF8EC5FC), Color(0xFFE0C3FC)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
+      body: GameBackground(
         child: SafeArea(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(GameSpacing.xl),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text('🌈', style: TextStyle(fontSize: 76)),
+                  Container(
+                    width: 92,
+                    height: 92,
+                    decoration: BoxDecoration(
+                      gradient: GameGradients.badge,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
+                      boxShadow: GameShadows.glow(GameColors.accentGold),
+                    ),
+                    child: const Icon(
+                      Icons.star_rounded,
+                      color: Colors.white,
+                      size: 58,
+                    ),
+                  ),
+                  const SizedBox(height: GameSpacing.lg),
                   const Text(
                     'Triple Tile\nAdventure',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 44,
-                      height: 0.95,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      shadows: [Shadow(color: Colors.deepPurple, blurRadius: 10)],
-                    ),
+                    style: GameTextStyles.h1,
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: GameSpacing.xxl),
                   PrimaryButton(
                     label: 'Play',
                     icon: Icons.map_rounded,
-                    onPressed: () => Navigator.pushNamed(context, MapScreen.route),
+                    onPressed: () =>
+                        Navigator.pushNamed(context, MapScreen.route),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: GameSpacing.md),
                   PrimaryButton(
                     label: 'Settings',
                     icon: Icons.settings_rounded,
-                    onPressed: () => Navigator.pushNamed(context, SettingsScreen.route),
+                    onPressed: () =>
+                        Navigator.pushNamed(context, SettingsScreen.route),
                   ),
                 ],
               ),

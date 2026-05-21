@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../theme/game_theme.dart';
+import '../widgets/game_ui.dart';
+
 class WinScreen extends StatelessWidget {
   const WinScreen({
     super.key,
     required this.level,
     required this.isFinalLevel,
+    required this.tilesCleared,
+    required this.undoUsed,
+    required this.hintUsed,
+    required this.shuffleUsed,
     required this.onNext,
     required this.onRestart,
     required this.onMap,
@@ -12,106 +19,180 @@ class WinScreen extends StatelessWidget {
 
   final int level;
   final bool isFinalLevel;
+  final int tilesCleared;
+  final int undoUsed;
+  final int hintUsed;
+  final int shuffleUsed;
   final VoidCallback onNext;
   final VoidCallback onRestart;
   final VoidCallback onMap;
 
   @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) {
-        return Dialog.fullscreen(
-          backgroundColor: Colors.transparent,
-          child: Opacity(
-            opacity: value,
-            child: Transform.scale(
-              scale: 0.94 + (value * 0.06),
-              child: child,
-            ),
+    return GameDialogFrame(
+      title: 'Level Complete',
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Positioned(
+            left: 12,
+            top: -8,
+            child: _ParticleDot(size: 10, color: GameColors.accentGold),
           ),
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.48),
-        ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Container(
-              margin: const EdgeInsets.all(24),
-              padding: const EdgeInsets.all(26),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black26, blurRadius: 24),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.emoji_events_rounded,
-                    color: Color(0xFFFFB300),
-                    size: 76,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Level $level Clear!',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    isFinalLevel
-                        ? 'All levels are complete.'
-                        : 'Level ${level + 1} is unlocked.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                  const SizedBox(height: 22),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: onNext,
-                      icon: Icon(
-                        isFinalLevel
-                            ? Icons.pin_rounded
-                            : Icons.arrow_forward_rounded,
-                      ),
-                      label: Text(
-                        isFinalLevel ? 'Show Final Code' : 'Next Level',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: onRestart,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Restart Level'),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  TextButton.icon(
-                    onPressed: onMap,
-                    icon: const Icon(Icons.map_rounded),
-                    label: const Text('Back to Map'),
-                  ),
-                ],
-              ),
-            ),
+          const Positioned(
+            right: 28,
+            top: 14,
+            child: _ParticleDot(size: 8, color: GameColors.primaryBlueLight),
           ),
-        ),
+          const Positioned(
+            right: 8,
+            bottom: 126,
+            child: _ParticleDot(size: 12, color: GameColors.secondaryPurple),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  gradient: GameGradients.badge,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 4),
+                  boxShadow: GameShadows.glow(GameColors.accentGold),
+                ),
+                child: const Icon(
+                  Icons.emoji_events_rounded,
+                  color: Colors.white,
+                  size: 50,
+                ),
+              ),
+              const SizedBox(height: GameSpacing.md),
+              Text(
+                isFinalLevel
+                    ? 'All levels are complete.'
+                    : 'Level ${level + 1} is unlocked.',
+                textAlign: TextAlign.center,
+                style: GameTextStyles.body,
+              ),
+              const SizedBox(height: GameSpacing.lg),
+              _StatsPanel(
+                tilesCleared: tilesCleared,
+                undoUsed: undoUsed,
+                hintUsed: hintUsed,
+                shuffleUsed: shuffleUsed,
+              ),
+              const SizedBox(height: GameSpacing.xl),
+              GameButton(
+                label: isFinalLevel ? 'Show Final Code' : 'Next Level',
+                icon: isFinalLevel
+                    ? Icons.pin_rounded
+                    : Icons.arrow_forward_rounded,
+                onPressed: onNext,
+                variant: GameButtonVariant.success,
+              ),
+              const SizedBox(height: GameSpacing.md),
+              GameButton(
+                label: 'Replay',
+                icon: Icons.refresh_rounded,
+                onPressed: onRestart,
+                variant: GameButtonVariant.secondary,
+              ),
+              TextButton.icon(
+                onPressed: onMap,
+                icon: const Icon(Icons.map_rounded),
+                label: const Text('Back to Map'),
+              ),
+            ],
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _StatsPanel extends StatelessWidget {
+  const _StatsPanel({
+    required this.tilesCleared,
+    required this.undoUsed,
+    required this.hintUsed,
+    required this.shuffleUsed,
+  });
+
+  final int tilesCleared;
+  final int undoUsed;
+  final int hintUsed;
+  final int shuffleUsed;
+
+  @override
+  Widget build(BuildContext context) {
+    return GameCard(
+      padding: const EdgeInsets.all(GameSpacing.md),
+      shadow: GameShadows.light(),
+      borderColor: GameColors.borderBlue,
+      child: Column(
+        children: [
+          _StatRow(
+            icon: Icons.check_circle_rounded,
+            label: 'Tiles cleared',
+            value: '$tilesCleared',
+          ),
+          const SizedBox(height: GameSpacing.sm),
+          _StatRow(
+            icon: Icons.auto_awesome_rounded,
+            label: 'Boosters used',
+            value: 'Undo $undoUsed  Hint $hintUsed  Shuffle $shuffleUsed',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatRow extends StatelessWidget {
+  const _StatRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: GameColors.primaryBlue, size: 22),
+        const SizedBox(width: GameSpacing.sm),
+        Expanded(
+          child: Text(label, style: GameTextStyles.body),
+        ),
+        Text(
+          value,
+          style: GameTextStyles.body.copyWith(color: GameColors.ink),
+        ),
+      ],
+    );
+  }
+}
+
+class _ParticleDot extends StatelessWidget {
+  const _ParticleDot({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: GameShadows.glow(color),
+      ),
+      child: SizedBox(width: size, height: size),
     );
   }
 }
