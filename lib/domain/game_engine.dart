@@ -22,7 +22,6 @@ class GameEngine {
   GameResult result = GameResult.playing;
   int objectiveProgress = 0;
 
-  bool get hasObjective => objective != null;
   bool get objectiveComplete =>
       objective != null && objectiveProgress >= objective!.target;
 
@@ -327,9 +326,7 @@ class GameEngine {
     _sanitizeTray();
     if (tray.length > trayLimit) {
       result = GameResult.lost;
-    } else if (objectiveComplete ||
-        (!hasObjective &&
-            tiles.every((tile) => tile.state == TileState.matched))) {
+    } else if (tiles.every((tile) => tile.state == TileState.matched)) {
       result = GameResult.won;
     }
   }
