@@ -43,8 +43,23 @@ class Tile {
         tileSize.height,
       );
 
-  bool overlaps(Tile other, Size boardSize, Size tileSize) =>
-      boardRect(boardSize, tileSize).overlaps(
-        other.boardRect(boardSize, tileSize),
-      );
+  bool overlaps(
+    Tile other,
+    Size boardSize,
+    Size tileSize, {
+    double minimumCoveredRatio = 0.03,
+  }) {
+    final candidateRect = boardRect(boardSize, tileSize);
+    final otherRect = other.boardRect(boardSize, tileSize);
+    if (!candidateRect.overlaps(otherRect)) return false;
+
+    final intersection = candidateRect.intersect(otherRect);
+    if (intersection.width <= 0 || intersection.height <= 0) return false;
+
+    final candidateArea = candidateRect.width * candidateRect.height;
+    if (candidateArea <= 0) return false;
+
+    final coveredArea = intersection.width * intersection.height;
+    return coveredArea / candidateArea >= minimumCoveredRatio;
+  }
 }
