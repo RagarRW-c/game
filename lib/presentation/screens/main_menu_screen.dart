@@ -4,6 +4,7 @@ import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
 import '../widgets/primary_button.dart';
+import 'booster_shop_screen.dart';
 import 'lucky_wheel_screen.dart';
 import 'map_screen.dart';
 import 'settings_screen.dart';
@@ -153,6 +154,18 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     icon: Icons.map_rounded,
                     onPressed: () =>
                         Navigator.pushNamed(context, MapScreen.route),
+                  ),
+                  const SizedBox(height: GameSpacing.md),
+                  PrimaryButton(
+                    label: 'Booster Shop',
+                    icon: Icons.storefront_rounded,
+                    onPressed: () async {
+                      await Navigator.pushNamed(
+                        context,
+                        BoosterShopScreen.route,
+                      );
+                      if (mounted) await _loadRewards();
+                    },
                   ),
                   const SizedBox(height: GameSpacing.md),
                   PrimaryButton(

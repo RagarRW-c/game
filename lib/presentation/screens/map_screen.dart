@@ -4,6 +4,7 @@ import '../../data/level_repository.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
+import 'booster_shop_screen.dart';
 import 'game_screen.dart';
 import 'lucky_wheel_screen.dart';
 
@@ -49,20 +50,39 @@ class _MapScreenState extends State<MapScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: GameSpacing.lg),
-                child: GameButton(
-                  label:
-                      _dailySpinAvailable ? 'Daily Spin' : 'Next Spin Tomorrow',
-                  icon: Icons.casino_rounded,
-                  onPressed: _dailySpinAvailable
-                      ? () async {
-                          await Navigator.pushNamed(
-                            context,
-                            LuckyWheelScreen.route,
-                          );
-                          if (mounted) await _loadDailySpin();
-                        }
-                      : null,
-                  variant: GameButtonVariant.gold,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GameButton(
+                        label: _dailySpinAvailable
+                            ? 'Daily Spin'
+                            : 'Next Spin Tomorrow',
+                        icon: Icons.casino_rounded,
+                        onPressed: _dailySpinAvailable
+                            ? () async {
+                                await Navigator.pushNamed(
+                                  context,
+                                  LuckyWheelScreen.route,
+                                );
+                                if (mounted) await _loadDailySpin();
+                              }
+                            : null,
+                        variant: GameButtonVariant.gold,
+                      ),
+                    ),
+                    const SizedBox(width: GameSpacing.md),
+                    Expanded(
+                      child: GameButton(
+                        label: 'Shop',
+                        icon: Icons.storefront_rounded,
+                        onPressed: () => Navigator.pushNamed(
+                          context,
+                          BoosterShopScreen.route,
+                        ),
+                        variant: GameButtonVariant.primary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
