@@ -43,27 +43,45 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
       duration: GameDurations.slow,
     );
     _rotation = const AlwaysStoppedAnimation<double>(0);
-    _loadAvailability();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAvailability());
   }
 
   Future<void> _loadAvailability() async {
-    final available = await AppScope.of(context)
-        .progressRepository
-        .dailySpinAvailable(DateTime.now());
-    if (!mounted) return;
-    setState(() {
-      _available = available;
-      _loading = false;
-    });
+    debugPrint('LuckyWheel init start');
+    var canSpin = true;
+    try {
+      final status = await AppScope.of(context)
+          .progressRepository
+          .dailySpinStatus(DateTime.now());
+      debugPrint('LuckyWheel prefs loaded');
+      debugPrint('LuckyWheel lastSpinDate=${status.lastSpinDate}');
+      debugPrint('LuckyWheel canSpin=${status.canSpin}');
+      canSpin = status.canSpin;
+    } catch (error, stackTrace) {
+      debugPrint('LuckyWheel error: $error');
+      debugPrint('$stackTrace');
+    } finally {
+      debugPrint('LuckyWheel init complete');
+      if (mounted) {
+        setState(() {
+          _available = canSpin;
+          _loading = false;
+        });
+      }
+    }
   }
 
   Future<void> _spin() async {
     if (_spinning || !_available) return;
     final repository = AppScope.of(context).progressRepository;
-    final claimed = await repository.markDailySpinClaimed(DateTime.now());
+    setState(() => _spinning = true);
+    final canSpin = await repository.dailySpinAvailable(DateTime.now());
     if (!mounted) return;
-    if (!claimed) {
-      setState(() => _available = false);
+    if (!canSpin) {
+      setState(() {
+        _available = false;
+        _spinning = false;
+      });
       return;
     }
 
@@ -74,7 +92,6 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
     final target = fullTurns + segmentTurn;
 
     setState(() {
-      _spinning = true;
       _rotation = Tween<double>(
         begin: 0,
         end: target,
@@ -90,6 +107,7 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
 
     final reward = _rewards[selectedIndex];
     await _applyReward(reward);
+    await repository.markDailySpinClaimed(DateTime.now());
     if (!mounted) return;
 
     setState(() {
@@ -162,53 +180,53 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
                 child: Center(
                   child: GameCard(
                     margin: const EdgeInsets.all(GameSpacing.lg),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            AnimatedBuilder(
-                              animation: _rotation,
-                              builder: (context, child) {
-                                return Transform.rotate(
-                                  angle: _rotation.value * 2 * pi,
-                                  child: child,
-                                );
-                              },
-                              child: const _Wheel(rewards: _rewards),
-                            ),
-                            const Positioned(
-                              top: 0,
-                              child: Icon(
-                                Icons.arrow_drop_down_rounded,
-                                color: GameColors.dangerRed,
-                                size: 54,
+                    child: _loading
+                        ? const _WheelLoadingState()
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  AnimatedBuilder(
+                                    animation: _rotation,
+                                    builder: (context, child) {
+                                      return Transform.rotate(
+                                        angle: _rotation.value * 2 * pi,
+                                        child: child,
+                                      );
+                                    },
+                                    child: const _Wheel(rewards: _rewards),
+                                  ),
+                                  const Positioned(
+                                    top: 0,
+                                    child: Icon(
+                                      Icons.arrow_drop_down_rounded,
+                                      color: GameColors.dangerRed,
+                                      size: 54,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: GameSpacing.xl),
-                        Text(
-                          _loading
-                              ? 'Checking spin...'
-                              : _available
-                                  ? 'Spin once today'
-                                  : 'Next spin tomorrow',
-                          style: GameTextStyles.body,
-                        ),
-                        const SizedBox(height: GameSpacing.lg),
-                        GameButton(
-                          label:
-                              _available ? 'Daily Spin' : 'Come Back Tomorrow',
-                          icon: Icons.casino_rounded,
-                          onPressed: _available && !_spinning && !_loading
-                              ? _spin
-                              : null,
-                          variant: GameButtonVariant.gold,
-                        ),
-                      ],
-                    ),
+                              const SizedBox(height: GameSpacing.xl),
+                              Text(
+                                _available
+                                    ? 'Spin once today'
+                                    : 'Next spin tomorrow',
+                                style: GameTextStyles.body,
+                              ),
+                              const SizedBox(height: GameSpacing.lg),
+                              GameButton(
+                                label: _available
+                                    ? 'Daily Spin'
+                                    : 'Come Back Tomorrow',
+                                icon: Icons.casino_rounded,
+                                onPressed:
+                                    _available && !_spinning ? _spin : null,
+                                variant: GameButtonVariant.gold,
+                              ),
+                            ],
+                          ),
                   ),
                 ),
               ),
@@ -216,6 +234,22 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _WheelLoadingState extends StatelessWidget {
+  const _WheelLoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CircularProgressIndicator(),
+        SizedBox(height: GameSpacing.lg),
+        Text('Checking spin...', style: GameTextStyles.body),
+      ],
     );
   }
 }

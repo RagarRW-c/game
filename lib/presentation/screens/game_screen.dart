@@ -1124,6 +1124,7 @@ class _ObjectiveBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final art = tileCatalog[objective.type];
     final visibleProgress = progress.clamp(0, objective.target);
+    final isComplete = visibleProgress >= objective.target;
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -1131,10 +1132,13 @@ class _ObjectiveBadge extends StatelessWidget {
         vertical: GameSpacing.sm,
       ),
       decoration: BoxDecoration(
-        gradient: GameGradients.darkBadge,
+        gradient:
+            isComplete ? GameGradients.successButton : GameGradients.darkBadge,
         borderRadius: GameRadius.largeRadius,
         border: Border.all(color: Colors.white30, width: 1.5),
-        boxShadow: GameShadows.medium(),
+        boxShadow: isComplete
+            ? GameShadows.glow(GameColors.successGreen)
+            : GameShadows.medium(),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1148,8 +1152,10 @@ class _ObjectiveBadge extends StatelessWidget {
               boxShadow: GameShadows.light(),
             ),
             child: Icon(
-              art?.icon ?? Icons.flag_rounded,
-              color: art?.color ?? Colors.white,
+              isComplete
+                  ? Icons.check_rounded
+                  : art?.icon ?? Icons.flag_rounded,
+              color: isComplete ? Colors.white : art?.color ?? Colors.white,
               size: 19,
             ),
           ),

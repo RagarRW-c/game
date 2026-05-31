@@ -326,7 +326,7 @@ class GameEngine {
     _sanitizeTray();
     if (tray.length > trayLimit) {
       result = GameResult.lost;
-    } else if (tiles.every((tile) => tile.state == TileState.matched)) {
+    } else if (boardTiles.isEmpty) {
       result = GameResult.won;
     }
   }

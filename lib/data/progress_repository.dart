@@ -1,4 +1,17 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class DailySpinStatus {
+  const DailySpinStatus({
+    required this.polishTodayKey,
+    required this.lastSpinDate,
+    required this.canSpin,
+  });
+
+  final String polishTodayKey;
+  final String? lastSpinDate;
+  final bool canSpin;
+}
 
 class ProgressRepository {
   static const _highestLevelKey = 'highest_unlocked_level';
@@ -98,13 +111,27 @@ class ProgressRepository {
   }
 
   Future<bool> dailySpinAvailable(DateTime now) async {
+    final status = await dailySpinStatus(now);
+    debugPrint('polishTodayKey=${status.polishTodayKey}');
+    debugPrint('lastSpinDate=${status.lastSpinDate}');
+    debugPrint('canSpin=${status.canSpin}');
+    return status.canSpin;
+  }
+
+  Future<DailySpinStatus> dailySpinStatus(DateTime now) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_lastDailySpinDateKey) != _dateKey(now);
+    final today = _polishDateKey(now);
+    final lastSpinDate = prefs.getString(_lastDailySpinDateKey);
+    return DailySpinStatus(
+      polishTodayKey: today,
+      lastSpinDate: lastSpinDate,
+      canSpin: lastSpinDate != today,
+    );
   }
 
   Future<bool> markDailySpinClaimed(DateTime now) async {
     final prefs = await SharedPreferences.getInstance();
-    final today = _dateKey(now);
+    final today = _polishDateKey(now);
     if (prefs.getString(_lastDailySpinDateKey) == today) return false;
     await prefs.setString(_lastDailySpinDateKey, today);
     return true;
@@ -182,6 +209,30 @@ class ProgressRepository {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year}-$month-$day';
+  }
+
+  String _polishDateKey(DateTime instant) {
+    return _dateKey(_toPolishLocalTime(instant));
+  }
+
+  DateTime _toPolishLocalTime(DateTime instant) {
+    final utc = instant.toUtc();
+    final offsetHours = _isPolishSummerTime(utc) ? 2 : 1;
+    return utc.add(Duration(hours: offsetHours));
+  }
+
+  bool _isPolishSummerTime(DateTime utc) {
+    final year = utc.year;
+    final starts = DateTime.utc(year, 3, _lastSundayOfMonth(year, 3), 1);
+    final ends = DateTime.utc(year, 10, _lastSundayOfMonth(year, 10), 1);
+    return !utc.isBefore(starts) && utc.isBefore(ends);
+  }
+
+  int _lastSundayOfMonth(int year, int month) {
+    final nextMonth =
+        month == 12 ? DateTime.utc(year + 1, 1) : DateTime.utc(year, month + 1);
+    final lastDay = nextMonth.subtract(const Duration(days: 1));
+    return lastDay.day - (lastDay.weekday % DateTime.daysPerWeek);
   }
 
   Future<int> _addInventory(String key, int amount) async {
