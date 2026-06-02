@@ -104,40 +104,13 @@ class _GameScreenState extends State<GameScreen> {
       if (!mounted) return;
       final seen = await _scope.progressRepository.levelOneTutorialSeen();
       if (!mounted || seen) return;
-      await _scope.progressRepository.setLevelOneTutorialSeen();
-      if (!mounted) return;
-      await showDialog<void>(
+      final completed = await showDialog<bool>(
         context: context,
-        builder: (_) => GameDialogFrame(
-          title: 'How to Play',
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const _TutorialTip(
-                icon: Icons.touch_app_rounded,
-                text: 'Tap 3 matching tiles',
-              ),
-              const SizedBox(height: GameSpacing.md),
-              const _TutorialTip(
-                icon: Icons.inventory_2_rounded,
-                text: "Don't fill the tray",
-              ),
-              const SizedBox(height: GameSpacing.md),
-              const _TutorialTip(
-                icon: Icons.auto_fix_high_rounded,
-                text: 'Use boosters if stuck',
-              ),
-              const SizedBox(height: GameSpacing.xl),
-              GameButton(
-                label: 'Got it',
-                icon: Icons.check_rounded,
-                onPressed: () => Navigator.of(context).pop(),
-                variant: GameButtonVariant.success,
-              ),
-            ],
-          ),
-        ),
+        barrierDismissible: false,
+        builder: (_) => const _LevelOneTutorialDialog(),
       );
+      if (!mounted || completed != true) return;
+      await _scope.progressRepository.setLevelOneTutorialSeen();
     });
   }
 
@@ -330,6 +303,9 @@ class _GameScreenState extends State<GameScreen> {
         'Tray insertion complete: id=${canonicalTile.id}, tray=${engine.tray.length}');
     if (matchedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${matchedIds.join(',')}');
+      unawaited(
+        _scope.progressRepository.recordDailyMatchedTiles(matchedIds.length),
+      );
       _playSfx(_scope.audioService.playMatch, 'match');
       _haptic(HapticFeedback.mediumImpact);
     }
@@ -395,6 +371,9 @@ class _GameScreenState extends State<GameScreen> {
         'Cat helper tray insertion: ids=${hintIds.join(',')}, tray=${engine.tray.length}');
     if (removedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${removedIds.join(',')}');
+      unawaited(
+        _scope.progressRepository.recordDailyMatchedTiles(removedIds.length),
+      );
       _playSfx(_scope.audioService.playMatch, 'match');
       _haptic(HapticFeedback.mediumImpact);
     }
@@ -591,6 +570,7 @@ class _GameScreenState extends State<GameScreen> {
     _winDialogShowing = true;
     final scope = _scope;
     await scope.progressRepository.unlockNextLevel(widget.level);
+    await scope.progressRepository.recordDailyLevelCompleted();
     final updatedCoins =
         await scope.progressRepository.addCoins(_levelCompleteCoinReward);
     if (!mounted) {
@@ -1077,6 +1057,92 @@ class _GameOverDialog extends StatelessWidget {
             icon: Icons.map_rounded,
             onPressed: onBackToMap,
             variant: GameButtonVariant.secondary,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TutorialStep {
+  const _TutorialStep({
+    required this.icon,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String text;
+}
+
+class _LevelOneTutorialDialog extends StatefulWidget {
+  const _LevelOneTutorialDialog();
+
+  @override
+  State<_LevelOneTutorialDialog> createState() =>
+      _LevelOneTutorialDialogState();
+}
+
+class _LevelOneTutorialDialogState extends State<_LevelOneTutorialDialog> {
+  static const _steps = <_TutorialStep>[
+    _TutorialStep(
+      icon: Icons.touch_app_rounded,
+      text: 'Tap 3 matching tiles to clear them.',
+    ),
+    _TutorialStep(
+      icon: Icons.inventory_2_rounded,
+      text: 'Do not fill the tray.',
+    ),
+    _TutorialStep(
+      icon: Icons.auto_fix_high_rounded,
+      text: 'Use boosters if you get stuck.',
+    ),
+  ];
+
+  int _index = 0;
+
+  void _next() {
+    if (_index >= _steps.length - 1) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    setState(() => _index++);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final step = _steps[_index];
+    return GameDialogFrame(
+      title: 'How to Play',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _TutorialTip(icon: step.icon, text: step.text),
+          const SizedBox(height: GameSpacing.md),
+          Text(
+            '${_index + 1}/${_steps.length}',
+            style: GameTextStyles.caption,
+          ),
+          const SizedBox(height: GameSpacing.xl),
+          Row(
+            children: [
+              Expanded(
+                child: GameButton(
+                  label: 'Skip',
+                  icon: Icons.close_rounded,
+                  onPressed: () => Navigator.of(context).pop(true),
+                  variant: GameButtonVariant.secondary,
+                ),
+              ),
+              const SizedBox(width: GameSpacing.md),
+              Expanded(
+                child: GameButton(
+                  label: 'Next',
+                  icon: Icons.arrow_forward_rounded,
+                  onPressed: _next,
+                  variant: GameButtonVariant.success,
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -13,6 +13,50 @@ class DailySpinStatus {
   final bool canSpin;
 }
 
+enum DailyChallengeId { completeLevel, matchTiles, useLuckyWheel }
+
+class DailyChallengesState {
+  const DailyChallengesState({
+    required this.dateKey,
+    required this.completedLevels,
+    required this.matchedTiles,
+    required this.luckyWheelUsed,
+    required this.completeLevelClaimed,
+    required this.matchTilesClaimed,
+    required this.luckyWheelClaimed,
+  });
+
+  final String dateKey;
+  final int completedLevels;
+  final int matchedTiles;
+  final bool luckyWheelUsed;
+  final bool completeLevelClaimed;
+  final bool matchTilesClaimed;
+  final bool luckyWheelClaimed;
+
+  bool isComplete(DailyChallengeId id) {
+    switch (id) {
+      case DailyChallengeId.completeLevel:
+        return completedLevels >= 1;
+      case DailyChallengeId.matchTiles:
+        return matchedTiles >= 30;
+      case DailyChallengeId.useLuckyWheel:
+        return luckyWheelUsed;
+    }
+  }
+
+  bool isClaimed(DailyChallengeId id) {
+    switch (id) {
+      case DailyChallengeId.completeLevel:
+        return completeLevelClaimed;
+      case DailyChallengeId.matchTiles:
+        return matchTilesClaimed;
+      case DailyChallengeId.useLuckyWheel:
+        return luckyWheelClaimed;
+    }
+  }
+}
+
 class ProgressRepository {
   static const _highestLevelKey = 'highest_unlocked_level';
   static const _musicKey = 'music_enabled';
@@ -26,6 +70,15 @@ class ProgressRepository {
   static const _extraHintBoostersKey = 'extra_hint_boosters';
   static const _extraShuffleBoostersKey = 'extra_shuffle_boosters';
   static const _extraUndoBoostersKey = 'extra_undo_boosters';
+  static const _dailyChallengeDateKey = 'daily_challenge_date';
+  static const _dailyChallengeCompletedLevelsKey =
+      'daily_challenge_completed_levels';
+  static const _dailyChallengeMatchedTilesKey = 'daily_challenge_matched_tiles';
+  static const _dailyChallengeLuckyWheelUsedKey =
+      'daily_challenge_lucky_wheel_used';
+  static const _dailyChallengeLevelClaimedKey = 'daily_challenge_level_claimed';
+  static const _dailyChallengeTilesClaimedKey = 'daily_challenge_tiles_claimed';
+  static const _dailyChallengeWheelClaimedKey = 'daily_challenge_wheel_claimed';
   static const defaultFinalCode = '4286';
 
   String _normalizeFinalCode(String value) {
@@ -186,6 +239,48 @@ class ProgressRepository {
     await prefs.setBool(_levelOneTutorialSeenKey, true);
   }
 
+  Future<DailyChallengesState> dailyChallenges() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    return _dailyChallengesFromPrefs(prefs);
+  }
+
+  Future<DailyChallengesState> recordDailyLevelCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    final current = prefs.getInt(_dailyChallengeCompletedLevelsKey) ?? 0;
+    await prefs.setInt(
+      _dailyChallengeCompletedLevelsKey,
+      current + 1,
+    );
+    return _dailyChallengesFromPrefs(prefs);
+  }
+
+  Future<DailyChallengesState> recordDailyMatchedTiles(int amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    final current = prefs.getInt(_dailyChallengeMatchedTilesKey) ?? 0;
+    await prefs.setInt(_dailyChallengeMatchedTilesKey, current + amount);
+    return _dailyChallengesFromPrefs(prefs);
+  }
+
+  Future<DailyChallengesState> recordDailyLuckyWheelUsed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    await prefs.setBool(_dailyChallengeLuckyWheelUsedKey, true);
+    return _dailyChallengesFromPrefs(prefs);
+  }
+
+  Future<int?> claimDailyChallenge(DailyChallengeId id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    final state = _dailyChallengesFromPrefs(prefs);
+    if (!state.isComplete(id) || state.isClaimed(id)) return null;
+
+    await prefs.setBool(_dailyChallengeClaimedKey(id), true);
+    return addCoins(_dailyChallengeReward(id));
+  }
+
   Future<String> finalCode() async {
     const compileTimeCode = String.fromEnvironment(
       'FINAL_CODE',
@@ -203,6 +298,54 @@ class ProgressRepository {
   Future<void> reset() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_highestLevelKey, 1);
+  }
+
+  Future<void> _ensureDailyChallengesForToday(SharedPreferences prefs) async {
+    final today = _polishDateKey(DateTime.now());
+    if (prefs.getString(_dailyChallengeDateKey) == today) return;
+    await prefs.setString(_dailyChallengeDateKey, today);
+    await prefs.setInt(_dailyChallengeCompletedLevelsKey, 0);
+    await prefs.setInt(_dailyChallengeMatchedTilesKey, 0);
+    await prefs.setBool(_dailyChallengeLuckyWheelUsedKey, false);
+    await prefs.setBool(_dailyChallengeLevelClaimedKey, false);
+    await prefs.setBool(_dailyChallengeTilesClaimedKey, false);
+    await prefs.setBool(_dailyChallengeWheelClaimedKey, false);
+  }
+
+  DailyChallengesState _dailyChallengesFromPrefs(SharedPreferences prefs) {
+    return DailyChallengesState(
+      dateKey: prefs.getString(_dailyChallengeDateKey) ??
+          _polishDateKey(DateTime.now()),
+      completedLevels: prefs.getInt(_dailyChallengeCompletedLevelsKey) ?? 0,
+      matchedTiles: prefs.getInt(_dailyChallengeMatchedTilesKey) ?? 0,
+      luckyWheelUsed: prefs.getBool(_dailyChallengeLuckyWheelUsedKey) ?? false,
+      completeLevelClaimed:
+          prefs.getBool(_dailyChallengeLevelClaimedKey) ?? false,
+      matchTilesClaimed: prefs.getBool(_dailyChallengeTilesClaimedKey) ?? false,
+      luckyWheelClaimed: prefs.getBool(_dailyChallengeWheelClaimedKey) ?? false,
+    );
+  }
+
+  int _dailyChallengeReward(DailyChallengeId id) {
+    switch (id) {
+      case DailyChallengeId.completeLevel:
+        return 100;
+      case DailyChallengeId.matchTiles:
+        return 75;
+      case DailyChallengeId.useLuckyWheel:
+        return 50;
+    }
+  }
+
+  String _dailyChallengeClaimedKey(DailyChallengeId id) {
+    switch (id) {
+      case DailyChallengeId.completeLevel:
+        return _dailyChallengeLevelClaimedKey;
+      case DailyChallengeId.matchTiles:
+        return _dailyChallengeTilesClaimedKey;
+      case DailyChallengeId.useLuckyWheel:
+        return _dailyChallengeWheelClaimedKey;
+    }
   }
 
   String _dateKey(DateTime date) {
