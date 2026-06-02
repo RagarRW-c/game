@@ -94,7 +94,7 @@ class ProgressRepository {
   Future<void> unlockNextLevel(int completedLevel) async {
     final prefs = await SharedPreferences.getInstance();
     final current = prefs.getInt(_highestLevelKey) ?? 1;
-    final next = (completedLevel + 1).clamp(1, 10);
+    final next = (completedLevel + 1).clamp(1, 40);
     if (next > current) await prefs.setInt(_highestLevelKey, next);
   }
 
