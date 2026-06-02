@@ -733,6 +733,10 @@ class _GameScreenState extends State<GameScreen> {
         _ensureEngine(level);
         _queueLevelOneTutorial();
         final engine = _engine!;
+        final visualTheme = tileVisualThemeForLevel(widget.level);
+        final visualCatalog = tileCatalogForTheme(
+          visualTheme,
+        );
         final boardCount = List<Tile>.from(engine.boardTiles).length;
 
         return Scaffold(
@@ -818,6 +822,8 @@ class _GameScreenState extends State<GameScreen> {
                               child: _ObjectiveBadge(
                                 objective: level.objective!,
                                 progress: engine.objectiveProgress,
+                                catalog: visualCatalog,
+                                theme: visualTheme,
                               ),
                             ),
                           ),
@@ -891,6 +897,7 @@ class _GameScreenState extends State<GameScreen> {
                                               depth: depth,
                                               highlighted: hintedTileIds
                                                   .contains(tile.id),
+                                              catalog: visualCatalog,
                                               onTap: covered
                                                   ? null
                                                   : () => _onTileTap(
@@ -932,6 +939,7 @@ class _GameScreenState extends State<GameScreen> {
                         ),
                         _Tray(
                           trayTiles: trayTiles,
+                          catalog: visualCatalog,
                         ),
                       ],
                     ),
@@ -1176,21 +1184,21 @@ class _ObjectiveBadge extends StatelessWidget {
   const _ObjectiveBadge({
     required this.objective,
     required this.progress,
+    required this.catalog,
+    required this.theme,
   });
 
   final LevelObjective objective;
   final int progress;
-
-  String get _label {
-    if (objective.type.isEmpty) return 'Goal';
-    return '${objective.type[0].toUpperCase()}${objective.type.substring(1)}';
-  }
+  final Map<String, TileArt> catalog;
+  final TileVisualTheme theme;
 
   @override
   Widget build(BuildContext context) {
-    final art = tileCatalog[objective.type];
+    final art = catalog[objective.type];
     final visibleProgress = progress.clamp(0, objective.target);
     final isComplete = visibleProgress >= objective.target;
+    final label = tileLabelForTheme(theme, objective.type);
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -1227,7 +1235,7 @@ class _ObjectiveBadge extends StatelessWidget {
           ),
           const SizedBox(width: GameSpacing.sm),
           Text(
-            '$_label $visibleProgress/${objective.target}',
+            '$label $visibleProgress/${objective.target}',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 15,
@@ -1387,9 +1395,10 @@ class _BoosterButton extends StatelessWidget {
 }
 
 class _Tray extends StatelessWidget {
-  const _Tray({required this.trayTiles});
+  const _Tray({required this.trayTiles, required this.catalog});
 
   final List<Tile?> trayTiles;
+  final Map<String, TileArt> catalog;
 
   @override
   Widget build(BuildContext context) {
@@ -1420,6 +1429,7 @@ class _Tray extends StatelessWidget {
                         tile: tile,
                         enabled: true,
                         highlighted: false,
+                        catalog: catalog,
                         trayTile: true,
                       )),
           ),

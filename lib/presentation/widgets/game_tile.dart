@@ -13,6 +13,7 @@ class GameTileWidget extends StatefulWidget {
     this.blocked = false,
     this.depth = 1,
     this.trayTile = false,
+    this.catalog = tileCatalog,
     this.onTap,
   });
 
@@ -22,6 +23,7 @@ class GameTileWidget extends StatefulWidget {
   final bool blocked;
   final double depth;
   final bool trayTile;
+  final Map<String, TileArt> catalog;
   final VoidCallback? onTap;
 
   @override
@@ -38,7 +40,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final art = tileCatalog[widget.tile.type] ??
+    final art = widget.catalog[widget.tile.type] ??
         const TileArt(Icons.help_rounded, GameColors.tileFallback);
     final topLift =
         widget.blocked ? 0.0 : widget.depth.clamp(0.0, 1.0).toDouble();
@@ -165,12 +167,14 @@ class PoppingGameTile extends StatelessWidget {
     required this.tile,
     required this.enabled,
     required this.highlighted,
+    this.catalog = tileCatalog,
     this.trayTile = false,
   });
 
   final Tile tile;
   final bool enabled;
   final bool highlighted;
+  final Map<String, TileArt> catalog;
   final bool trayTile;
 
   @override
@@ -187,6 +191,7 @@ class PoppingGameTile extends StatelessWidget {
         tile: tile,
         enabled: enabled,
         highlighted: highlighted,
+        catalog: catalog,
         trayTile: trayTile,
       ),
     );
