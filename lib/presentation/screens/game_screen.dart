@@ -12,6 +12,7 @@ import '../../domain/level.dart';
 import '../../domain/tile.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
+import '../theme/world_theme.dart';
 import '../widgets/game_tile.dart';
 import '../widgets/game_ui.dart';
 import 'final_code_screen.dart';
@@ -253,6 +254,41 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
+  void _debugTrayChange(
+    String source,
+    GameEngine engine, {
+    Iterable<String> changedTileIds = const <String>[],
+  }) {
+    final visualTheme = tileVisualThemeForLevel(widget.level);
+    final visualCatalog = tileCatalogForTheme(visualTheme);
+    final trayTypeCounts = <String, int>{};
+
+    for (final id in engine.tray) {
+      final tile = engine.tileById(id);
+      if (tile == null) continue;
+      trayTypeCounts[tile.type] = (trayTypeCounts[tile.type] ?? 0) + 1;
+    }
+
+    for (final id in changedTileIds) {
+      final tile = engine.tileById(id);
+      if (tile == null) {
+        debugPrint('Tray change [$source]: tile id=$id missing');
+        continue;
+      }
+      final art = visualCatalog[tile.type];
+      final displayType = tileLabelForTheme(visualTheme, tile.type);
+      debugPrint(
+        'Tray change [$source]: tile id=${tile.id}, type=${tile.type}, '
+        'displayed=$displayType, iconCode=${art?.icon.codePoint}',
+      );
+    }
+
+    final counts = trayTypeCounts.entries
+        .map((entry) => '${entry.key}:${entry.value}')
+        .join(', ');
+    debugPrint('Tray type counts [$source]: {$counts}');
+  }
+
   Future<void> _onTileTap(
     LevelDefinition level,
     Tile tile,
@@ -301,6 +337,11 @@ class _GameScreenState extends State<GameScreen> {
     );
     debugPrint(
         'Tray insertion complete: id=${canonicalTile.id}, tray=${engine.tray.length}');
+    _debugTrayChange(
+      'tap',
+      engine,
+      changedTileIds: <String>{canonicalTile.id, ...matchedIds},
+    );
     if (matchedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${matchedIds.join(',')}');
       unawaited(
@@ -369,6 +410,11 @@ class _GameScreenState extends State<GameScreen> {
         _matchedIdsAfterMove(beforeTrayIds, preferredIds: hintIds.toSet());
     debugPrint(
         'Cat helper tray insertion: ids=${hintIds.join(',')}, tray=${engine.tray.length}');
+    _debugTrayChange(
+      'hint',
+      engine,
+      changedTileIds: <String>{...hintIds, ...removedIds},
+    );
     if (removedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${removedIds.join(',')}');
       unawaited(
@@ -454,6 +500,7 @@ class _GameScreenState extends State<GameScreen> {
     }
 
     debugPrint('Undo requested');
+    final beforeTrayIds = Set<String>.from(engine.tray);
     late final bool undone;
     _safeSetState(() {
       undone = engine.undo();
@@ -464,6 +511,9 @@ class _GameScreenState extends State<GameScreen> {
     });
     if (undone) {
       _playSfx(_scope.audioService.playBooster, 'booster');
+      final afterTrayIds = Set<String>.from(engine.tray);
+      final restoredIds = beforeTrayIds.difference(afterTrayIds);
+      _debugTrayChange('undo', engine, changedTileIds: restoredIds);
       _debugValidateTiles('undo', engine);
     }
   }
@@ -734,6 +784,7 @@ class _GameScreenState extends State<GameScreen> {
         _queueLevelOneTutorial();
         final engine = _engine!;
         final visualTheme = tileVisualThemeForLevel(widget.level);
+        final worldTheme = WorldThemes.forTileTheme(visualTheme);
         final visualCatalog = tileCatalogForTheme(
           visualTheme,
         );
@@ -767,6 +818,7 @@ class _GameScreenState extends State<GameScreen> {
                     ? 0
                     : renderedBoardTiles.map((tile) => tile.layer).reduce(max);
                 return GameBackground(
+                  worldTheme: worldTheme,
                   child: SafeArea(
                     bottom: false,
                     child: Column(
@@ -835,10 +887,11 @@ class _GameScreenState extends State<GameScreen> {
                               height: boardSize.height,
                               margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                               decoration: BoxDecoration(
-                                gradient: GameGradients.board,
+                                gradient: worldTheme.boardGradient,
                                 borderRadius: GameRadius.extraLargeRadius,
                                 border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.66),
+                                  color: worldTheme.secondaryAccent
+                                      .withValues(alpha: 0.72),
                                   width: 2,
                                 ),
                                 boxShadow: [
@@ -917,6 +970,7 @@ class _GameScreenState extends State<GameScreen> {
                           ),
                         ),
                         _BoosterBar(
+                          worldTheme: worldTheme,
                           onShuffle: _canUseBooster(
                                   _shuffleUsesRemaining, _extraShuffleBoosters)
                               ? () => unawaited(_useShuffle(engine))
@@ -940,6 +994,7 @@ class _GameScreenState extends State<GameScreen> {
                         _Tray(
                           trayTiles: trayTiles,
                           catalog: visualCatalog,
+                          worldTheme: worldTheme,
                         ),
                       ],
                     ),
@@ -1250,6 +1305,7 @@ class _ObjectiveBadge extends StatelessWidget {
 
 class _BoosterBar extends StatelessWidget {
   const _BoosterBar({
+    required this.worldTheme,
     required this.onShuffle,
     required this.onHint,
     required this.onUndo,
@@ -1261,6 +1317,7 @@ class _BoosterBar extends StatelessWidget {
   final VoidCallback? onShuffle;
   final VoidCallback? onHint;
   final VoidCallback? onUndo;
+  final WorldVisualTheme worldTheme;
   final String undoLabel;
   final String hintLabel;
   final String shuffleLabel;
@@ -1282,6 +1339,7 @@ class _BoosterBar extends StatelessWidget {
               icon: const Icon(Icons.arrow_back_rounded),
               label: 'Undo',
               badge: undoLabel,
+              accent: worldTheme.boosterAccents[0],
             ),
           ),
           const SizedBox(width: GameSpacing.sm),
@@ -1291,7 +1349,7 @@ class _BoosterBar extends StatelessWidget {
               icon: const Icon(Icons.pets_rounded),
               label: 'Hint',
               badge: hintLabel,
-              accent: GameColors.secondaryPurple,
+              accent: worldTheme.boosterAccents[1],
             ),
           ),
           const SizedBox(width: GameSpacing.sm),
@@ -1301,7 +1359,7 @@ class _BoosterBar extends StatelessWidget {
               icon: const Icon(Icons.air_rounded),
               label: 'Shuffle',
               badge: shuffleLabel,
-              accent: GameColors.primaryBlueLight,
+              accent: worldTheme.boosterAccents[2],
             ),
           ),
         ],
@@ -1395,10 +1453,15 @@ class _BoosterButton extends StatelessWidget {
 }
 
 class _Tray extends StatelessWidget {
-  const _Tray({required this.trayTiles, required this.catalog});
+  const _Tray({
+    required this.trayTiles,
+    required this.catalog,
+    required this.worldTheme,
+  });
 
   final List<Tile?> trayTiles;
   final Map<String, TileArt> catalog;
+  final WorldVisualTheme worldTheme;
 
   @override
   Widget build(BuildContext context) {
@@ -1447,9 +1510,12 @@ class _Tray extends StatelessWidget {
       ),
       padding: const EdgeInsets.all(GameSpacing.md),
       decoration: BoxDecoration(
-        gradient: GameGradients.tray,
+        gradient: worldTheme.trayGradient,
         borderRadius: GameRadius.extraLargeRadius,
-        border: Border.all(color: Colors.white70, width: 3),
+        border: Border.all(
+          color: worldTheme.secondaryAccent.withValues(alpha: 0.78),
+          width: 3,
+        ),
         boxShadow: [
           ...GameShadows.medium(),
           BoxShadow(

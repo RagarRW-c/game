@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../main.dart';
 import '../theme/game_theme.dart';
+import '../theme/world_theme.dart';
 import '../widgets/game_ui.dart';
 import 'map_screen.dart';
 
@@ -14,6 +15,7 @@ class GameWorld {
     required this.unlockAfterLevel,
     required this.icon,
     required this.gradient,
+    required this.visualTheme,
   });
 
   final String name;
@@ -23,6 +25,7 @@ class GameWorld {
   final int unlockAfterLevel;
   final IconData icon;
   final Gradient gradient;
+  final WorldVisualTheme visualTheme;
 }
 
 const gameWorlds = <GameWorld>[
@@ -34,6 +37,7 @@ const gameWorlds = <GameWorld>[
     unlockAfterLevel: 0,
     icon: Icons.local_florist_rounded,
     gradient: GameGradients.successButton,
+    visualTheme: WorldThemes.garden,
   ),
   GameWorld(
     name: 'Ocean World',
@@ -43,6 +47,7 @@ const gameWorlds = <GameWorld>[
     unlockAfterLevel: 10,
     icon: Icons.waves_rounded,
     gradient: GameGradients.primaryButton,
+    visualTheme: WorldThemes.ocean,
   ),
   GameWorld(
     name: 'Candy World',
@@ -52,6 +57,7 @@ const gameWorlds = <GameWorld>[
     unlockAfterLevel: 20,
     icon: Icons.cookie_rounded,
     gradient: GameGradients.goldButton,
+    visualTheme: WorldThemes.candy,
   ),
   GameWorld(
     name: 'Space World',
@@ -61,6 +67,7 @@ const gameWorlds = <GameWorld>[
     unlockAfterLevel: 30,
     icon: Icons.auto_awesome_rounded,
     gradient: GameGradients.dialogHeader,
+    visualTheme: WorldThemes.space,
   ),
 ];
 
@@ -169,6 +176,8 @@ class _WorldCard extends StatelessWidget {
         onTap: onTap,
         child: GameCard(
           padding: const EdgeInsets.all(GameSpacing.lg),
+          gradient:
+              unlocked ? world.visualTheme.boardGradient : GameGradients.panel,
           shadow: GameShadows.medium(),
           child: Row(
             children: [
@@ -205,7 +214,7 @@ class _WorldCard extends StatelessWidget {
                         minHeight: 8,
                         value: completed / 10,
                         backgroundColor: GameColors.borderBlue,
-                        color: GameColors.successGreen,
+                        color: world.visualTheme.primaryAccent,
                       ),
                     ),
                   ],

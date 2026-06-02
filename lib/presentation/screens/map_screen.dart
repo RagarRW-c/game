@@ -42,6 +42,7 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: GameBackground(
+        worldTheme: widget.world.visualTheme,
         child: SafeArea(
           child: Column(
             children: [
@@ -160,7 +161,7 @@ class _WorldMapBanner extends StatelessWidget {
     return GameCard(
       padding: const EdgeInsets.all(GameSpacing.lg),
       gradient: world.gradient,
-      shadow: GameShadows.medium(),
+      shadow: GameShadows.glow(world.visualTheme.primaryAccent),
       child: Row(
         children: [
           Container(

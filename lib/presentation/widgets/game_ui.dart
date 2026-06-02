@@ -1,31 +1,40 @@
 import 'package:flutter/material.dart';
 
 import '../theme/game_theme.dart';
+import '../theme/world_theme.dart';
 
 class GameBackground extends StatelessWidget {
-  const GameBackground({super.key, required this.child});
+  const GameBackground({super.key, required this.child, this.worldTheme});
 
   final Widget child;
+  final WorldVisualTheme? worldTheme;
 
   @override
   Widget build(BuildContext context) {
+    final theme = worldTheme;
     return Container(
-      decoration: const BoxDecoration(gradient: GameGradients.background),
+      decoration: BoxDecoration(
+        gradient: theme?.background ?? GameGradients.background,
+      ),
       child: Stack(
         children: [
-          const Positioned(
+          Positioned(
             left: -42,
             top: 118,
             width: 180,
             height: 180,
-            child: GameSoftGlow(color: GameColors.primaryBlueLight),
+            child: GameSoftGlow(
+              color: theme?.primaryAccent ?? GameColors.primaryBlueLight,
+            ),
           ),
-          const Positioned(
+          Positioned(
             right: -54,
             top: 242,
             width: 210,
             height: 210,
-            child: GameSoftGlow(color: GameColors.secondaryPurple),
+            child: GameSoftGlow(
+              color: theme?.secondaryAccent ?? GameColors.secondaryPurple,
+            ),
           ),
           Positioned(
             left: GameSpacing.xxl,
@@ -49,23 +58,32 @@ class GameBackground extends StatelessWidget {
             final left = (index * 47 % 360).toDouble();
             final top = 28 + (index * 83 % 660).toDouble();
             final size = 2.5 + (index % 3);
+            final icon = theme == null
+                ? null
+                : theme.decorationIcons[index % theme.decorationIcons.length];
             return Positioned(
               left: left,
               top: top,
-              width: size,
-              height: size,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.56),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.white.withValues(alpha: 0.35),
-                      blurRadius: 8,
+              width: icon == null ? size : 16,
+              height: icon == null ? size : 16,
+              child: icon == null
+                  ? DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.56),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.35),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                    )
+                  : Icon(
+                      icon,
+                      color: Colors.white.withValues(alpha: 0.22),
+                      size: 16,
                     ),
-                  ],
-                ),
-              ),
             );
           }),
           child,
