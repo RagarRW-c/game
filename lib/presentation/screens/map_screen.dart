@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
-import '../../data/level_repository.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
 import 'booster_shop_screen.dart';
 import 'game_screen.dart';
 import 'lucky_wheel_screen.dart';
+import 'world_selection_screen.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({super.key, required this.world});
 
   static const route = '/map';
+  final GameWorld world;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -45,8 +46,17 @@ class _MapScreenState extends State<MapScreen> {
           child: Column(
             children: [
               GameHeader(
-                title: 'Adventure Map',
+                title: widget.world.name,
                 onBack: () => Navigator.of(context).maybePop(),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  GameSpacing.lg,
+                  0,
+                  GameSpacing.lg,
+                  GameSpacing.md,
+                ),
+                child: _WorldMapBanner(world: widget.world),
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: GameSpacing.lg),
@@ -98,9 +108,9 @@ class _MapScreenState extends State<MapScreen> {
                         mainAxisSpacing: GameSpacing.lg,
                         crossAxisSpacing: GameSpacing.lg,
                       ),
-                      itemCount: LevelRepository.levelCount,
+                      itemCount: 10,
                       itemBuilder: (context, index) {
-                        final level = index + 1;
+                        final level = widget.world.startLevel + index;
                         final unlocked = level <= highest;
                         return _LevelCard(
                           level: level,
@@ -135,6 +145,66 @@ class _MapScreenState extends State<MapScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _WorldMapBanner extends StatelessWidget {
+  const _WorldMapBanner({required this.world});
+
+  final GameWorld world;
+
+  @override
+  Widget build(BuildContext context) {
+    return GameCard(
+      padding: const EdgeInsets.all(GameSpacing.lg),
+      gradient: world.gradient,
+      shadow: GameShadows.medium(),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: GameShadows.light(),
+            ),
+            child: Icon(world.icon, color: Colors.white, size: 34),
+          ),
+          const SizedBox(width: GameSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  world.name,
+                  style: GameTextStyles.h2.copyWith(
+                    color: Colors.white,
+                    fontSize: 24,
+                  ),
+                ),
+                const SizedBox(height: GameSpacing.xs),
+                Text(
+                  'Levels ${world.startLevel}-${world.endLevel}',
+                  style: GameTextStyles.body.copyWith(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 112,
+            child: GameButton(
+              label: 'Worlds',
+              icon: Icons.public_rounded,
+              onPressed: () => Navigator.of(context).maybePop(),
+              variant: GameButtonVariant.secondary,
+              height: 46,
+            ),
+          ),
+        ],
       ),
     );
   }

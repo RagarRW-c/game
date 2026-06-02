@@ -7,8 +7,8 @@ import '../widgets/primary_button.dart';
 import 'booster_shop_screen.dart';
 import 'daily_challenges_screen.dart';
 import 'lucky_wheel_screen.dart';
-import 'map_screen.dart';
 import 'settings_screen.dart';
+import 'world_selection_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -153,8 +153,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   PrimaryButton(
                     label: 'Play',
                     icon: Icons.map_rounded,
-                    onPressed: () =>
-                        Navigator.pushNamed(context, MapScreen.route),
+                    onPressed: () => Navigator.pushNamed(
+                        context, WorldSelectionScreen.route),
                   ),
                   const SizedBox(height: GameSpacing.md),
                   PrimaryButton(

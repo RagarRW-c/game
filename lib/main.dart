@@ -11,6 +11,7 @@ import 'presentation/screens/lucky_wheel_screen.dart';
 import 'presentation/screens/main_menu_screen.dart';
 import 'presentation/screens/map_screen.dart';
 import 'presentation/screens/settings_screen.dart';
+import 'presentation/screens/world_selection_screen.dart';
 import 'presentation/theme/game_theme.dart';
 
 Future<void> main() async {
@@ -69,13 +70,19 @@ class _TripleTileAppState extends State<TripleTileApp> {
           BoosterShopScreen.route: (_) => const BoosterShopScreen(),
           DailyChallengesScreen.route: (_) => const DailyChallengesScreen(),
           LuckyWheelScreen.route: (_) => const LuckyWheelScreen(),
-          MapScreen.route: (_) => const MapScreen(),
+          WorldSelectionScreen.route: (_) => const WorldSelectionScreen(),
           SettingsScreen.route: (_) => const SettingsScreen(),
         },
         onGenerateRoute: (settings) {
           if (settings.name == GameScreen.route) {
             return MaterialPageRoute<void>(
               builder: (_) => GameScreen(level: settings.arguments! as int),
+            );
+          }
+          if (settings.name == MapScreen.route) {
+            return MaterialPageRoute<void>(
+              builder: (_) =>
+                  MapScreen(world: settings.arguments! as GameWorld),
             );
           }
           return null;
