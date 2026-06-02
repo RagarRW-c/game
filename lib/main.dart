@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'core/audio_service.dart';
 import 'data/level_repository.dart';
 import 'data/progress_repository.dart';
+import 'presentation/screens/achievements_screen.dart';
 import 'presentation/screens/booster_shop_screen.dart';
 import 'presentation/screens/daily_challenges_screen.dart';
 import 'presentation/screens/game_screen.dart';
@@ -11,6 +12,7 @@ import 'presentation/screens/lucky_wheel_screen.dart';
 import 'presentation/screens/main_menu_screen.dart';
 import 'presentation/screens/map_screen.dart';
 import 'presentation/screens/settings_screen.dart';
+import 'presentation/screens/statistics_screen.dart';
 import 'presentation/screens/world_selection_screen.dart';
 import 'presentation/theme/game_theme.dart';
 
@@ -67,11 +69,13 @@ class _TripleTileAppState extends State<TripleTileApp> {
         supportedLocales: const [Locale('en')],
         routes: {
           MainMenuScreen.route: (_) => const MainMenuScreen(),
+          AchievementsScreen.route: (_) => const AchievementsScreen(),
           BoosterShopScreen.route: (_) => const BoosterShopScreen(),
           DailyChallengesScreen.route: (_) => const DailyChallengesScreen(),
           LuckyWheelScreen.route: (_) => const LuckyWheelScreen(),
           WorldSelectionScreen.route: (_) => const WorldSelectionScreen(),
           SettingsScreen.route: (_) => const SettingsScreen(),
+          StatisticsScreen.route: (_) => const StatisticsScreen(),
         },
         onGenerateRoute: (settings) {
           if (settings.name == GameScreen.route) {

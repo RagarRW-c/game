@@ -15,6 +15,67 @@ class DailySpinStatus {
 
 enum DailyChallengeId { completeLevel, matchTiles, useLuckyWheel }
 
+enum BoosterKind { undo, hint, shuffle }
+
+enum AchievementId {
+  firstMatch,
+  firstWin,
+  gardenWorld,
+  oceanWorld,
+  candyWorld,
+  spaceWorld,
+  luckyPlayer,
+  boosterMaster,
+}
+
+class AchievementDefinition {
+  const AchievementDefinition({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.reward,
+  });
+
+  final AchievementId id;
+  final String name;
+  final String description;
+  final int reward;
+}
+
+class AchievementState {
+  const AchievementState({
+    required this.definition,
+    required this.unlocked,
+  });
+
+  final AchievementDefinition definition;
+  final bool unlocked;
+}
+
+class GameStatistics {
+  const GameStatistics({
+    required this.levelsCompleted,
+    required this.totalTilesMatched,
+    required this.totalCoinsEarned,
+    required this.totalBoostersUsed,
+    required this.hintsUsed,
+    required this.shufflesUsed,
+    required this.undosUsed,
+    required this.luckyWheelSpins,
+    required this.bestStarsTotal,
+  });
+
+  final int levelsCompleted;
+  final int totalTilesMatched;
+  final int totalCoinsEarned;
+  final int totalBoostersUsed;
+  final int hintsUsed;
+  final int shufflesUsed;
+  final int undosUsed;
+  final int luckyWheelSpins;
+  final int bestStarsTotal;
+}
+
 class DailyChallengesState {
   const DailyChallengesState({
     required this.dateKey,
@@ -79,7 +140,68 @@ class ProgressRepository {
   static const _dailyChallengeLevelClaimedKey = 'daily_challenge_level_claimed';
   static const _dailyChallengeTilesClaimedKey = 'daily_challenge_tiles_claimed';
   static const _dailyChallengeWheelClaimedKey = 'daily_challenge_wheel_claimed';
+  static const _levelStarsPrefix = 'level_stars_';
+  static const _achievementPrefix = 'achievement_';
+  static const _statsLevelsCompletedKey = 'stats_levels_completed';
+  static const _statsTilesMatchedKey = 'stats_tiles_matched';
+  static const _statsCoinsEarnedKey = 'stats_coins_earned';
+  static const _statsBoostersUsedKey = 'stats_boosters_used';
+  static const _statsHintsUsedKey = 'stats_hints_used';
+  static const _statsShufflesUsedKey = 'stats_shuffles_used';
+  static const _statsUndosUsedKey = 'stats_undos_used';
+  static const _statsLuckyWheelSpinsKey = 'stats_lucky_wheel_spins';
   static const defaultFinalCode = '4286';
+
+  static const achievementsCatalog = <AchievementDefinition>[
+    AchievementDefinition(
+      id: AchievementId.firstMatch,
+      name: 'First Match',
+      description: 'Clear your first set of 3 matching tiles.',
+      reward: 50,
+    ),
+    AchievementDefinition(
+      id: AchievementId.firstWin,
+      name: 'First Win',
+      description: 'Complete your first level.',
+      reward: 100,
+    ),
+    AchievementDefinition(
+      id: AchievementId.gardenWorld,
+      name: 'Complete Garden World',
+      description: 'Complete Level 10.',
+      reward: 300,
+    ),
+    AchievementDefinition(
+      id: AchievementId.oceanWorld,
+      name: 'Complete Ocean World',
+      description: 'Complete Level 20.',
+      reward: 400,
+    ),
+    AchievementDefinition(
+      id: AchievementId.candyWorld,
+      name: 'Complete Candy World',
+      description: 'Complete Level 30.',
+      reward: 500,
+    ),
+    AchievementDefinition(
+      id: AchievementId.spaceWorld,
+      name: 'Complete Space World',
+      description: 'Complete Level 40.',
+      reward: 700,
+    ),
+    AchievementDefinition(
+      id: AchievementId.luckyPlayer,
+      name: 'Lucky Player',
+      description: 'Use the Lucky Wheel 7 times.',
+      reward: 250,
+    ),
+    AchievementDefinition(
+      id: AchievementId.boosterMaster,
+      name: 'Booster Master',
+      description: 'Use 25 boosters.',
+      reward: 250,
+    ),
+  ];
 
   String _normalizeFinalCode(String value) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
@@ -137,6 +259,7 @@ class ProgressRepository {
     final prefs = await SharedPreferences.getInstance();
     final updated = (prefs.getInt(_coinsKey) ?? 0) + amount;
     await prefs.setInt(_coinsKey, updated);
+    await _incrementInt(prefs, _statsCoinsEarnedKey, amount);
     return updated;
   }
 
@@ -160,6 +283,7 @@ class ProgressRepository {
     final updated = (prefs.getInt(_coinsKey) ?? 0) + reward;
     await prefs.setString(_lastDailyRewardDateKey, today);
     await prefs.setInt(_coinsKey, updated);
+    await _incrementInt(prefs, _statsCoinsEarnedKey, reward);
     return updated;
   }
 
@@ -271,6 +395,106 @@ class ProgressRepository {
     return _dailyChallengesFromPrefs(prefs);
   }
 
+  Future<void> recordMatchedTiles(int amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    await _incrementInt(prefs, _dailyChallengeMatchedTilesKey, amount);
+    await _incrementInt(prefs, _statsTilesMatchedKey, amount);
+    await _unlockAchievements(prefs, const [AchievementId.firstMatch]);
+  }
+
+  Future<void> recordLevelCompleted(int level, int stars) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    await _incrementInt(prefs, _dailyChallengeCompletedLevelsKey, 1);
+    await _incrementInt(prefs, _statsLevelsCompletedKey, 1);
+    await saveBestStarsForLevel(level, stars, prefs: prefs);
+
+    final achievementIds = <AchievementId>[AchievementId.firstWin];
+    if (level >= 10) achievementIds.add(AchievementId.gardenWorld);
+    if (level >= 20) achievementIds.add(AchievementId.oceanWorld);
+    if (level >= 30) achievementIds.add(AchievementId.candyWorld);
+    if (level >= 40) achievementIds.add(AchievementId.spaceWorld);
+    await _unlockAchievements(prefs, achievementIds);
+  }
+
+  Future<void> recordBoosterUsed(BoosterKind kind) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _incrementInt(prefs, _statsBoostersUsedKey, 1);
+    switch (kind) {
+      case BoosterKind.undo:
+        await _incrementInt(prefs, _statsUndosUsedKey, 1);
+      case BoosterKind.hint:
+        await _incrementInt(prefs, _statsHintsUsedKey, 1);
+      case BoosterKind.shuffle:
+        await _incrementInt(prefs, _statsShufflesUsedKey, 1);
+    }
+    if ((prefs.getInt(_statsBoostersUsedKey) ?? 0) >= 25) {
+      await _unlockAchievements(prefs, const [AchievementId.boosterMaster]);
+    }
+  }
+
+  Future<void> recordLuckyWheelSpin() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    await prefs.setBool(_dailyChallengeLuckyWheelUsedKey, true);
+    await _incrementInt(prefs, _statsLuckyWheelSpinsKey, 1);
+    if ((prefs.getInt(_statsLuckyWheelSpinsKey) ?? 0) >= 7) {
+      await _unlockAchievements(prefs, const [AchievementId.luckyPlayer]);
+    }
+  }
+
+  Future<int> bestStarsForLevel(int level) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_levelStarsKey(level)) ?? 0;
+  }
+
+  Future<Map<int, int>> bestStarsByLevel(int startLevel, int endLevel) async {
+    final prefs = await SharedPreferences.getInstance();
+    return <int, int>{
+      for (var level = startLevel; level <= endLevel; level++)
+        level: prefs.getInt(_levelStarsKey(level)) ?? 0,
+    };
+  }
+
+  Future<void> saveBestStarsForLevel(
+    int level,
+    int stars, {
+    SharedPreferences? prefs,
+  }) async {
+    final resolvedPrefs = prefs ?? await SharedPreferences.getInstance();
+    final key = _levelStarsKey(level);
+    final current = resolvedPrefs.getInt(key) ?? 0;
+    if (stars > current) await resolvedPrefs.setInt(key, stars);
+  }
+
+  Future<List<AchievementState>> achievements() async {
+    final prefs = await SharedPreferences.getInstance();
+    return achievementsCatalog
+        .map(
+          (definition) => AchievementState(
+            definition: definition,
+            unlocked: prefs.getBool(_achievementKey(definition.id)) ?? false,
+          ),
+        )
+        .toList();
+  }
+
+  Future<GameStatistics> statistics() async {
+    final prefs = await SharedPreferences.getInstance();
+    return GameStatistics(
+      levelsCompleted: prefs.getInt(_statsLevelsCompletedKey) ?? 0,
+      totalTilesMatched: prefs.getInt(_statsTilesMatchedKey) ?? 0,
+      totalCoinsEarned: prefs.getInt(_statsCoinsEarnedKey) ?? 0,
+      totalBoostersUsed: prefs.getInt(_statsBoostersUsedKey) ?? 0,
+      hintsUsed: prefs.getInt(_statsHintsUsedKey) ?? 0,
+      shufflesUsed: prefs.getInt(_statsShufflesUsedKey) ?? 0,
+      undosUsed: prefs.getInt(_statsUndosUsedKey) ?? 0,
+      luckyWheelSpins: prefs.getInt(_statsLuckyWheelSpinsKey) ?? 0,
+      bestStarsTotal: _bestStarsTotal(prefs),
+    );
+  }
+
   Future<int?> claimDailyChallenge(DailyChallengeId id) async {
     final prefs = await SharedPreferences.getInstance();
     await _ensureDailyChallengesForToday(prefs);
@@ -346,6 +570,46 @@ class ProgressRepository {
       case DailyChallengeId.useLuckyWheel:
         return _dailyChallengeWheelClaimedKey;
     }
+  }
+
+  String _levelStarsKey(int level) => '$_levelStarsPrefix$level';
+
+  String _achievementKey(AchievementId id) => '$_achievementPrefix${id.name}';
+
+  AchievementDefinition _achievementDefinition(AchievementId id) {
+    return achievementsCatalog.firstWhere((definition) => definition.id == id);
+  }
+
+  Future<void> _unlockAchievements(
+    SharedPreferences prefs,
+    Iterable<AchievementId> ids,
+  ) async {
+    for (final id in ids) {
+      final key = _achievementKey(id);
+      if (prefs.getBool(key) ?? false) continue;
+      await prefs.setBool(key, true);
+      final reward = _achievementDefinition(id).reward;
+      final updatedCoins = (prefs.getInt(_coinsKey) ?? 0) + reward;
+      await prefs.setInt(_coinsKey, updatedCoins);
+      await _incrementInt(prefs, _statsCoinsEarnedKey, reward);
+      debugPrint('Achievement unlocked: ${id.name}, reward=$reward');
+    }
+  }
+
+  Future<void> _incrementInt(
+    SharedPreferences prefs,
+    String key,
+    int amount,
+  ) async {
+    await prefs.setInt(key, (prefs.getInt(key) ?? 0) + amount);
+  }
+
+  int _bestStarsTotal(SharedPreferences prefs) {
+    var total = 0;
+    for (var level = 1; level <= 40; level++) {
+      total += prefs.getInt(_levelStarsKey(level)) ?? 0;
+    }
+    return total;
   }
 
   String _dateKey(DateTime date) {

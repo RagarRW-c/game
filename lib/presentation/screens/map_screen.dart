@@ -19,15 +19,22 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  late Future<int> _highestFuture;
+  late Future<_MapProgress> _progressFuture;
   bool _dailySpinAvailable = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _highestFuture =
-        AppScope.of(context).progressRepository.highestUnlockedLevel();
+    _progressFuture = _loadMapProgress();
     _loadDailySpin();
+  }
+
+  Future<_MapProgress> _loadMapProgress() async {
+    final repository = AppScope.of(context).progressRepository;
+    final highest = await repository.highestUnlockedLevel();
+    final stars = await repository.bestStarsByLevel(
+        widget.world.startLevel, widget.world.endLevel);
+    return _MapProgress(highestUnlockedLevel: highest, starsByLevel: stars);
   }
 
   Future<void> _loadDailySpin() async {
@@ -97,10 +104,11 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
               Expanded(
-                child: FutureBuilder<int>(
-                  future: _highestFuture,
+                child: FutureBuilder<_MapProgress>(
+                  future: _progressFuture,
                   builder: (context, snapshot) {
-                    final highest = snapshot.data ?? 1;
+                    final progress = snapshot.data ?? const _MapProgress();
+                    final highest = progress.highestUnlockedLevel;
                     return GridView.builder(
                       padding: const EdgeInsets.all(GameSpacing.lg),
                       gridDelegate:
@@ -116,6 +124,7 @@ class _MapScreenState extends State<MapScreen> {
                         return _LevelCard(
                           level: level,
                           unlocked: unlocked,
+                          stars: progress.starsByLevel[level] ?? 0,
                           status: level < highest
                               ? 'Cleared'
                               : unlocked
@@ -130,9 +139,7 @@ class _MapScreenState extends State<MapScreen> {
                                   );
                                   if (mounted) {
                                     setState(() {
-                                      _highestFuture = AppScope.of(context)
-                                          .progressRepository
-                                          .highestUnlockedLevel();
+                                      _progressFuture = _loadMapProgress();
                                     });
                                   }
                                 }
@@ -149,6 +156,16 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
   }
+}
+
+class _MapProgress {
+  const _MapProgress({
+    this.highestUnlockedLevel = 1,
+    this.starsByLevel = const <int, int>{},
+  });
+
+  final int highestUnlockedLevel;
+  final Map<int, int> starsByLevel;
 }
 
 class _WorldMapBanner extends StatelessWidget {
@@ -215,12 +232,14 @@ class _LevelCard extends StatelessWidget {
   const _LevelCard({
     required this.level,
     required this.unlocked,
+    required this.stars,
     required this.status,
     required this.onTap,
   });
 
   final int level;
   final bool unlocked;
+  final int stars;
   final String status;
   final VoidCallback? onTap;
 
@@ -249,11 +268,35 @@ class _LevelCard extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: GameTextStyles.h2.copyWith(fontSize: 23),
               ),
+              const SizedBox(height: GameSpacing.xs),
+              _StarRow(stars: stars),
+              const SizedBox(height: GameSpacing.xs),
               Text(status, style: GameTextStyles.body),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _StarRow extends StatelessWidget {
+  const _StarRow({required this.stars});
+
+  final int stars;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var index = 1; index <= 3; index++)
+          Icon(
+            index <= stars ? Icons.star_rounded : Icons.star_border_rounded,
+            color: index <= stars ? GameColors.accentGold : GameColors.mutedInk,
+            size: 20,
+          ),
+      ],
     );
   }
 }

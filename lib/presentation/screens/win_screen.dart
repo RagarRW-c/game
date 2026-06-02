@@ -83,11 +83,7 @@ class WinScreen extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: _RewardBadge(
-                      icon: Icons.star_rounded,
-                      label: 'Stars',
-                      value: '$starsEarned',
-                    ),
+                    child: _StarRewardBadge(stars: starsEarned),
                   ),
                   const SizedBox(width: GameSpacing.md),
                   Expanded(
@@ -129,6 +125,43 @@ class WinScreen extends StatelessWidget {
                 onPressed: onMap,
                 variant: GameButtonVariant.secondary,
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StarRewardBadge extends StatelessWidget {
+  const _StarRewardBadge({required this.stars});
+
+  final int stars;
+
+  @override
+  Widget build(BuildContext context) {
+    return GameBadge(
+      icon: Icons.star_rounded,
+      gradient: GameGradients.badge,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Stars',
+            style: GameTextStyles.caption.copyWith(color: Colors.white),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var index = 1; index <= 3; index++)
+                Icon(
+                  index <= stars
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
             ],
           ),
         ],

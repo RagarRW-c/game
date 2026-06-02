@@ -108,7 +108,7 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
     final reward = _rewards[selectedIndex];
     await _applyReward(reward);
     await repository.markDailySpinClaimed(DateTime.now());
-    await repository.recordDailyLuckyWheelUsed();
+    await repository.recordLuckyWheelSpin();
     if (!mounted) return;
 
     setState(() {

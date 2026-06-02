@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/tile_catalog.dart';
 import '../../data/level_repository.dart';
+import '../../data/progress_repository.dart';
 import '../../domain/game_engine.dart';
 import '../../domain/game_result.dart';
 import '../../domain/level.dart';
@@ -42,6 +43,9 @@ class _GameScreenState extends State<GameScreen> {
   int _undoUsesRemaining = _maxBoosterUses;
   int _hintUsesRemaining = _maxBoosterUses;
   int _shuffleUsesRemaining = _maxBoosterUses;
+  int _undoUsedThisLevel = 0;
+  int _hintUsedThisLevel = 0;
+  int _shuffleUsedThisLevel = 0;
   int _coins = 0;
   int _extraHintBoosters = 0;
   int _extraShuffleBoosters = 0;
@@ -154,6 +158,21 @@ class _GameScreenState extends State<GameScreen> {
     _undoUsesRemaining = _maxBoosterUses;
     _hintUsesRemaining = _maxBoosterUses;
     _shuffleUsesRemaining = _maxBoosterUses;
+    _undoUsedThisLevel = 0;
+    _hintUsedThisLevel = 0;
+    _shuffleUsedThisLevel = 0;
+  }
+
+  Future<void> _recordMatchedTiles(int amount) async {
+    await _scope.progressRepository.recordMatchedTiles(amount);
+    final coins = await _scope.progressRepository.coins();
+    if (mounted) setState(() => _coins = coins);
+  }
+
+  Future<void> _recordBoosterUsed(BoosterKind kind) async {
+    await _scope.progressRepository.recordBoosterUsed(kind);
+    final coins = await _scope.progressRepository.coins();
+    if (mounted) setState(() => _coins = coins);
   }
 
   bool _canUseBooster(int freeUsesRemaining, int inventory) {
@@ -345,7 +364,7 @@ class _GameScreenState extends State<GameScreen> {
     if (matchedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${matchedIds.join(',')}');
       unawaited(
-        _scope.progressRepository.recordDailyMatchedTiles(matchedIds.length),
+        _recordMatchedTiles(matchedIds.length),
       );
       _playSfx(_scope.audioService.playMatch, 'match');
       _haptic(HapticFeedback.mediumImpact);
@@ -394,6 +413,7 @@ class _GameScreenState extends State<GameScreen> {
       _hintedTileIds.clear();
       collected = engine.collectHintTileIds(hintIds);
       if (collected && usedFreeHint) _hintUsesRemaining--;
+      if (collected) _hintUsedThisLevel++;
     })) {
       return;
     }
@@ -418,11 +438,12 @@ class _GameScreenState extends State<GameScreen> {
     if (removedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${removedIds.join(',')}');
       unawaited(
-        _scope.progressRepository.recordDailyMatchedTiles(removedIds.length),
+        _recordMatchedTiles(removedIds.length),
       );
       _playSfx(_scope.audioService.playMatch, 'match');
       _haptic(HapticFeedback.mediumImpact);
     }
+    unawaited(_recordBoosterUsed(BoosterKind.hint));
     debugPrint('Cat helper complete');
     _debugValidateTiles('cat', engine);
     if (engine.result == GameResult.won) await _handleWin();
@@ -477,11 +498,13 @@ class _GameScreenState extends State<GameScreen> {
       }
       shuffled = engine.shuffleBoard();
       if (shuffled && usedFreeShuffle) _shuffleUsesRemaining--;
+      if (shuffled) _shuffleUsedThisLevel++;
     })) {
       return false;
     }
     if (!shuffled) return false;
     _playSfx(_scope.audioService.playBooster, 'booster');
+    unawaited(_recordBoosterUsed(BoosterKind.shuffle));
     _debugValidateTiles('shuffle', engine);
     debugPrint('Shuffle completed');
     return true;
@@ -507,10 +530,12 @@ class _GameScreenState extends State<GameScreen> {
       if (undone) {
         _resetAnimationState();
         if (usedFreeUndo) _undoUsesRemaining--;
+        _undoUsedThisLevel++;
       }
     });
     if (undone) {
       _playSfx(_scope.audioService.playBooster, 'booster');
+      unawaited(_recordBoosterUsed(BoosterKind.undo));
       final afterTrayIds = Set<String>.from(engine.tray);
       final restoredIds = beforeTrayIds.difference(afterTrayIds);
       _debugTrayChange('undo', engine, changedTileIds: restoredIds);
@@ -619,8 +644,17 @@ class _GameScreenState extends State<GameScreen> {
     if (_winDialogShowing || !mounted) return;
     _winDialogShowing = true;
     final scope = _scope;
+    final undoUsed = _undoUsedThisLevel;
+    final hintUsed = _hintUsedThisLevel;
+    final shuffleUsed = _shuffleUsedThisLevel;
+    final starsEarned = _starsForBoostersUsed(
+      undoUsed: undoUsed,
+      hintUsed: hintUsed,
+      shuffleUsed: shuffleUsed,
+    );
     await scope.progressRepository.unlockNextLevel(widget.level);
-    await scope.progressRepository.recordDailyLevelCompleted();
+    await scope.progressRepository
+        .recordLevelCompleted(widget.level, starsEarned);
     final updatedCoins =
         await scope.progressRepository.addCoins(_levelCompleteCoinReward);
     if (!mounted) {
@@ -637,10 +671,10 @@ class _GameScreenState extends State<GameScreen> {
         level: widget.level,
         isFinalLevel: widget.level == LevelRepository.levelCount,
         tilesCleared: _engine?.tiles.length ?? 0,
-        undoUsed: _maxBoosterUses - _undoUsesRemaining,
-        hintUsed: _maxBoosterUses - _hintUsesRemaining,
-        shuffleUsed: _maxBoosterUses - _shuffleUsesRemaining,
-        starsEarned: 3,
+        undoUsed: undoUsed,
+        hintUsed: hintUsed,
+        shuffleUsed: shuffleUsed,
+        starsEarned: starsEarned,
         coinsEarned: _levelCompleteCoinReward,
         onRestart: () {
           if (!mounted) return;
@@ -677,6 +711,17 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
     if (mounted) _winDialogShowing = false;
+  }
+
+  int _starsForBoostersUsed({
+    required int undoUsed,
+    required int hintUsed,
+    required int shuffleUsed,
+  }) {
+    final total = undoUsed + hintUsed + shuffleUsed;
+    if (total == 0) return 3;
+    if (total <= 2) return 2;
+    return 1;
   }
 
   List<Tile> _renderedBoardSnapshot(
