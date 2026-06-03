@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../main.dart';
 import '../theme/game_theme.dart';
+import '../widgets/achievement_popup.dart';
 import '../widgets/game_ui.dart';
 
 class LuckyWheelScreen extends StatefulWidget {
@@ -109,6 +110,9 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
     await _applyReward(reward);
     await repository.markDailySpinClaimed(DateTime.now());
     await repository.recordLuckyWheelSpin();
+    if (mounted) {
+      await showPendingAchievementPopups(context, repository);
+    }
     if (!mounted) return;
 
     setState(() {
@@ -127,10 +131,13 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
     switch (reward.booster) {
       case _WheelBooster.hint:
         await repository.addExtraHintBoosters(1);
+        break;
       case _WheelBooster.shuffle:
         await repository.addExtraShuffleBoosters(1);
+        break;
       case _WheelBooster.undo:
         await repository.addExtraUndoBoosters(1);
+        break;
       case null:
         break;
     }

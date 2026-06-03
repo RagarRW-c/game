@@ -13,6 +13,34 @@ class DailySpinStatus {
   final bool canSpin;
 }
 
+class DailyLoginStreakStatus {
+  const DailyLoginStreakStatus({
+    required this.todayKey,
+    required this.lastClaimDate,
+    required this.currentStreak,
+    required this.claimDay,
+    required this.reward,
+    required this.available,
+  });
+
+  final String todayKey;
+  final String? lastClaimDate;
+  final int currentStreak;
+  final int claimDay;
+  final int reward;
+  final bool available;
+}
+
+class DailyLoginStreakClaim {
+  const DailyLoginStreakClaim({
+    required this.status,
+    required this.coins,
+  });
+
+  final DailyLoginStreakStatus status;
+  final int coins;
+}
+
 enum DailyChallengeId { completeLevel, matchTiles, useLuckyWheel }
 
 enum BoosterKind { undo, hint, shuffle }
@@ -50,6 +78,12 @@ class AchievementState {
 
   final AchievementDefinition definition;
   final bool unlocked;
+}
+
+class PendingAchievementPopup {
+  const PendingAchievementPopup({required this.definition});
+
+  final AchievementDefinition definition;
 }
 
 class GameStatistics {
@@ -140,6 +174,8 @@ class ProgressRepository {
   static const _codeKey = 'final_code';
   static const _coinsKey = 'coins';
   static const _lastDailyRewardDateKey = 'last_daily_reward_date';
+  static const _dailyLoginStreakKey = 'daily_login_streak';
+  static const _dailyLoginLastClaimDateKey = 'daily_login_last_claim_date';
   static const _lastDailySpinDateKey = 'last_daily_spin_date';
   static const _levelOneTutorialSeenKey = 'level_one_tutorial_seen';
   static const _extraHintBoostersKey = 'extra_hint_boosters';
@@ -156,6 +192,8 @@ class ProgressRepository {
   static const _dailyChallengeWheelClaimedKey = 'daily_challenge_wheel_claimed';
   static const _levelStarsPrefix = 'level_stars_';
   static const _achievementPrefix = 'achievement_';
+  static const _pendingAchievementPopupIdsKey = 'pending_achievement_popup_ids';
+  static const _collectionPrefix = 'collection_';
   static const _statsLevelsCompletedKey = 'stats_levels_completed';
   static const _statsTilesMatchedKey = 'stats_tiles_matched';
   static const _statsCoinsEarnedKey = 'stats_coins_earned';
@@ -166,6 +204,24 @@ class ProgressRepository {
   static const _statsLuckyWheelSpinsKey = 'stats_lucky_wheel_spins';
   static const _finalRewardUnlockedKey = 'final_reward_unlocked';
   static const defaultFinalCode = '4286';
+
+  static const _dailyLoginRewards = <int, int>{
+    1: 50,
+    2: 75,
+    3: 100,
+    4: 125,
+    5: 150,
+    6: 200,
+    7: 300,
+  };
+
+  static const _collectionTileTypes = <String>{
+    'apple',
+    'banana',
+    'berry',
+    'carrot',
+    'star',
+  };
 
   static const achievementsCatalog = <AchievementDefinition>[
     AchievementDefinition(
@@ -291,6 +347,35 @@ class ProgressRepository {
     return prefs.getString(_lastDailyRewardDateKey) != _dateKey(now);
   }
 
+  Future<DailyLoginStreakStatus> dailyLoginStreakStatus(DateTime now) async {
+    final prefs = await SharedPreferences.getInstance();
+    return _dailyLoginStreakStatusFromPrefs(prefs, now);
+  }
+
+  Future<DailyLoginStreakClaim?> claimDailyLoginStreak(DateTime now) async {
+    final prefs = await SharedPreferences.getInstance();
+    final status = _dailyLoginStreakStatusFromPrefs(prefs, now);
+    if (!status.available) return null;
+
+    final updatedCoins = (prefs.getInt(_coinsKey) ?? 0) + status.reward;
+    await prefs.setString(_dailyLoginLastClaimDateKey, status.todayKey);
+    await prefs.setInt(_dailyLoginStreakKey, status.claimDay);
+    await prefs.setInt(_coinsKey, updatedCoins);
+    await _incrementInt(prefs, _statsCoinsEarnedKey, status.reward);
+
+    return DailyLoginStreakClaim(
+      status: DailyLoginStreakStatus(
+        todayKey: status.todayKey,
+        lastClaimDate: status.todayKey,
+        currentStreak: status.claimDay,
+        claimDay: status.claimDay,
+        reward: status.reward,
+        available: false,
+      ),
+      coins: updatedCoins,
+    );
+  }
+
   Future<int?> claimDailyReward(DateTime now, {int reward = 100}) async {
     final prefs = await SharedPreferences.getInstance();
     final today = _dateKey(now);
@@ -410,11 +495,18 @@ class ProgressRepository {
     return _dailyChallengesFromPrefs(prefs);
   }
 
-  Future<void> recordMatchedTiles(int amount) async {
+  Future<void> recordMatchedTiles(
+    int amount, {
+    int? level,
+    Iterable<String> tileTypes = const <String>[],
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await _ensureDailyChallengesForToday(prefs);
     await _incrementInt(prefs, _dailyChallengeMatchedTilesKey, amount);
     await _incrementInt(prefs, _statsTilesMatchedKey, amount);
+    if (level != null) {
+      await _recordCollectionMatches(prefs, level, tileTypes);
+    }
     await _unlockAchievements(prefs, const [AchievementId.firstMatch]);
   }
 
@@ -440,10 +532,13 @@ class ProgressRepository {
     switch (kind) {
       case BoosterKind.undo:
         await _incrementInt(prefs, _statsUndosUsedKey, 1);
+        break;
       case BoosterKind.hint:
         await _incrementInt(prefs, _statsHintsUsedKey, 1);
+        break;
       case BoosterKind.shuffle:
         await _incrementInt(prefs, _statsShufflesUsedKey, 1);
+        break;
     }
     if ((prefs.getInt(_statsBoostersUsedKey) ?? 0) >= 25) {
       await _unlockAchievements(prefs, const [AchievementId.boosterMaster]);
@@ -494,6 +589,35 @@ class ProgressRepository {
           ),
         )
         .toList();
+  }
+
+  Future<List<PendingAchievementPopup>>
+      consumePendingAchievementPopups() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids =
+        prefs.getStringList(_pendingAchievementPopupIdsKey) ?? const <String>[];
+    if (ids.isEmpty) return const <PendingAchievementPopup>[];
+
+    await prefs.setStringList(_pendingAchievementPopupIdsKey, const <String>[]);
+    return ids
+        .map(_achievementIdFromName)
+        .whereType<AchievementId>()
+        .map(
+          (id) => PendingAchievementPopup(
+            definition: _achievementDefinition(id),
+          ),
+        )
+        .toList();
+  }
+
+  Future<Set<String>> discoveredCollectionKeys() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs
+        .getKeys()
+        .where((key) => key.startsWith(_collectionPrefix))
+        .where((key) => prefs.getBool(key) ?? false)
+        .map((key) => key.substring(_collectionPrefix.length))
+        .toSet();
   }
 
   Future<GameStatistics> statistics() async {
@@ -622,6 +746,13 @@ class ProgressRepository {
     return achievementsCatalog.firstWhere((definition) => definition.id == id);
   }
 
+  AchievementId? _achievementIdFromName(String name) {
+    for (final id in AchievementId.values) {
+      if (id.name == name) return id;
+    }
+    return null;
+  }
+
   Future<void> _unlockAchievements(
     SharedPreferences prefs,
     Iterable<AchievementId> ids,
@@ -634,7 +765,33 @@ class ProgressRepository {
       final updatedCoins = (prefs.getInt(_coinsKey) ?? 0) + reward;
       await prefs.setInt(_coinsKey, updatedCoins);
       await _incrementInt(prefs, _statsCoinsEarnedKey, reward);
+      await _queueAchievementPopup(prefs, id);
       debugPrint('Achievement unlocked: ${id.name}, reward=$reward');
+    }
+  }
+
+  Future<void> _queueAchievementPopup(
+    SharedPreferences prefs,
+    AchievementId id,
+  ) async {
+    final pending =
+        prefs.getStringList(_pendingAchievementPopupIdsKey) ?? const <String>[];
+    if (pending.contains(id.name)) return;
+    await prefs.setStringList(
+      _pendingAchievementPopupIdsKey,
+      <String>[...pending, id.name],
+    );
+  }
+
+  Future<void> _recordCollectionMatches(
+    SharedPreferences prefs,
+    int level,
+    Iterable<String> tileTypes,
+  ) async {
+    final world = _collectionWorldForLevel(level);
+    for (final tileType in tileTypes.toSet()) {
+      if (!_collectionTileTypes.contains(tileType)) continue;
+      await prefs.setBool(_collectionKey(world, tileType), true);
     }
   }
 
@@ -652,6 +809,57 @@ class ProgressRepository {
       total += prefs.getInt(_levelStarsKey(level)) ?? 0;
     }
     return total;
+  }
+
+  DailyLoginStreakStatus _dailyLoginStreakStatusFromPrefs(
+    SharedPreferences prefs,
+    DateTime now,
+  ) {
+    final today = _dateKey(now.toLocal());
+    final lastClaimDate = prefs.getString(_dailyLoginLastClaimDateKey);
+    final currentStreak = prefs.getInt(_dailyLoginStreakKey) ?? 0;
+    if (lastClaimDate == today) {
+      final day = currentStreak.clamp(1, 7).toInt();
+      return DailyLoginStreakStatus(
+        todayKey: today,
+        lastClaimDate: lastClaimDate,
+        currentStreak: currentStreak,
+        claimDay: day,
+        reward: _dailyLoginRewards[day]!,
+        available: false,
+      );
+    }
+
+    final nextDay = _isYesterday(lastClaimDate, today)
+        ? (currentStreak + 1).clamp(1, 7).toInt()
+        : 1;
+    return DailyLoginStreakStatus(
+      todayKey: today,
+      lastClaimDate: lastClaimDate,
+      currentStreak: currentStreak,
+      claimDay: nextDay,
+      reward: _dailyLoginRewards[nextDay]!,
+      available: true,
+    );
+  }
+
+  bool _isYesterday(String? lastDateKey, String todayKey) {
+    if (lastDateKey == null) return false;
+    final lastDate = DateTime.tryParse(lastDateKey);
+    final today = DateTime.tryParse(todayKey);
+    if (lastDate == null || today == null) return false;
+    return today.difference(lastDate).inDays == 1;
+  }
+
+  String _collectionWorldForLevel(int level) {
+    if (level <= 10) return 'garden';
+    if (level <= 20) return 'ocean';
+    if (level <= 30) return 'candy';
+    return 'space';
+  }
+
+  String _collectionKey(String world, String tileType) {
+    return '$_collectionPrefix${world}_$tileType';
   }
 
   String _dateKey(DateTime date) {

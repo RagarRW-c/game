@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../data/progress_repository.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
+import '../widgets/achievement_popup.dart';
 import '../widgets/game_ui.dart';
 import '../widgets/primary_button.dart';
 import 'achievements_screen.dart';
 import 'booster_shop_screen.dart';
+import 'collection_book_screen.dart';
 import 'daily_challenges_screen.dart';
 import 'final_code_screen.dart';
 import 'lucky_wheel_screen.dart';
@@ -27,6 +30,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   bool _dailySpinAvailable = false;
   bool _finalRewardUnlocked = false;
   int _coins = 0;
+  bool _loginStreakPromptQueued = false;
+  bool _loginStreakPromptShowing = false;
 
   @override
   void didChangeDependencies() {
@@ -40,6 +45,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     final available = await repository.dailyRewardAvailable(DateTime.now());
     final spinAvailable = await repository.dailySpinAvailable(DateTime.now());
     final finalRewardUnlocked = await repository.finalRewardUnlocked();
+    final loginStreakStatus =
+        await repository.dailyLoginStreakStatus(DateTime.now());
     if (!mounted) return;
     setState(() {
       _coins = coins;
@@ -47,6 +54,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       _dailySpinAvailable = spinAvailable;
       _finalRewardUnlocked = finalRewardUnlocked;
     });
+    _queueLoginStreakPopup(loginStreakStatus);
+    await showPendingAchievementPopups(context, repository);
   }
 
   Future<void> _claimDailyReward() async {
@@ -86,6 +95,39 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         ),
       ),
     );
+  }
+
+  void _queueLoginStreakPopup(DailyLoginStreakStatus status) {
+    if (!status.available || _loginStreakPromptQueued) return;
+    _loginStreakPromptQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showLoginStreakPopup(status);
+    });
+  }
+
+  Future<void> _showLoginStreakPopup(DailyLoginStreakStatus status) async {
+    if (_loginStreakPromptShowing) return;
+    _loginStreakPromptShowing = true;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _DailyLoginStreakDialog(
+        status: status,
+        onClaim: () async {
+          final repository = AppScope.of(context).progressRepository;
+          final claim = await repository.claimDailyLoginStreak(DateTime.now());
+          if (!mounted) return;
+          if (claim != null) {
+            setState(() {
+              _coins = claim.coins;
+            });
+          }
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+    _loginStreakPromptShowing = false;
   }
 
   @override
@@ -200,6 +242,15 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       },
                     ),
                     const SizedBox(height: GameSpacing.md),
+                    PrimaryButton(
+                      label: 'Collection Book',
+                      icon: Icons.collections_bookmark_rounded,
+                      onPressed: () => Navigator.pushNamed(
+                        context,
+                        CollectionBookScreen.route,
+                      ),
+                    ),
+                    const SizedBox(height: GameSpacing.md),
                     Row(
                       children: [
                         Expanded(
@@ -244,6 +295,123 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DailyLoginStreakDialog extends StatelessWidget {
+  const _DailyLoginStreakDialog({
+    required this.status,
+    required this.onClaim,
+  });
+
+  final DailyLoginStreakStatus status;
+  final Future<void> Function() onClaim;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.9, end: 1),
+      duration: GameDurations.normal,
+      curve: Curves.easeOutBack,
+      builder: (context, scale, child) {
+        return Opacity(
+          opacity: scale.clamp(0.0, 1.0).toDouble(),
+          child: Transform.scale(scale: scale, child: child),
+        );
+      },
+      child: GameDialogFrame(
+        title: 'Daily Login',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 82,
+              height: 82,
+              decoration: BoxDecoration(
+                gradient: GameGradients.badge,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 4),
+                boxShadow: GameShadows.glow(GameColors.accentGold),
+              ),
+              child: const Icon(
+                Icons.local_fire_department_rounded,
+                color: Colors.white,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: GameSpacing.lg),
+            Text('Day ${status.claimDay}', style: GameTextStyles.h2),
+            const SizedBox(height: GameSpacing.sm),
+            Text(
+              '+${status.reward} coins',
+              style: GameTextStyles.title.copyWith(
+                color: GameColors.accentGold,
+              ),
+            ),
+            const SizedBox(height: GameSpacing.lg),
+            _StreakRewardRow(activeDay: status.claimDay),
+            const SizedBox(height: GameSpacing.xl),
+            GameButton(
+              label: 'Claim',
+              icon: Icons.card_giftcard_rounded,
+              onPressed: () {
+                onClaim();
+              },
+              variant: GameButtonVariant.gold,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StreakRewardRow extends StatelessWidget {
+  const _StreakRewardRow({required this.activeDay});
+
+  final int activeDay;
+
+  @override
+  Widget build(BuildContext context) {
+    const rewards = <int>[50, 75, 100, 125, 150, 200, 300];
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var index = 0; index < rewards.length; index++)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: GameSpacing.xs),
+                decoration: BoxDecoration(
+                  gradient: index + 1 == activeDay
+                      ? GameGradients.badge
+                      : GameGradients.darkBadge,
+                  borderRadius: GameRadius.smallRadius,
+                  border: Border.all(color: Colors.white30, width: 1.5),
+                  boxShadow: index + 1 == activeDay
+                      ? GameShadows.glow(GameColors.accentGold)
+                      : GameShadows.light(),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'D${index + 1}',
+                      style:
+                          GameTextStyles.caption.copyWith(color: Colors.white),
+                    ),
+                    Text(
+                      '${rewards[index]}',
+                      style:
+                          GameTextStyles.caption.copyWith(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

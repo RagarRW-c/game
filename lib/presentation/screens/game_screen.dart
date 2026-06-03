@@ -14,6 +14,7 @@ import '../../domain/tile.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
+import '../widgets/achievement_popup.dart';
 import '../widgets/game_tile.dart';
 import '../widgets/game_ui.dart';
 import 'final_code_screen.dart';
@@ -163,16 +164,29 @@ class _GameScreenState extends State<GameScreen> {
     _shuffleUsedThisLevel = 0;
   }
 
-  Future<void> _recordMatchedTiles(int amount) async {
-    await _scope.progressRepository.recordMatchedTiles(amount);
+  Future<void> _recordMatchedTiles(
+    int amount, {
+    Iterable<String> tileTypes = const <String>[],
+  }) async {
+    await _scope.progressRepository.recordMatchedTiles(
+      amount,
+      level: widget.level,
+      tileTypes: tileTypes,
+    );
     final coins = await _scope.progressRepository.coins();
     if (mounted) setState(() => _coins = coins);
+    if (mounted) {
+      await showPendingAchievementPopups(context, _scope.progressRepository);
+    }
   }
 
   Future<void> _recordBoosterUsed(BoosterKind kind) async {
     await _scope.progressRepository.recordBoosterUsed(kind);
     final coins = await _scope.progressRepository.coins();
     if (mounted) setState(() => _coins = coins);
+    if (mounted) {
+      await showPendingAchievementPopups(context, _scope.progressRepository);
+    }
   }
 
   bool _canUseBooster(int freeUsesRemaining, int inventory) {
@@ -363,8 +377,9 @@ class _GameScreenState extends State<GameScreen> {
     );
     if (matchedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${matchedIds.join(',')}');
-      unawaited(
-        _recordMatchedTiles(matchedIds.length),
+      await _recordMatchedTiles(
+        matchedIds.length,
+        tileTypes: _tileTypesForIds(matchedIds),
       );
       _playSfx(_scope.audioService.playMatch, 'match');
       _haptic(HapticFeedback.mediumImpact);
@@ -437,8 +452,9 @@ class _GameScreenState extends State<GameScreen> {
     );
     if (removedIds.isNotEmpty) {
       debugPrint('Match removed: ids=${removedIds.join(',')}');
-      unawaited(
-        _recordMatchedTiles(removedIds.length),
+      await _recordMatchedTiles(
+        removedIds.length,
+        tileTypes: _tileTypesForIds(removedIds),
       );
       _playSfx(_scope.audioService.playMatch, 'match');
       _haptic(HapticFeedback.mediumImpact);
@@ -472,6 +488,16 @@ class _GameScreenState extends State<GameScreen> {
               !afterTrayIds.contains(id);
         })
         .take(3)
+        .toSet();
+  }
+
+  Set<String> _tileTypesForIds(Iterable<String> ids) {
+    final engine = _engine;
+    if (engine == null) return const <String>{};
+    return ids
+        .map(engine.tileById)
+        .whereType<Tile>()
+        .map((tile) => tile.type)
         .toSet();
   }
 
@@ -664,6 +690,8 @@ class _GameScreenState extends State<GameScreen> {
     setState(() => _coins = updatedCoins);
     _playSfx(scope.audioService.playWin, 'win');
     _haptic(HapticFeedback.heavyImpact);
+    await showPendingAchievementPopups(context, scope.progressRepository);
+    if (!mounted) return;
     if (widget.level == LevelRepository.levelCount) {
       _winDialogShowing = false;
       await _navigator.pushReplacement(
