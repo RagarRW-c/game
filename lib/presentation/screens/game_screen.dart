@@ -683,11 +683,23 @@ class _GameScreenState extends State<GameScreen> {
         .recordLevelCompleted(widget.level, starsEarned);
     final updatedCoins =
         await scope.progressRepository.addCoins(_levelCompleteCoinReward);
+    final chestGrant = await scope.progressRepository.grantChestForLevel(
+      widget.level,
+    );
     if (!mounted) {
       _winDialogShowing = false;
       return;
     }
     setState(() => _coins = updatedCoins);
+    if (chestGrant.slotsFull) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chest slots full')),
+      );
+    } else if (chestGrant.chest != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${chestGrant.chest!.title} added')),
+      );
+    }
     _playSfx(scope.audioService.playWin, 'win');
     _haptic(HapticFeedback.heavyImpact);
     await showPendingAchievementPopups(context, scope.progressRepository);

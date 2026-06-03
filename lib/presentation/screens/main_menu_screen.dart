@@ -12,8 +12,10 @@ import 'collection_book_screen.dart';
 import 'daily_challenges_screen.dart';
 import 'final_code_screen.dart';
 import 'lucky_wheel_screen.dart';
+import 'player_profile_screen.dart';
 import 'settings_screen.dart';
 import 'statistics_screen.dart';
+import 'treasure_chests_screen.dart';
 import 'world_selection_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
@@ -228,6 +230,34 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         );
                         if (mounted) await _loadRewards();
                       },
+                    ),
+                    const SizedBox(height: GameSpacing.md),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GameButton(
+                            label: 'Profile',
+                            icon: Icons.person_rounded,
+                            onPressed: () => Navigator.pushNamed(
+                              context,
+                              PlayerProfileScreen.route,
+                            ),
+                            variant: GameButtonVariant.primary,
+                          ),
+                        ),
+                        const SizedBox(width: GameSpacing.md),
+                        Expanded(
+                          child: GameButton(
+                            label: 'Chests',
+                            icon: Icons.inventory_2_rounded,
+                            onPressed: () => Navigator.pushNamed(
+                              context,
+                              TreasureChestsScreen.route,
+                            ),
+                            variant: GameButtonVariant.gold,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: GameSpacing.md),
                     PrimaryButton(

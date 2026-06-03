@@ -13,8 +13,10 @@ import 'presentation/screens/game_screen.dart';
 import 'presentation/screens/lucky_wheel_screen.dart';
 import 'presentation/screens/main_menu_screen.dart';
 import 'presentation/screens/map_screen.dart';
+import 'presentation/screens/player_profile_screen.dart';
 import 'presentation/screens/settings_screen.dart';
 import 'presentation/screens/statistics_screen.dart';
+import 'presentation/screens/treasure_chests_screen.dart';
 import 'presentation/screens/world_selection_screen.dart';
 import 'presentation/theme/game_theme.dart';
 
@@ -77,9 +79,11 @@ class _TripleTileAppState extends State<TripleTileApp> {
           DailyChallengesScreen.route: (_) => const DailyChallengesScreen(),
           FinalCodeScreen.route: (_) => const FinalCodeScreen(),
           LuckyWheelScreen.route: (_) => const LuckyWheelScreen(),
+          PlayerProfileScreen.route: (_) => const PlayerProfileScreen(),
           WorldSelectionScreen.route: (_) => const WorldSelectionScreen(),
           SettingsScreen.route: (_) => const SettingsScreen(),
           StatisticsScreen.route: (_) => const StatisticsScreen(),
+          TreasureChestsScreen.route: (_) => const TreasureChestsScreen(),
         },
         onGenerateRoute: (settings) {
           if (settings.name == GameScreen.route) {

@@ -1,5 +1,67 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+enum TreasureChestType { wood, silver, gold }
+
+class TreasureChest {
+  const TreasureChest({
+    required this.id,
+    required this.type,
+    required this.grantedAtMillis,
+    required this.unlockAtMillis,
+  });
+
+  final String id;
+  final TreasureChestType type;
+  final int grantedAtMillis;
+  final int unlockAtMillis;
+
+  bool isUnlocked(DateTime now) => now.millisecondsSinceEpoch >= unlockAtMillis;
+
+  Duration remaining(DateTime now) {
+    final remainingMillis = unlockAtMillis - now.millisecondsSinceEpoch;
+    return Duration(milliseconds: remainingMillis < 0 ? 0 : remainingMillis);
+  }
+
+  String get title {
+    switch (type) {
+      case TreasureChestType.wood:
+        return 'Wood Chest';
+      case TreasureChestType.silver:
+        return 'Silver Chest';
+      case TreasureChestType.gold:
+        return 'Gold Chest';
+    }
+  }
+}
+
+class ChestGrantResult {
+  const ChestGrantResult({
+    required this.granted,
+    required this.slotsFull,
+    this.chest,
+  });
+
+  final bool granted;
+  final bool slotsFull;
+  final TreasureChest? chest;
+}
+
+class ChestOpenReward {
+  const ChestOpenReward({
+    required this.coins,
+    required this.undo,
+    required this.hint,
+    required this.shuffle,
+  });
+
+  final int coins;
+  final int undo;
+  final int hint;
+  final int shuffle;
+}
 
 class DailySpinStatus {
   const DailySpinStatus({
@@ -124,6 +186,38 @@ class FinalRewardSummary {
   final int achievementsUnlocked;
 }
 
+class PlayerProfileSummary {
+  const PlayerProfileSummary({
+    required this.playerLevel,
+    required this.totalXp,
+    required this.coins,
+    required this.totalStars,
+    required this.levelsCompleted,
+    required this.achievementsUnlocked,
+    required this.achievementsTotal,
+    required this.collectionUnlocked,
+    required this.collectionTotal,
+    required this.luckyWheelSpins,
+    required this.dailyStreak,
+    required this.totalBoostersUsed,
+    required this.totalTilesMatched,
+  });
+
+  final int playerLevel;
+  final int totalXp;
+  final int coins;
+  final int totalStars;
+  final int levelsCompleted;
+  final int achievementsUnlocked;
+  final int achievementsTotal;
+  final int collectionUnlocked;
+  final int collectionTotal;
+  final int luckyWheelSpins;
+  final int dailyStreak;
+  final int totalBoostersUsed;
+  final int totalTilesMatched;
+}
+
 class DailyChallengesState {
   const DailyChallengesState({
     required this.dateKey,
@@ -203,6 +297,8 @@ class ProgressRepository {
   static const _statsUndosUsedKey = 'stats_undos_used';
   static const _statsLuckyWheelSpinsKey = 'stats_lucky_wheel_spins';
   static const _finalRewardUnlockedKey = 'final_reward_unlocked';
+  static const _treasureChestsKey = 'treasure_chests';
+  static const _totalXpKey = 'total_xp';
   static const defaultFinalCode = '4286';
 
   static const _dailyLoginRewards = <int, int>{
@@ -515,6 +611,7 @@ class ProgressRepository {
     await _ensureDailyChallengesForToday(prefs);
     await _incrementInt(prefs, _dailyChallengeCompletedLevelsKey, 1);
     await _incrementInt(prefs, _statsLevelsCompletedKey, 1);
+    await _incrementInt(prefs, _totalXpKey, stars == 3 ? 150 : 100);
     await saveBestStarsForLevel(level, stars, prefs: prefs);
 
     final achievementIds = <AchievementId>[AchievementId.firstWin];
@@ -524,6 +621,47 @@ class ProgressRepository {
     if (level >= 40) achievementIds.add(AchievementId.spaceWorld);
     await _unlockAchievements(prefs, achievementIds);
     if (level >= 40) await prefs.setBool(_finalRewardUnlockedKey, true);
+  }
+
+  Future<ChestGrantResult> grantChestForLevel(int level) async {
+    final prefs = await SharedPreferences.getInstance();
+    final chests = _chestsFromPrefs(prefs);
+    if (chests.length >= 3) {
+      return const ChestGrantResult(granted: false, slotsFull: true);
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final type = _chestTypeForLevel(level);
+    final chest = TreasureChest(
+      id: '${now}_$level',
+      type: type,
+      grantedAtMillis: now,
+      unlockAtMillis: now + _chestUnlockDuration(type).inMilliseconds,
+    );
+    await _saveChests(prefs, <TreasureChest>[...chests, chest]);
+    return ChestGrantResult(granted: true, slotsFull: false, chest: chest);
+  }
+
+  Future<List<TreasureChest>> treasureChests() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _chestsFromPrefs(prefs);
+  }
+
+  Future<ChestOpenReward?> openTreasureChest(String chestId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final chests = _chestsFromPrefs(prefs);
+    final index = chests.indexWhere((chest) => chest.id == chestId);
+    if (index == -1) return null;
+    final chest = chests[index];
+    if (!chest.isUnlocked(DateTime.now())) return null;
+
+    final reward = _rollChestReward(chest.type);
+    final updatedChests = <TreasureChest>[...chests]..removeAt(index);
+    await _saveChests(prefs, updatedChests);
+    await addCoins(reward.coins);
+    if (reward.undo > 0) await addExtraUndoBoosters(reward.undo);
+    if (reward.hint > 0) await addExtraHintBoosters(reward.hint);
+    if (reward.shuffle > 0) await addExtraShuffleBoosters(reward.shuffle);
+    return reward;
   }
 
   Future<void> recordBoosterUsed(BoosterKind kind) async {
@@ -632,6 +770,43 @@ class ProgressRepository {
       undosUsed: prefs.getInt(_statsUndosUsedKey) ?? 0,
       luckyWheelSpins: prefs.getInt(_statsLuckyWheelSpinsKey) ?? 0,
       bestStarsTotal: _bestStarsTotal(prefs),
+    );
+  }
+
+  Future<PlayerProfileSummary> playerProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final totalXp = prefs.getInt(_totalXpKey) ?? 0;
+    final achievementsUnlocked = achievementsCatalog
+        .where((definition) =>
+            prefs.getBool(_achievementKey(definition.id)) ?? false)
+        .length;
+    final collectionUnlocked = prefs
+        .getKeys()
+        .where((key) => key.startsWith(_collectionPrefix))
+        .where((key) => prefs.getBool(key) ?? false)
+        .length;
+    final streakStatus = _dailyLoginStreakStatusFromPrefs(
+      prefs,
+      DateTime.now(),
+    );
+    final dailyStreak = streakStatus.available
+        ? (streakStatus.claimDay - 1).clamp(0, 7).toInt()
+        : streakStatus.currentStreak;
+
+    return PlayerProfileSummary(
+      playerLevel: (totalXp ~/ 500) + 1,
+      totalXp: totalXp,
+      coins: prefs.getInt(_coinsKey) ?? 0,
+      totalStars: _bestStarsTotal(prefs),
+      levelsCompleted: prefs.getInt(_statsLevelsCompletedKey) ?? 0,
+      achievementsUnlocked: achievementsUnlocked,
+      achievementsTotal: achievementsCatalog.length,
+      collectionUnlocked: collectionUnlocked,
+      collectionTotal: 20,
+      luckyWheelSpins: prefs.getInt(_statsLuckyWheelSpinsKey) ?? 0,
+      dailyStreak: dailyStreak,
+      totalBoostersUsed: prefs.getInt(_statsBoostersUsedKey) ?? 0,
+      totalTilesMatched: prefs.getInt(_statsTilesMatchedKey) ?? 0,
     );
   }
 
@@ -765,6 +940,7 @@ class ProgressRepository {
       final updatedCoins = (prefs.getInt(_coinsKey) ?? 0) + reward;
       await prefs.setInt(_coinsKey, updatedCoins);
       await _incrementInt(prefs, _statsCoinsEarnedKey, reward);
+      await _incrementInt(prefs, _totalXpKey, 75);
       await _queueAchievementPopup(prefs, id);
       debugPrint('Achievement unlocked: ${id.name}, reward=$reward');
     }
@@ -791,7 +967,10 @@ class ProgressRepository {
     final world = _collectionWorldForLevel(level);
     for (final tileType in tileTypes.toSet()) {
       if (!_collectionTileTypes.contains(tileType)) continue;
-      await prefs.setBool(_collectionKey(world, tileType), true);
+      final key = _collectionKey(world, tileType);
+      if (prefs.getBool(key) ?? false) continue;
+      await prefs.setBool(key, true);
+      await _incrementInt(prefs, _totalXpKey, 20);
     }
   }
 
@@ -860,6 +1039,87 @@ class ProgressRepository {
 
   String _collectionKey(String world, String tileType) {
     return '$_collectionPrefix${world}_$tileType';
+  }
+
+  TreasureChestType _chestTypeForLevel(int level) {
+    if (level % 10 == 0) return TreasureChestType.gold;
+    if (level % 5 == 0) return TreasureChestType.silver;
+    return TreasureChestType.wood;
+  }
+
+  Duration _chestUnlockDuration(TreasureChestType type) {
+    switch (type) {
+      case TreasureChestType.wood:
+        return const Duration(minutes: 30);
+      case TreasureChestType.silver:
+        return const Duration(hours: 2);
+      case TreasureChestType.gold:
+        return const Duration(hours: 8);
+    }
+  }
+
+  ChestOpenReward _rollChestReward(TreasureChestType type) {
+    final random = Random();
+    switch (type) {
+      case TreasureChestType.wood:
+        return ChestOpenReward(
+          coins: 30 + random.nextInt(51),
+          undo: random.nextInt(100) < 18 ? 1 : 0,
+          hint: 0,
+          shuffle: 0,
+        );
+      case TreasureChestType.silver:
+        final boosterRoll = random.nextInt(100);
+        return ChestOpenReward(
+          coins: 80 + random.nextInt(101),
+          undo: 0,
+          hint: boosterRoll < 30 ? 1 : 0,
+          shuffle: boosterRoll >= 30 && boosterRoll < 60 ? 1 : 0,
+        );
+      case TreasureChestType.gold:
+        return ChestOpenReward(
+          coins: 200 + random.nextInt(301),
+          undo: random.nextInt(100) < 35 ? 1 : 0,
+          hint: random.nextInt(100) < 35 ? 1 : 0,
+          shuffle: random.nextInt(100) < 35 ? 1 : 0,
+        );
+    }
+  }
+
+  List<TreasureChest> _chestsFromPrefs(SharedPreferences prefs) {
+    final values = prefs.getStringList(_treasureChestsKey) ?? const <String>[];
+    return values.map(_chestFromString).whereType<TreasureChest>().toList();
+  }
+
+  TreasureChest? _chestFromString(String value) {
+    final parts = value.split('|');
+    if (parts.length != 4) return null;
+    TreasureChestType? type;
+    for (final candidate in TreasureChestType.values) {
+      if (candidate.name == parts[1]) type = candidate;
+    }
+    final grantedAt = int.tryParse(parts[2]);
+    final unlockAt = int.tryParse(parts[3]);
+    if (type == null || grantedAt == null || unlockAt == null) return null;
+    return TreasureChest(
+      id: parts[0],
+      type: type,
+      grantedAtMillis: grantedAt,
+      unlockAtMillis: unlockAt,
+    );
+  }
+
+  Future<void> _saveChests(
+    SharedPreferences prefs,
+    List<TreasureChest> chests,
+  ) async {
+    await prefs.setStringList(
+      _treasureChestsKey,
+      chests
+          .map((chest) =>
+              '${chest.id}|${chest.type.name}|${chest.grantedAtMillis}|${chest.unlockAtMillis}')
+          .toList(),
+    );
   }
 
   String _dateKey(DateTime date) {
