@@ -7,6 +7,7 @@ import '../widgets/primary_button.dart';
 import 'achievements_screen.dart';
 import 'booster_shop_screen.dart';
 import 'daily_challenges_screen.dart';
+import 'final_code_screen.dart';
 import 'lucky_wheel_screen.dart';
 import 'settings_screen.dart';
 import 'statistics_screen.dart';
@@ -24,6 +25,7 @@ class MainMenuScreen extends StatefulWidget {
 class _MainMenuScreenState extends State<MainMenuScreen> {
   bool _dailyRewardAvailable = false;
   bool _dailySpinAvailable = false;
+  bool _finalRewardUnlocked = false;
   int _coins = 0;
 
   @override
@@ -37,11 +39,13 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     final coins = await repository.coins();
     final available = await repository.dailyRewardAvailable(DateTime.now());
     final spinAvailable = await repository.dailySpinAvailable(DateTime.now());
+    final finalRewardUnlocked = await repository.finalRewardUnlocked();
     if (!mounted) return;
     setState(() {
       _coins = coins;
       _dailyRewardAvailable = available;
       _dailySpinAvailable = spinAvailable;
+      _finalRewardUnlocked = finalRewardUnlocked;
     });
   }
 
@@ -161,6 +165,17 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           context, WorldSelectionScreen.route),
                     ),
                     const SizedBox(height: GameSpacing.md),
+                    if (_finalRewardUnlocked) ...[
+                      PrimaryButton(
+                        label: 'Final Reward',
+                        icon: Icons.emoji_events_rounded,
+                        onPressed: () => Navigator.pushNamed(
+                          context,
+                          FinalCodeScreen.route,
+                        ),
+                      ),
+                      const SizedBox(height: GameSpacing.md),
+                    ],
                     PrimaryButton(
                       label: 'Booster Shop',
                       icon: Icons.storefront_rounded,

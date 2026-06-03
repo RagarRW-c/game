@@ -76,6 +76,20 @@ class GameStatistics {
   final int bestStarsTotal;
 }
 
+class FinalRewardSummary {
+  const FinalRewardSummary({
+    required this.code,
+    required this.totalStars,
+    required this.levelsCompleted,
+    required this.achievementsUnlocked,
+  });
+
+  final String code;
+  final int totalStars;
+  final int levelsCompleted;
+  final int achievementsUnlocked;
+}
+
 class DailyChallengesState {
   const DailyChallengesState({
     required this.dateKey,
@@ -150,6 +164,7 @@ class ProgressRepository {
   static const _statsShufflesUsedKey = 'stats_shuffles_used';
   static const _statsUndosUsedKey = 'stats_undos_used';
   static const _statsLuckyWheelSpinsKey = 'stats_lucky_wheel_spins';
+  static const _finalRewardUnlockedKey = 'final_reward_unlocked';
   static const defaultFinalCode = '4286';
 
   static const achievementsCatalog = <AchievementDefinition>[
@@ -416,6 +431,7 @@ class ProgressRepository {
     if (level >= 30) achievementIds.add(AchievementId.candyWorld);
     if (level >= 40) achievementIds.add(AchievementId.spaceWorld);
     await _unlockAchievements(prefs, achievementIds);
+    if (level >= 40) await prefs.setBool(_finalRewardUnlockedKey, true);
   }
 
   Future<void> recordBoosterUsed(BoosterKind kind) async {
@@ -495,6 +511,31 @@ class ProgressRepository {
     );
   }
 
+  Future<bool> finalRewardUnlocked() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_finalRewardUnlockedKey) ?? false;
+  }
+
+  Future<void> unlockFinalReward() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_finalRewardUnlockedKey, true);
+  }
+
+  Future<FinalRewardSummary?> finalRewardSummary() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool(_finalRewardUnlockedKey) ?? false)) return null;
+    final achievementsUnlocked = achievementsCatalog
+        .where((definition) =>
+            prefs.getBool(_achievementKey(definition.id)) ?? false)
+        .length;
+    return FinalRewardSummary(
+      code: await finalCode(),
+      totalStars: _bestStarsTotal(prefs),
+      levelsCompleted: 40,
+      achievementsUnlocked: achievementsUnlocked,
+    );
+  }
+
   Future<int?> claimDailyChallenge(DailyChallengeId id) async {
     final prefs = await SharedPreferences.getInstance();
     await _ensureDailyChallengesForToday(prefs);
@@ -522,6 +563,7 @@ class ProgressRepository {
   Future<void> reset() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_highestLevelKey, 1);
+    await prefs.setBool(_finalRewardUnlockedKey, false);
   }
 
   Future<void> _ensureDailyChallengesForToday(SharedPreferences prefs) async {

@@ -7,6 +7,7 @@ import 'data/progress_repository.dart';
 import 'presentation/screens/achievements_screen.dart';
 import 'presentation/screens/booster_shop_screen.dart';
 import 'presentation/screens/daily_challenges_screen.dart';
+import 'presentation/screens/final_code_screen.dart';
 import 'presentation/screens/game_screen.dart';
 import 'presentation/screens/lucky_wheel_screen.dart';
 import 'presentation/screens/main_menu_screen.dart';
@@ -72,6 +73,7 @@ class _TripleTileAppState extends State<TripleTileApp> {
           AchievementsScreen.route: (_) => const AchievementsScreen(),
           BoosterShopScreen.route: (_) => const BoosterShopScreen(),
           DailyChallengesScreen.route: (_) => const DailyChallengesScreen(),
+          FinalCodeScreen.route: (_) => const FinalCodeScreen(),
           LuckyWheelScreen.route: (_) => const LuckyWheelScreen(),
           WorldSelectionScreen.route: (_) => const WorldSelectionScreen(),
           SettingsScreen.route: (_) => const SettingsScreen(),

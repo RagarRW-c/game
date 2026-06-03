@@ -664,6 +664,15 @@ class _GameScreenState extends State<GameScreen> {
     setState(() => _coins = updatedCoins);
     _playSfx(scope.audioService.playWin, 'win');
     _haptic(HapticFeedback.heavyImpact);
+    if (widget.level == LevelRepository.levelCount) {
+      _winDialogShowing = false;
+      await _navigator.pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => const FinalCodeScreen(),
+        ),
+      );
+      return;
+    }
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -693,20 +702,11 @@ class _GameScreenState extends State<GameScreen> {
         onNext: () async {
           if (!mounted) return;
           _navigator.pop();
-          if (widget.level == LevelRepository.levelCount) {
-            final code = await scope.progressRepository.finalCode();
-            if (!mounted) return;
-            await _navigator.pushReplacement(
-              MaterialPageRoute<void>(
-                  builder: (_) => FinalCodeScreen(code: code)),
-            );
-          } else {
-            if (!mounted) return;
-            await _navigator.pushReplacementNamed(
-              GameScreen.route,
-              arguments: widget.level + 1,
-            );
-          }
+          if (!mounted) return;
+          await _navigator.pushReplacementNamed(
+            GameScreen.route,
+            arguments: widget.level + 1,
+          );
         },
       ),
     );
