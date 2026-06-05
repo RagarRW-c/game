@@ -442,6 +442,11 @@ class ProgressRepository {
     return updated;
   }
 
+  Future<void> addXp(int amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _incrementInt(prefs, _totalXpKey, amount);
+  }
+
   Future<bool> spendCoins(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     final current = prefs.getInt(_coinsKey) ?? 0;

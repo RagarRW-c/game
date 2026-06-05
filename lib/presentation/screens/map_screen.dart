@@ -125,6 +125,7 @@ class _MapScreenState extends State<MapScreen> {
                           level: level,
                           unlocked: unlocked,
                           stars: progress.starsByLevel[level] ?? 0,
+                          bossInfo: _BossMapInfo.forLevel(level),
                           status: level < highest
                               ? 'Cleared'
                               : unlocked
@@ -233,6 +234,7 @@ class _LevelCard extends StatelessWidget {
     required this.level,
     required this.unlocked,
     required this.stars,
+    required this.bossInfo,
     required this.status,
     required this.onTap,
   });
@@ -240,11 +242,13 @@ class _LevelCard extends StatelessWidget {
   final int level;
   final bool unlocked;
   final int stars;
+  final _BossMapInfo? bossInfo;
   final String status;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final isBoss = bossInfo != null;
     return AnimatedOpacity(
       duration: GameDurations.normal,
       opacity: unlocked ? 1 : 0.58,
@@ -252,31 +256,116 @@ class _LevelCard extends StatelessWidget {
         borderRadius: GameRadius.extraLargeRadius,
         onTap: onTap,
         child: GameCard(
-          padding: const EdgeInsets.all(GameSpacing.lg),
-          shadow: GameShadows.medium(),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          padding: EdgeInsets.all(isBoss ? GameSpacing.md : GameSpacing.lg),
+          borderColor: isBoss ? GameColors.accentGold : Colors.white,
+          shadow: isBoss
+              ? GameShadows.glow(GameColors.accentGold)
+              : GameShadows.medium(),
+          child: Stack(
+            clipBehavior: Clip.none,
             children: [
-              Icon(
-                unlocked ? Icons.star_rounded : Icons.lock_rounded,
-                color: unlocked ? GameColors.accentGold : GameColors.mutedInk,
-                size: 46,
+              if (isBoss)
+                Positioned(
+                  right: -4,
+                  top: -4,
+                  child: GameBadge(
+                    icon: Icons.workspace_premium_rounded,
+                    gradient: GameGradients.badge,
+                    child: Text(
+                      'Boss',
+                      style: GameTextStyles.caption.copyWith(
+                        color: Colors.white,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ),
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      unlocked
+                          ? isBoss
+                              ? bossInfo!.icon
+                              : Icons.star_rounded
+                          : Icons.lock_rounded,
+                      color: unlocked
+                          ? isBoss
+                              ? GameColors.accentGoldDark
+                              : GameColors.accentGold
+                          : GameColors.mutedInk,
+                      size: isBoss ? 54 : 46,
+                    ),
+                    const SizedBox(height: GameSpacing.sm),
+                    Text(
+                      'Level $level',
+                      textAlign: TextAlign.center,
+                      style: GameTextStyles.h2.copyWith(
+                        fontSize: isBoss ? 22 : 23,
+                      ),
+                    ),
+                    if (isBoss) ...[
+                      const SizedBox(height: GameSpacing.xs),
+                      Text(
+                        bossInfo!.title,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GameTextStyles.caption.copyWith(
+                          color: GameColors.accentGoldDark,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: GameSpacing.xs),
+                    _StarRow(stars: stars),
+                    const SizedBox(height: GameSpacing.xs),
+                    Text(status, style: GameTextStyles.body),
+                  ],
+                ),
               ),
-              const SizedBox(height: GameSpacing.sm),
-              Text(
-                'Level $level',
-                textAlign: TextAlign.center,
-                style: GameTextStyles.h2.copyWith(fontSize: 23),
-              ),
-              const SizedBox(height: GameSpacing.xs),
-              _StarRow(stars: stars),
-              const SizedBox(height: GameSpacing.xs),
-              Text(status, style: GameTextStyles.body),
             ],
           ),
         ),
       ),
     );
+  }
+}
+
+class _BossMapInfo {
+  const _BossMapInfo({
+    required this.title,
+    required this.icon,
+  });
+
+  final String title;
+  final IconData icon;
+
+  static _BossMapInfo? forLevel(int level) {
+    switch (level) {
+      case 10:
+        return const _BossMapInfo(
+          title: 'Garden Boss',
+          icon: Icons.local_florist_rounded,
+        );
+      case 20:
+        return const _BossMapInfo(
+          title: 'Ocean Boss',
+          icon: Icons.water_rounded,
+        );
+      case 30:
+        return const _BossMapInfo(
+          title: 'Candy Boss',
+          icon: Icons.icecream_rounded,
+        );
+      case 40:
+        return const _BossMapInfo(
+          title: 'Space Boss',
+          icon: Icons.auto_awesome_rounded,
+        );
+      default:
+        return null;
+    }
   }
 }
 

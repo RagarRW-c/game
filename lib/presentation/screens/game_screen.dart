@@ -35,6 +35,8 @@ class _GameScreenState extends State<GameScreen> {
   static const int _maxBoosterUses = 2;
   static const int _boosterCoinCost = 150;
   static const int _levelCompleteCoinReward = 50;
+  static const int _bossCoinReward = 300;
+  static const int _bossXpReward = 200;
 
   late Future<LevelDefinition> _levelFuture;
   late AppScope _scope;
@@ -670,6 +672,7 @@ class _GameScreenState extends State<GameScreen> {
     if (_winDialogShowing || !mounted) return;
     _winDialogShowing = true;
     final scope = _scope;
+    final bossInfo = _BossLevelInfo.forLevel(widget.level);
     final undoUsed = _undoUsedThisLevel;
     final hintUsed = _hintUsedThisLevel;
     final shuffleUsed = _shuffleUsedThisLevel;
@@ -681,8 +684,12 @@ class _GameScreenState extends State<GameScreen> {
     await scope.progressRepository.unlockNextLevel(widget.level);
     await scope.progressRepository
         .recordLevelCompleted(widget.level, starsEarned);
-    final updatedCoins =
-        await scope.progressRepository.addCoins(_levelCompleteCoinReward);
+    if (bossInfo != null) {
+      await scope.progressRepository.addXp(_bossXpReward);
+    }
+    final coinsEarned =
+        _levelCompleteCoinReward + (bossInfo == null ? 0 : _bossCoinReward);
+    final updatedCoins = await scope.progressRepository.addCoins(coinsEarned);
     final chestGrant = await scope.progressRepository.grantChestForLevel(
       widget.level,
     );
@@ -704,6 +711,36 @@ class _GameScreenState extends State<GameScreen> {
     _haptic(HapticFeedback.heavyImpact);
     await showPendingAchievementPopups(context, scope.progressRepository);
     if (!mounted) return;
+
+    if (bossInfo != null) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _BossCompleteDialog(
+          bossInfo: bossInfo,
+          coinsEarned: _bossCoinReward,
+          xpEarned: _bossXpReward,
+          chestLabel: chestGrant.slotsFull
+              ? 'Chest slots full'
+              : chestGrant.chest?.title ?? 'Gold Chest',
+          onContinue: () => _navigator.pop(),
+        ),
+      );
+      if (!mounted) return;
+      if (widget.level == LevelRepository.levelCount) {
+        _winDialogShowing = false;
+        await _navigator.pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => const FinalCodeScreen(),
+          ),
+        );
+        return;
+      }
+      _winDialogShowing = false;
+      if (_navigator.canPop()) _navigator.pop();
+      return;
+    }
+
     if (widget.level == LevelRepository.levelCount) {
       _winDialogShowing = false;
       await _navigator.pushReplacement(
@@ -724,7 +761,7 @@ class _GameScreenState extends State<GameScreen> {
         hintUsed: hintUsed,
         shuffleUsed: shuffleUsed,
         starsEarned: starsEarned,
-        coinsEarned: _levelCompleteCoinReward,
+        coinsEarned: coinsEarned,
         onRestart: () {
           if (!mounted) return;
           _navigator.pop();
@@ -762,6 +799,10 @@ class _GameScreenState extends State<GameScreen> {
     if (total == 0) return 3;
     if (total <= 2) return 2;
     return 1;
+  }
+
+  String _gameHeaderTitle(LevelDefinition level) {
+    return _BossLevelInfo.forLevel(widget.level)?.bossTitle ?? level.name;
   }
 
   List<Tile> _renderedBoardSnapshot(
@@ -909,7 +950,7 @@ class _GameScreenState extends State<GameScreen> {
                     child: Column(
                       children: [
                         GameHeader(
-                          title: level.name,
+                          title: _gameHeaderTitle(level),
                           onBack: () => Navigator.of(context).maybePop(),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -1139,6 +1180,191 @@ class _FallbackGameBody extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _BossLevelInfo {
+  const _BossLevelInfo({
+    required this.level,
+    required this.bossTitle,
+    required this.completeTitle,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final int level;
+  final String bossTitle;
+  final String completeTitle;
+  final String subtitle;
+  final IconData icon;
+
+  static _BossLevelInfo? forLevel(int level) {
+    switch (level) {
+      case 10:
+        return const _BossLevelInfo(
+          level: 10,
+          bossTitle: 'Garden Boss',
+          completeTitle: 'World Complete!',
+          subtitle: 'New World Unlocked!',
+          icon: Icons.local_florist_rounded,
+        );
+      case 20:
+        return const _BossLevelInfo(
+          level: 20,
+          bossTitle: 'Ocean Boss',
+          completeTitle: 'World Complete!',
+          subtitle: 'New World Unlocked!',
+          icon: Icons.water_rounded,
+        );
+      case 30:
+        return const _BossLevelInfo(
+          level: 30,
+          bossTitle: 'Candy Boss',
+          completeTitle: 'World Complete!',
+          subtitle: 'New World Unlocked!',
+          icon: Icons.icecream_rounded,
+        );
+      case 40:
+        return const _BossLevelInfo(
+          level: 40,
+          bossTitle: 'Space Boss',
+          completeTitle: 'Final World Complete',
+          subtitle: 'Game Completed',
+          icon: Icons.auto_awesome_rounded,
+        );
+      default:
+        return null;
+    }
+  }
+}
+
+class _BossCompleteDialog extends StatelessWidget {
+  const _BossCompleteDialog({
+    required this.bossInfo,
+    required this.coinsEarned,
+    required this.xpEarned,
+    required this.chestLabel,
+    required this.onContinue,
+  });
+
+  final _BossLevelInfo bossInfo;
+  final int coinsEarned;
+  final int xpEarned;
+  final String chestLabel;
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    return GameDialogFrame(
+      title: bossInfo.completeTitle,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              gradient: GameGradients.badge,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 4),
+              boxShadow: GameShadows.glow(GameColors.accentGold),
+            ),
+            child: Icon(
+              bossInfo.icon,
+              color: Colors.white,
+              size: 54,
+            ),
+          ),
+          const SizedBox(height: GameSpacing.md),
+          Text(
+            bossInfo.bossTitle,
+            textAlign: TextAlign.center,
+            style: GameTextStyles.h2.copyWith(fontSize: 28),
+          ),
+          const SizedBox(height: GameSpacing.xs),
+          Text(
+            bossInfo.subtitle,
+            textAlign: TextAlign.center,
+            style: GameTextStyles.body,
+          ),
+          const SizedBox(height: GameSpacing.lg),
+          GameCard(
+            padding: const EdgeInsets.all(GameSpacing.md),
+            shadow: GameShadows.light(),
+            borderColor: GameColors.borderBlue,
+            child: Column(
+              children: [
+                _BossRewardRow(
+                  icon: Icons.monetization_on_rounded,
+                  label: 'Boss coins',
+                  value: '+$coinsEarned',
+                ),
+                const SizedBox(height: GameSpacing.sm),
+                _BossRewardRow(
+                  icon: Icons.bolt_rounded,
+                  label: 'Boss XP',
+                  value: '+$xpEarned',
+                ),
+                const SizedBox(height: GameSpacing.sm),
+                _BossRewardRow(
+                  icon: Icons.inventory_2_rounded,
+                  label: 'Chest',
+                  value: chestLabel,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: GameSpacing.xl),
+          GameButton(
+            label: bossInfo.level == LevelRepository.levelCount
+                ? 'Final Reward'
+                : 'Back to Map',
+            icon: bossInfo.level == LevelRepository.levelCount
+                ? Icons.pin_rounded
+                : Icons.map_rounded,
+            onPressed: onContinue,
+            variant: GameButtonVariant.success,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BossRewardRow extends StatelessWidget {
+  const _BossRewardRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            gradient: GameGradients.badge,
+            borderRadius: GameRadius.mediumRadius,
+            boxShadow: GameShadows.light(GameColors.accentGold),
+          ),
+          child: Icon(icon, color: Colors.white, size: 22),
+        ),
+        const SizedBox(width: GameSpacing.md),
+        Expanded(child: Text(label, style: GameTextStyles.body)),
+        Text(
+          value,
+          textAlign: TextAlign.right,
+          style: GameTextStyles.button.copyWith(color: GameColors.ink),
+        ),
+      ],
     );
   }
 }
