@@ -63,6 +63,18 @@ class ChestOpenReward {
   final int shuffle;
 }
 
+class ChestOpenNowResult {
+  const ChestOpenNowResult({
+    required this.opened,
+    required this.notEnoughCoins,
+    this.reward,
+  });
+
+  final bool opened;
+  final bool notEnoughCoins;
+  final ChestOpenReward? reward;
+}
+
 class DailySpinStatus {
   const DailySpinStatus({
     required this.polishTodayKey,
@@ -662,6 +674,47 @@ class ProgressRepository {
     if (reward.hint > 0) await addExtraHintBoosters(reward.hint);
     if (reward.shuffle > 0) await addExtraShuffleBoosters(reward.shuffle);
     return reward;
+  }
+
+  Future<ChestOpenNowResult> openTreasureChestNow(String chestId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final chests = _chestsFromPrefs(prefs);
+    final index = chests.indexWhere((chest) => chest.id == chestId);
+    if (index == -1) {
+      return const ChestOpenNowResult(opened: false, notEnoughCoins: false);
+    }
+
+    final chest = chests[index];
+    final cost = instantUnlockCost(chest.type);
+    final currentCoins = prefs.getInt(_coinsKey) ?? 0;
+    if (currentCoins < cost) {
+      return const ChestOpenNowResult(opened: false, notEnoughCoins: true);
+    }
+
+    await prefs.setInt(_coinsKey, currentCoins - cost);
+    final reward = _rollChestReward(chest.type);
+    final updatedChests = <TreasureChest>[...chests]..removeAt(index);
+    await _saveChests(prefs, updatedChests);
+    await addCoins(reward.coins);
+    if (reward.undo > 0) await addExtraUndoBoosters(reward.undo);
+    if (reward.hint > 0) await addExtraHintBoosters(reward.hint);
+    if (reward.shuffle > 0) await addExtraShuffleBoosters(reward.shuffle);
+    return ChestOpenNowResult(
+      opened: true,
+      notEnoughCoins: false,
+      reward: reward,
+    );
+  }
+
+  int instantUnlockCost(TreasureChestType type) {
+    switch (type) {
+      case TreasureChestType.wood:
+        return 50;
+      case TreasureChestType.silver:
+        return 100;
+      case TreasureChestType.gold:
+        return 200;
+    }
   }
 
   Future<void> recordBoosterUsed(BoosterKind kind) async {
