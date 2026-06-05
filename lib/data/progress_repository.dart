@@ -230,6 +230,28 @@ class PlayerProfileSummary {
   final int totalTilesMatched;
 }
 
+class PlayerCosmetics {
+  const PlayerCosmetics({
+    required this.selectedFrame,
+    required this.selectedBackground,
+    required this.selectedBadge,
+    required this.unlockedFrames,
+    required this.unlockedBackgrounds,
+    required this.unlockedBadges,
+  });
+
+  final String? selectedFrame;
+  final String? selectedBackground;
+  final String? selectedBadge;
+  final Set<String> unlockedFrames;
+  final Set<String> unlockedBackgrounds;
+  final Set<String> unlockedBadges;
+
+  bool frameUnlocked(String id) => unlockedFrames.contains(id);
+  bool backgroundUnlocked(String id) => unlockedBackgrounds.contains(id);
+  bool badgeUnlocked(String id) => unlockedBadges.contains(id);
+}
+
 class DailyChallengesState {
   const DailyChallengesState({
     required this.dateKey,
@@ -311,7 +333,23 @@ class ProgressRepository {
   static const _finalRewardUnlockedKey = 'final_reward_unlocked';
   static const _treasureChestsKey = 'treasure_chests';
   static const _totalXpKey = 'total_xp';
+  static const _selectedAvatarFrameKey = 'selected_avatar_frame';
+  static const _selectedProfileBackgroundKey = 'selected_profile_background';
+  static const _selectedProfileBadgeKey = 'selected_profile_badge';
   static const defaultFinalCode = '4286';
+
+  static const avatarFrameGarden = 'garden_frame';
+  static const avatarFrameOcean = 'ocean_frame';
+  static const avatarFrameCandy = 'candy_frame';
+  static const avatarFrameSpace = 'space_frame';
+  static const profileBackgroundGarden = 'garden_theme';
+  static const profileBackgroundOcean = 'ocean_theme';
+  static const profileBackgroundCandy = 'candy_theme';
+  static const profileBackgroundSpace = 'space_theme';
+  static const badgeWorldConqueror = 'world_conqueror';
+  static const badgeLuckyPlayer = 'lucky_player';
+  static const badgeCollector = 'collector';
+  static const badgeThreeStarMaster = 'three_star_master';
 
   static const _dailyLoginRewards = <int, int>{
     1: 50,
@@ -868,6 +906,37 @@ class ProgressRepository {
     );
   }
 
+  Future<PlayerCosmetics> playerCosmetics() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cosmetics = _playerCosmeticsFromPrefs(prefs);
+    await _clearLockedCosmeticSelections(prefs, cosmetics);
+    return _playerCosmeticsFromPrefs(prefs);
+  }
+
+  Future<bool> selectAvatarFrame(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cosmetics = _playerCosmeticsFromPrefs(prefs);
+    if (!cosmetics.frameUnlocked(id)) return false;
+    await prefs.setString(_selectedAvatarFrameKey, id);
+    return true;
+  }
+
+  Future<bool> selectProfileBackground(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cosmetics = _playerCosmeticsFromPrefs(prefs);
+    if (!cosmetics.backgroundUnlocked(id)) return false;
+    await prefs.setString(_selectedProfileBackgroundKey, id);
+    return true;
+  }
+
+  Future<bool> selectProfileBadge(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cosmetics = _playerCosmeticsFromPrefs(prefs);
+    if (!cosmetics.badgeUnlocked(id)) return false;
+    await prefs.setString(_selectedProfileBadgeKey, id);
+    return true;
+  }
+
   Future<bool> finalRewardUnlocked() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_finalRewardUnlockedKey) ?? false;
@@ -1046,6 +1115,106 @@ class ProgressRepository {
       total += prefs.getInt(_levelStarsKey(level)) ?? 0;
     }
     return total;
+  }
+
+  PlayerCosmetics _playerCosmeticsFromPrefs(SharedPreferences prefs) {
+    final unlockedFrames = _unlockedAvatarFrames(prefs);
+    final unlockedBackgrounds = _unlockedProfileBackgrounds(prefs);
+    final unlockedBadges = _unlockedProfileBadges(prefs);
+    final selectedFrame = prefs.getString(_selectedAvatarFrameKey);
+    final selectedBackground = prefs.getString(_selectedProfileBackgroundKey);
+    final selectedBadge = prefs.getString(_selectedProfileBadgeKey);
+
+    return PlayerCosmetics(
+      selectedFrame:
+          unlockedFrames.contains(selectedFrame) ? selectedFrame : null,
+      selectedBackground: unlockedBackgrounds.contains(selectedBackground)
+          ? selectedBackground
+          : null,
+      selectedBadge:
+          unlockedBadges.contains(selectedBadge) ? selectedBadge : null,
+      unlockedFrames: unlockedFrames,
+      unlockedBackgrounds: unlockedBackgrounds,
+      unlockedBadges: unlockedBadges,
+    );
+  }
+
+  Future<void> _clearLockedCosmeticSelections(
+    SharedPreferences prefs,
+    PlayerCosmetics cosmetics,
+  ) async {
+    if (prefs.getString(_selectedAvatarFrameKey) != cosmetics.selectedFrame) {
+      await prefs.remove(_selectedAvatarFrameKey);
+    }
+    if (prefs.getString(_selectedProfileBackgroundKey) !=
+        cosmetics.selectedBackground) {
+      await prefs.remove(_selectedProfileBackgroundKey);
+    }
+    if (prefs.getString(_selectedProfileBadgeKey) != cosmetics.selectedBadge) {
+      await prefs.remove(_selectedProfileBadgeKey);
+    }
+  }
+
+  Set<String> _unlockedAvatarFrames(SharedPreferences prefs) {
+    final unlocked = <String>{};
+    if (_achievementUnlocked(prefs, AchievementId.gardenWorld)) {
+      unlocked.add(avatarFrameGarden);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.oceanWorld)) {
+      unlocked.add(avatarFrameOcean);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.candyWorld)) {
+      unlocked.add(avatarFrameCandy);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.spaceWorld)) {
+      unlocked.add(avatarFrameSpace);
+    }
+    return unlocked;
+  }
+
+  Set<String> _unlockedProfileBackgrounds(SharedPreferences prefs) {
+    final unlocked = <String>{};
+    if (_achievementUnlocked(prefs, AchievementId.gardenWorld)) {
+      unlocked.add(profileBackgroundGarden);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.oceanWorld)) {
+      unlocked.add(profileBackgroundOcean);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.candyWorld)) {
+      unlocked.add(profileBackgroundCandy);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.spaceWorld)) {
+      unlocked.add(profileBackgroundSpace);
+    }
+    return unlocked;
+  }
+
+  Set<String> _unlockedProfileBadges(SharedPreferences prefs) {
+    final unlocked = <String>{};
+    final allWorldsComplete =
+        _achievementUnlocked(prefs, AchievementId.gardenWorld) &&
+            _achievementUnlocked(prefs, AchievementId.oceanWorld) &&
+            _achievementUnlocked(prefs, AchievementId.candyWorld) &&
+            _achievementUnlocked(prefs, AchievementId.spaceWorld);
+    if (allWorldsComplete) unlocked.add(badgeWorldConqueror);
+    if (_achievementUnlocked(prefs, AchievementId.luckyPlayer)) {
+      unlocked.add(badgeLuckyPlayer);
+    }
+    if (_collectionUnlockedCount(prefs) >= 20) unlocked.add(badgeCollector);
+    if (_bestStarsTotal(prefs) >= 120) unlocked.add(badgeThreeStarMaster);
+    return unlocked;
+  }
+
+  bool _achievementUnlocked(SharedPreferences prefs, AchievementId id) {
+    return prefs.getBool(_achievementKey(id)) ?? false;
+  }
+
+  int _collectionUnlockedCount(SharedPreferences prefs) {
+    return prefs
+        .getKeys()
+        .where((key) => key.startsWith(_collectionPrefix))
+        .where((key) => prefs.getBool(key) ?? false)
+        .length;
   }
 
   DailyLoginStreakStatus _dailyLoginStreakStatusFromPrefs(

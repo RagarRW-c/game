@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/progress_repository.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
+import '../theme/world_theme.dart';
 import '../widgets/game_ui.dart';
 
 class PlayerProfileScreen extends StatefulWidget {
@@ -15,131 +18,261 @@ class PlayerProfileScreen extends StatefulWidget {
 }
 
 class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
-  late Future<PlayerProfileSummary> _profileFuture;
+  late Future<_ProfileData> _profileFuture;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _profileFuture = AppScope.of(context).progressRepository.playerProfile();
+    _profileFuture = _loadProfileData();
+  }
+
+  Future<_ProfileData> _loadProfileData() async {
+    final repository = AppScope.of(context).progressRepository;
+    final profile = await repository.playerProfile();
+    final cosmetics = await repository.playerCosmetics();
+    return _ProfileData(profile: profile, cosmetics: cosmetics);
+  }
+
+  Future<void> _selectFrame(String id) async {
+    final selected =
+        await AppScope.of(context).progressRepository.selectAvatarFrame(id);
+    if (!mounted) return;
+    if (!selected) {
+      _showLockedMessage();
+      return;
+    }
+    setState(() => _profileFuture = _loadProfileData());
+  }
+
+  Future<void> _selectBackground(String id) async {
+    final selected = await AppScope.of(context)
+        .progressRepository
+        .selectProfileBackground(id);
+    if (!mounted) return;
+    if (!selected) {
+      _showLockedMessage();
+      return;
+    }
+    setState(() => _profileFuture = _loadProfileData());
+  }
+
+  Future<void> _selectBadge(String id) async {
+    final selected =
+        await AppScope.of(context).progressRepository.selectProfileBadge(id);
+    if (!mounted) return;
+    if (!selected) {
+      _showLockedMessage();
+      return;
+    }
+    setState(() => _profileFuture = _loadProfileData());
+  }
+
+  void _showLockedMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cosmetic is locked')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: GameBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              GameHeader(
-                title: 'Player Profile',
-                onBack: () => Navigator.of(context).maybePop(),
-              ),
-              Expanded(
-                child: FutureBuilder<PlayerProfileSummary>(
-                  future: _profileFuture,
-                  builder: (context, snapshot) {
-                    final profile = snapshot.data;
-                    if (profile == null) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    return ListView(
-                      padding: const EdgeInsets.all(GameSpacing.lg),
-                      children: [
-                        _ProfileHeader(profile: profile),
-                        const SizedBox(height: GameSpacing.lg),
-                        GridView.count(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: 2,
-                          mainAxisSpacing: GameSpacing.md,
-                          crossAxisSpacing: GameSpacing.md,
-                          childAspectRatio: 1.1,
-                          children: [
-                            _ProfileStatCard(
-                              icon: Icons.monetization_on_rounded,
-                              label: 'Coins',
-                              value: '${profile.coins}',
+      body: FutureBuilder<_ProfileData>(
+        future: _profileFuture,
+        builder: (context, snapshot) {
+          final data = snapshot.data;
+          final background =
+              _backgroundById(data?.cosmetics.selectedBackground);
+          return GameBackground(
+            worldTheme: background?.theme,
+            child: SafeArea(
+              child: data == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : DefaultTabController(
+                      length: 2,
+                      child: Column(
+                        children: [
+                          GameHeader(
+                            title: 'Player Profile',
+                            onBack: () => Navigator.of(context).maybePop(),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: GameSpacing.lg,
                             ),
-                            _ProfileStatCard(
-                              icon: Icons.star_rounded,
-                              label: 'Total Stars',
-                              value: '${profile.totalStars}',
+                            child: _ProfileHeader(data: data),
+                          ),
+                          const SizedBox(height: GameSpacing.md),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: GameSpacing.lg,
                             ),
-                            _ProfileStatCard(
-                              icon: Icons.flag_rounded,
-                              label: 'Levels Completed',
-                              value: '${profile.levelsCompleted}',
+                            child: _ProfileTabs(),
+                          ),
+                          Expanded(
+                            child: TabBarView(
+                              children: [
+                                _OverviewTab(profile: data.profile),
+                                _CosmeticsTab(
+                                  cosmetics: data.cosmetics,
+                                  onSelectFrame: (id) {
+                                    unawaited(_selectFrame(id));
+                                  },
+                                  onSelectBackground: (id) {
+                                    unawaited(_selectBackground(id));
+                                  },
+                                  onSelectBadge: (id) {
+                                    unawaited(_selectBadge(id));
+                                  },
+                                ),
+                              ],
                             ),
-                            _ProfileStatCard(
-                              icon: Icons.emoji_events_rounded,
-                              label: 'Achievements',
-                              value:
-                                  '${profile.achievementsUnlocked}/${profile.achievementsTotal}',
-                            ),
-                            _ProfileStatCard(
-                              icon: Icons.collections_bookmark_rounded,
-                              label: 'Collection',
-                              value:
-                                  '${profile.collectionUnlocked}/${profile.collectionTotal}',
-                            ),
-                            _ProfileStatCard(
-                              icon: Icons.casino_rounded,
-                              label: 'Wheel Spins',
-                              value: '${profile.luckyWheelSpins}',
-                            ),
-                            _ProfileStatCard(
-                              icon: Icons.local_fire_department_rounded,
-                              label: 'Daily Streak',
-                              value: '${profile.dailyStreak}',
-                            ),
-                            _ProfileStatCard(
-                              icon: Icons.auto_awesome_rounded,
-                              label: 'Boosters Used',
-                              value: '${profile.totalBoostersUsed}',
-                            ),
-                            _ProfileStatCard(
-                              icon: Icons.check_circle_rounded,
-                              label: 'Tiles Matched',
-                              value: '${profile.totalTilesMatched}',
-                            ),
-                          ],
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.profile});
+class _ProfileData {
+  const _ProfileData({required this.profile, required this.cosmetics});
+
+  final PlayerProfileSummary profile;
+  final PlayerCosmetics cosmetics;
+}
+
+class _ProfileTabs extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return GameCard(
+      padding: const EdgeInsets.all(GameSpacing.xs),
+      shadow: GameShadows.light(),
+      child: TabBar(
+        indicator: BoxDecoration(
+          gradient: GameGradients.primaryButton,
+          borderRadius: GameRadius.largeRadius,
+          boxShadow: GameShadows.light(GameColors.primaryBlue),
+        ),
+        labelColor: Colors.white,
+        unselectedLabelColor: GameColors.mutedInk,
+        labelStyle: GameTextStyles.button,
+        tabs: const [
+          Tab(text: 'Overview'),
+          Tab(text: 'Cosmetics'),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverviewTab extends StatelessWidget {
+  const _OverviewTab({required this.profile});
 
   final PlayerProfileSummary profile;
 
   @override
   Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(GameSpacing.lg),
+      children: [
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          mainAxisSpacing: GameSpacing.md,
+          crossAxisSpacing: GameSpacing.md,
+          childAspectRatio: 1.1,
+          children: [
+            _ProfileStatCard(
+              icon: Icons.monetization_on_rounded,
+              label: 'Coins',
+              value: '${profile.coins}',
+            ),
+            _ProfileStatCard(
+              icon: Icons.star_rounded,
+              label: 'Total Stars',
+              value: '${profile.totalStars}',
+            ),
+            _ProfileStatCard(
+              icon: Icons.flag_rounded,
+              label: 'Levels Completed',
+              value: '${profile.levelsCompleted}',
+            ),
+            _ProfileStatCard(
+              icon: Icons.emoji_events_rounded,
+              label: 'Achievements',
+              value:
+                  '${profile.achievementsUnlocked}/${profile.achievementsTotal}',
+            ),
+            _ProfileStatCard(
+              icon: Icons.collections_bookmark_rounded,
+              label: 'Collection',
+              value: '${profile.collectionUnlocked}/${profile.collectionTotal}',
+            ),
+            _ProfileStatCard(
+              icon: Icons.casino_rounded,
+              label: 'Wheel Spins',
+              value: '${profile.luckyWheelSpins}',
+            ),
+            _ProfileStatCard(
+              icon: Icons.local_fire_department_rounded,
+              label: 'Daily Streak',
+              value: '${profile.dailyStreak}',
+            ),
+            _ProfileStatCard(
+              icon: Icons.auto_awesome_rounded,
+              label: 'Boosters Used',
+              value: '${profile.totalBoostersUsed}',
+            ),
+            _ProfileStatCard(
+              icon: Icons.check_circle_rounded,
+              label: 'Tiles Matched',
+              value: '${profile.totalTilesMatched}',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({required this.data});
+
+  final _ProfileData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = data.profile;
     final progress = (profile.totalXp % 500) / 500;
+    final frame = _frameById(data.cosmetics.selectedFrame);
+    final background = _backgroundById(data.cosmetics.selectedBackground);
+    final badge = _badgeById(data.cosmetics.selectedBadge);
     return GameCard(
-      shadow: GameShadows.glow(GameColors.primaryBlueLight),
+      gradient: background?.theme.boardGradient ?? GameGradients.panel,
+      borderColor: frame?.theme.secondaryAccent ?? Colors.white,
+      shadow: GameShadows.glow(
+        frame?.theme.primaryAccent ?? GameColors.primaryBlueLight,
+      ),
       child: Row(
         children: [
           Container(
-            width: 76,
-            height: 76,
+            width: 80,
+            height: 80,
             decoration: BoxDecoration(
-              gradient: GameGradients.badge,
+              gradient: frame?.theme.trayGradient ?? GameGradients.badge,
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 4),
-              boxShadow: GameShadows.medium(),
+              boxShadow: GameShadows.medium(
+                frame?.theme.primaryAccent ?? GameColors.accentGold,
+              ),
             ),
             child:
-                const Icon(Icons.person_rounded, color: Colors.white, size: 44),
+                const Icon(Icons.person_rounded, color: Colors.white, size: 46),
           ),
           const SizedBox(width: GameSpacing.md),
           Expanded(
@@ -152,6 +285,18 @@ class _ProfileHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: GameSpacing.xs),
                 Text('${profile.totalXp} XP', style: GameTextStyles.body),
+                if (badge != null) ...[
+                  const SizedBox(height: GameSpacing.xs),
+                  GameBadge(
+                    icon: badge.icon,
+                    gradient: GameGradients.darkBadge,
+                    child: Text(
+                      badge.name,
+                      style:
+                          GameTextStyles.caption.copyWith(color: Colors.white),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: GameSpacing.sm),
                 ClipRRect(
                   borderRadius: GameRadius.smallRadius,
@@ -159,13 +304,188 @@ class _ProfileHeader extends StatelessWidget {
                     minHeight: 8,
                     value: progress,
                     backgroundColor: GameColors.borderBlue,
-                    color: GameColors.accentGold,
+                    color: frame?.theme.primaryAccent ?? GameColors.accentGold,
                   ),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CosmeticsTab extends StatelessWidget {
+  const _CosmeticsTab({
+    required this.cosmetics,
+    required this.onSelectFrame,
+    required this.onSelectBackground,
+    required this.onSelectBadge,
+  });
+
+  final PlayerCosmetics cosmetics;
+  final ValueChanged<String> onSelectFrame;
+  final ValueChanged<String> onSelectBackground;
+  final ValueChanged<String> onSelectBadge;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(GameSpacing.lg),
+      children: [
+        _CosmeticSection(
+          title: 'Avatar Frames',
+          children: [
+            for (final item in _avatarFrames)
+              _CosmeticCard(
+                item: item,
+                unlocked: cosmetics.frameUnlocked(item.id),
+                selected: cosmetics.selectedFrame == item.id,
+                onPressed: () => onSelectFrame(item.id),
+              ),
+          ],
+        ),
+        const SizedBox(height: GameSpacing.lg),
+        _CosmeticSection(
+          title: 'Profile Backgrounds',
+          children: [
+            for (final item in _profileBackgrounds)
+              _CosmeticCard(
+                item: item,
+                unlocked: cosmetics.backgroundUnlocked(item.id),
+                selected: cosmetics.selectedBackground == item.id,
+                onPressed: () => onSelectBackground(item.id),
+              ),
+          ],
+        ),
+        const SizedBox(height: GameSpacing.lg),
+        _CosmeticSection(
+          title: 'Badges',
+          children: [
+            for (final item in _profileBadges)
+              _CosmeticCard(
+                item: item,
+                unlocked: cosmetics.badgeUnlocked(item.id),
+                selected: cosmetics.selectedBadge == item.id,
+                onPressed: () => onSelectBadge(item.id),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CosmeticSection extends StatelessWidget {
+  const _CosmeticSection({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: GameSpacing.sm),
+          child: Text(
+            title,
+            style: GameTextStyles.title.copyWith(fontSize: 20),
+          ),
+        ),
+        const SizedBox(height: GameSpacing.sm),
+        ...children,
+      ],
+    );
+  }
+}
+
+class _CosmeticCard extends StatelessWidget {
+  const _CosmeticCard({
+    required this.item,
+    required this.unlocked,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final _CosmeticDefinition item;
+  final bool unlocked;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: GameSpacing.md),
+      child: GameCard(
+        padding: const EdgeInsets.all(GameSpacing.md),
+        gradient: unlocked ? item.theme.boardGradient : GameGradients.disabled,
+        borderColor: selected ? GameColors.accentGold : Colors.white,
+        shadow: selected
+            ? GameShadows.glow(GameColors.accentGold)
+            : GameShadows.medium(item.theme.primaryAccent),
+        child: Row(
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                gradient: unlocked ? item.theme.trayGradient : null,
+                color: unlocked ? null : GameColors.mutedInk,
+                borderRadius: GameRadius.largeRadius,
+                border: Border.all(color: Colors.white, width: 3),
+                boxShadow: GameShadows.light(item.theme.primaryAccent),
+              ),
+              child: Icon(
+                unlocked ? item.icon : Icons.lock_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
+            ),
+            const SizedBox(width: GameSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.name,
+                    style: GameTextStyles.h2.copyWith(fontSize: 20),
+                  ),
+                  const SizedBox(height: GameSpacing.xs),
+                  Text(
+                    unlocked
+                        ? selected
+                            ? 'Selected'
+                            : 'Unlocked'
+                        : item.unlockCondition,
+                    style: GameTextStyles.caption,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: GameSpacing.sm),
+            SizedBox(
+              width: 104,
+              child: GameButton(
+                label: selected ? 'Active' : 'Select',
+                icon: selected
+                    ? Icons.check_circle_rounded
+                    : Icons.palette_rounded,
+                onPressed: selected
+                    ? () {}
+                    : unlocked
+                        ? onPressed
+                        : null,
+                variant: selected
+                    ? GameButtonVariant.success
+                    : GameButtonVariant.secondary,
+                height: 46,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -203,4 +523,136 @@ class _ProfileStatCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CosmeticDefinition {
+  const _CosmeticDefinition({
+    required this.id,
+    required this.name,
+    required this.unlockCondition,
+    required this.icon,
+    required this.theme,
+  });
+
+  final String id;
+  final String name;
+  final String unlockCondition;
+  final IconData icon;
+  final WorldVisualTheme theme;
+}
+
+const _avatarFrames = <_CosmeticDefinition>[
+  _CosmeticDefinition(
+    id: ProgressRepository.avatarFrameGarden,
+    name: 'Garden Frame',
+    unlockCondition: 'Complete Garden World',
+    icon: Icons.local_florist_rounded,
+    theme: WorldThemes.garden,
+  ),
+  _CosmeticDefinition(
+    id: ProgressRepository.avatarFrameOcean,
+    name: 'Ocean Frame',
+    unlockCondition: 'Complete Ocean World',
+    icon: Icons.water_rounded,
+    theme: WorldThemes.ocean,
+  ),
+  _CosmeticDefinition(
+    id: ProgressRepository.avatarFrameCandy,
+    name: 'Candy Frame',
+    unlockCondition: 'Complete Candy World',
+    icon: Icons.icecream_rounded,
+    theme: WorldThemes.candy,
+  ),
+  _CosmeticDefinition(
+    id: ProgressRepository.avatarFrameSpace,
+    name: 'Space Frame',
+    unlockCondition: 'Complete Space World',
+    icon: Icons.auto_awesome_rounded,
+    theme: WorldThemes.space,
+  ),
+];
+
+const _profileBackgrounds = <_CosmeticDefinition>[
+  _CosmeticDefinition(
+    id: ProgressRepository.profileBackgroundGarden,
+    name: 'Garden Theme',
+    unlockCondition: 'Complete Garden World',
+    icon: Icons.grass_rounded,
+    theme: WorldThemes.garden,
+  ),
+  _CosmeticDefinition(
+    id: ProgressRepository.profileBackgroundOcean,
+    name: 'Ocean Theme',
+    unlockCondition: 'Complete Ocean World',
+    icon: Icons.waves_rounded,
+    theme: WorldThemes.ocean,
+  ),
+  _CosmeticDefinition(
+    id: ProgressRepository.profileBackgroundCandy,
+    name: 'Candy Theme',
+    unlockCondition: 'Complete Candy World',
+    icon: Icons.cookie_rounded,
+    theme: WorldThemes.candy,
+  ),
+  _CosmeticDefinition(
+    id: ProgressRepository.profileBackgroundSpace,
+    name: 'Space Theme',
+    unlockCondition: 'Complete Space World',
+    icon: Icons.public_rounded,
+    theme: WorldThemes.space,
+  ),
+];
+
+const _profileBadges = <_CosmeticDefinition>[
+  _CosmeticDefinition(
+    id: ProgressRepository.badgeWorldConqueror,
+    name: 'World Conqueror',
+    unlockCondition: 'Complete all worlds',
+    icon: Icons.emoji_events_rounded,
+    theme: WorldThemes.space,
+  ),
+  _CosmeticDefinition(
+    id: ProgressRepository.badgeLuckyPlayer,
+    name: 'Lucky Player',
+    unlockCondition: 'Unlock Lucky Player achievement',
+    icon: Icons.casino_rounded,
+    theme: WorldThemes.ocean,
+  ),
+  _CosmeticDefinition(
+    id: ProgressRepository.badgeCollector,
+    name: 'Collector',
+    unlockCondition: 'Complete the Collection Book',
+    icon: Icons.collections_bookmark_rounded,
+    theme: WorldThemes.garden,
+  ),
+  _CosmeticDefinition(
+    id: ProgressRepository.badgeThreeStarMaster,
+    name: '3-Star Master',
+    unlockCondition: 'Earn 3 stars on every level',
+    icon: Icons.star_rounded,
+    theme: WorldThemes.candy,
+  ),
+];
+
+_CosmeticDefinition? _frameById(String? id) {
+  return _definitionById(_avatarFrames, id);
+}
+
+_CosmeticDefinition? _backgroundById(String? id) {
+  return _definitionById(_profileBackgrounds, id);
+}
+
+_CosmeticDefinition? _badgeById(String? id) {
+  return _definitionById(_profileBadges, id);
+}
+
+_CosmeticDefinition? _definitionById(
+  List<_CosmeticDefinition> definitions,
+  String? id,
+) {
+  if (id == null) return null;
+  for (final definition in definitions) {
+    if (definition.id == id) return definition;
+  }
+  return null;
 }
