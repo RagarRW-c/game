@@ -39,17 +39,32 @@ class _DailyChallengesScreenState extends State<DailyChallengesScreen> {
 
   Future<void> _claim(DailyChallengeId id) async {
     final repository = AppScope.of(context).progressRepository;
-    final updatedCoins = await repository.claimDailyChallenge(id);
+    final result = await repository.claimDailyChallengeReward(id);
     final state = await repository.dailyChallenges();
     if (!mounted) return;
-    if (updatedCoins == null) {
-      setState(() => _state = state);
-      return;
-    }
+    if (result.message != null) _showMessage(result.message!);
     setState(() {
-      _coins = updatedCoins;
+      _coins = result.coins;
       _state = state;
     });
+  }
+
+  Future<void> _claimBonus() async {
+    final repository = AppScope.of(context).progressRepository;
+    final result = await repository.claimDailyChallengeBonus();
+    final state = await repository.dailyChallenges();
+    if (!mounted) return;
+    if (result.message != null) _showMessage(result.message!);
+    setState(() {
+      _coins = result.coins;
+      _state = state;
+    });
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -85,61 +100,67 @@ class _DailyChallengesScreenState extends State<DailyChallengesScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Today',
-                                  style: GameTextStyles.h2.copyWith(
-                                    fontSize: 24,
-                                  ),
-                                ),
-                                const SizedBox(height: GameSpacing.xs),
-                                Text(
-                                  state.dateKey,
-                                  style: GameTextStyles.body,
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 54,
+                                      height: 54,
+                                      decoration: BoxDecoration(
+                                        gradient: GameGradients.primaryButton,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 3,
+                                        ),
+                                        boxShadow: GameShadows.light(),
+                                      ),
+                                      child: const Icon(
+                                        Icons.task_alt_rounded,
+                                        color: Colors.white,
+                                        size: 30,
+                                      ),
+                                    ),
+                                    const SizedBox(width: GameSpacing.md),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Today',
+                                            style: GameTextStyles.h2.copyWith(
+                                              fontSize: 24,
+                                            ),
+                                          ),
+                                          const SizedBox(
+                                            height: GameSpacing.xs,
+                                          ),
+                                          Text(
+                                            state.dateKey,
+                                            style: GameTextStyles.body,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
                           const SizedBox(height: GameSpacing.lg),
-                          _ChallengeCard(
-                            icon: Icons.emoji_events_rounded,
-                            title: 'Complete 1 level',
-                            progress: state.completedLevels > 1
-                                ? 1
-                                : state.completedLevels,
-                            target: 1,
-                            reward: 100,
-                            claimed: state.completeLevelClaimed,
-                            onClaim: state.completedLevels >= 1 &&
-                                    !state.completeLevelClaimed
-                                ? () => _claim(DailyChallengeId.completeLevel)
-                                : null,
-                          ),
-                          const SizedBox(height: GameSpacing.md),
-                          _ChallengeCard(
-                            icon: Icons.grid_view_rounded,
-                            title: 'Match 30 tiles',
-                            progress: state.matchedTiles > 30
-                                ? 30
-                                : state.matchedTiles,
-                            target: 30,
-                            reward: 75,
-                            claimed: state.matchTilesClaimed,
-                            onClaim: state.matchedTiles >= 30 &&
-                                    !state.matchTilesClaimed
-                                ? () => _claim(DailyChallengeId.matchTiles)
-                                : null,
-                          ),
-                          const SizedBox(height: GameSpacing.md),
-                          _ChallengeCard(
-                            icon: Icons.casino_rounded,
-                            title: 'Use Lucky Wheel',
-                            progress: state.luckyWheelUsed ? 1 : 0,
-                            target: 1,
-                            reward: 50,
-                            claimed: state.luckyWheelClaimed,
-                            onClaim: state.luckyWheelUsed &&
-                                    !state.luckyWheelClaimed
-                                ? () => _claim(DailyChallengeId.useLuckyWheel)
+                          for (final challenge in state.challenges) ...[
+                            _ChallengeCard(
+                              entry: challenge,
+                              onClaim: challenge.complete && !challenge.claimed
+                                  ? () => _claim(challenge.definition.id)
+                                  : null,
+                            ),
+                            const SizedBox(height: GameSpacing.md),
+                          ],
+                          _BonusCard(
+                            state: state,
+                            onClaim: state.bonusAvailable
+                                ? () => _claimBonus()
                                 : null,
                           ),
                         ],
@@ -155,26 +176,17 @@ class _DailyChallengesScreenState extends State<DailyChallengesScreen> {
 
 class _ChallengeCard extends StatelessWidget {
   const _ChallengeCard({
-    required this.icon,
-    required this.title,
-    required this.progress,
-    required this.target,
-    required this.reward,
-    required this.claimed,
+    required this.entry,
     required this.onClaim,
   });
 
-  final IconData icon;
-  final String title;
-  final int progress;
-  final int target;
-  final int reward;
-  final bool claimed;
+  final DailyChallengeEntry entry;
   final VoidCallback? onClaim;
 
   @override
   Widget build(BuildContext context) {
-    final complete = progress >= target;
+    final complete = entry.complete;
+    final definition = entry.definition;
     return GameCard(
       padding: const EdgeInsets.all(GameSpacing.lg),
       shadow: complete ? GameShadows.glow(GameColors.successGreen) : null,
@@ -194,7 +206,11 @@ class _ChallengeCard extends StatelessWidget {
                   border: Border.all(color: Colors.white, width: 3),
                   boxShadow: GameShadows.light(),
                 ),
-                child: Icon(icon, color: Colors.white, size: 30),
+                child: Icon(
+                  _challengeIcon(definition.id),
+                  color: Colors.white,
+                  size: 30,
+                ),
               ),
               const SizedBox(width: GameSpacing.md),
               Expanded(
@@ -202,25 +218,18 @@ class _ChallengeCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
+                      definition.title,
                       style: GameTextStyles.body.copyWith(fontSize: 18),
                     ),
                     const SizedBox(height: GameSpacing.xs),
                     Text(
-                      '$progress/$target',
+                      '${entry.cappedProgress}/${definition.target}',
                       style: GameTextStyles.caption,
                     ),
                   ],
                 ),
               ),
-              GameBadge(
-                icon: Icons.monetization_on_rounded,
-                gradient: GameGradients.badge,
-                child: Text(
-                  '$reward',
-                  style: GameTextStyles.caption.copyWith(color: Colors.white),
-                ),
-              ),
+              _RewardBadge(definition: definition),
             ],
           ),
           const SizedBox(height: GameSpacing.md),
@@ -228,7 +237,9 @@ class _ChallengeCard extends StatelessWidget {
             borderRadius: GameRadius.smallRadius,
             child: LinearProgressIndicator(
               minHeight: 10,
-              value: (progress / target).clamp(0, 1).toDouble(),
+              value: (entry.cappedProgress / definition.target)
+                  .clamp(0, 1)
+                  .toDouble(),
               backgroundColor: GameColors.borderBlue,
               color:
                   complete ? GameColors.successGreen : GameColors.primaryBlue,
@@ -236,9 +247,11 @@ class _ChallengeCard extends StatelessWidget {
           ),
           const SizedBox(height: GameSpacing.lg),
           GameButton(
-            label: claimed ? 'Claimed' : 'Claim',
-            icon: claimed ? Icons.check_rounded : Icons.card_giftcard_rounded,
-            onPressed: claimed ? null : onClaim,
+            label: entry.claimed ? 'Claimed' : 'Claim',
+            icon: entry.claimed
+                ? Icons.check_rounded
+                : Icons.card_giftcard_rounded,
+            onPressed: entry.claimed ? null : onClaim,
             variant: complete
                 ? GameButtonVariant.success
                 : GameButtonVariant.secondary,
@@ -246,5 +259,126 @@ class _ChallengeCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _BonusCard extends StatelessWidget {
+  const _BonusCard({required this.state, required this.onClaim});
+
+  final DailyChallengesState state;
+  final VoidCallback? onClaim;
+
+  @override
+  Widget build(BuildContext context) {
+    final complete = state.allClaimed;
+    return GameCard(
+      padding: const EdgeInsets.all(GameSpacing.lg),
+      borderColor: complete ? GameColors.accentGold : Colors.white,
+      shadow: complete
+          ? GameShadows.glow(GameColors.accentGold)
+          : GameShadows.medium(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  gradient:
+                      complete ? GameGradients.badge : GameGradients.darkBadge,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: GameShadows.light(),
+                ),
+                child: const Icon(
+                  Icons.workspace_premium_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(width: GameSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Daily Bonus',
+                      style: GameTextStyles.body.copyWith(fontSize: 18),
+                    ),
+                    const SizedBox(height: GameSpacing.xs),
+                    Text(
+                      '+300 coins and Silver Chest',
+                      style: GameTextStyles.caption,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: GameSpacing.lg),
+          GameButton(
+            label: state.bonusClaimed ? 'Claimed' : 'Claim Bonus',
+            icon:
+                state.bonusClaimed ? Icons.check_rounded : Icons.redeem_rounded,
+            onPressed: state.bonusClaimed ? null : onClaim,
+            variant:
+                complete ? GameButtonVariant.gold : GameButtonVariant.secondary,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RewardBadge extends StatelessWidget {
+  const _RewardBadge({required this.definition});
+
+  final DailyChallengeDefinition definition;
+
+  @override
+  Widget build(BuildContext context) {
+    return GameBadge(
+      icon: _rewardIcon(definition.rewardType),
+      gradient: GameGradients.badge,
+      child: Text(
+        definition.rewardLabel,
+        style: GameTextStyles.caption.copyWith(color: Colors.white),
+      ),
+    );
+  }
+}
+
+IconData _challengeIcon(DailyChallengeId id) {
+  switch (id) {
+    case DailyChallengeId.completeTwoLevels:
+      return Icons.flag_rounded;
+    case DailyChallengeId.matchTiles:
+      return Icons.grid_view_rounded;
+    case DailyChallengeId.useLuckyWheel:
+      return Icons.casino_rounded;
+    case DailyChallengeId.openChest:
+      return Icons.inventory_2_rounded;
+    case DailyChallengeId.earnCoins:
+      return Icons.monetization_on_rounded;
+    case DailyChallengeId.useBooster:
+      return Icons.auto_awesome_rounded;
+    case DailyChallengeId.completeBossLevel:
+      return Icons.workspace_premium_rounded;
+  }
+}
+
+IconData _rewardIcon(DailyChallengeRewardType type) {
+  switch (type) {
+    case DailyChallengeRewardType.coins:
+      return Icons.monetization_on_rounded;
+    case DailyChallengeRewardType.hintBooster:
+      return Icons.lightbulb_rounded;
+    case DailyChallengeRewardType.shuffleBooster:
+      return Icons.shuffle_rounded;
+    case DailyChallengeRewardType.silverChest:
+    case DailyChallengeRewardType.goldChest:
+      return Icons.inventory_2_rounded;
   }
 }

@@ -115,7 +115,69 @@ class DailyLoginStreakClaim {
   final int coins;
 }
 
-enum DailyChallengeId { completeLevel, matchTiles, useLuckyWheel }
+enum DailyChallengeId {
+  completeTwoLevels,
+  matchTiles,
+  useLuckyWheel,
+  openChest,
+  earnCoins,
+  useBooster,
+  completeBossLevel,
+}
+
+enum DailyChallengeRewardType {
+  coins,
+  hintBooster,
+  shuffleBooster,
+  silverChest,
+  goldChest,
+}
+
+class DailyChallengeDefinition {
+  const DailyChallengeDefinition({
+    required this.id,
+    required this.title,
+    required this.target,
+    required this.rewardType,
+    required this.rewardAmount,
+    required this.rewardLabel,
+  });
+
+  final DailyChallengeId id;
+  final String title;
+  final int target;
+  final DailyChallengeRewardType rewardType;
+  final int rewardAmount;
+  final String rewardLabel;
+}
+
+class DailyChallengeEntry {
+  const DailyChallengeEntry({
+    required this.definition,
+    required this.progress,
+    required this.claimed,
+  });
+
+  final DailyChallengeDefinition definition;
+  final int progress;
+  final bool claimed;
+
+  bool get complete => progress >= definition.target;
+  int get cappedProgress =>
+      progress > definition.target ? definition.target : progress;
+}
+
+class DailyChallengeClaimResult {
+  const DailyChallengeClaimResult({
+    required this.claimed,
+    required this.coins,
+    required this.message,
+  });
+
+  final bool claimed;
+  final int coins;
+  final String? message;
+}
 
 enum BoosterKind { undo, hint, shuffle }
 
@@ -255,43 +317,31 @@ class PlayerCosmetics {
 class DailyChallengesState {
   const DailyChallengesState({
     required this.dateKey,
-    required this.completedLevels,
-    required this.matchedTiles,
-    required this.luckyWheelUsed,
-    required this.completeLevelClaimed,
-    required this.matchTilesClaimed,
-    required this.luckyWheelClaimed,
+    required this.challenges,
+    required this.bonusClaimed,
   });
 
   final String dateKey;
-  final int completedLevels;
-  final int matchedTiles;
-  final bool luckyWheelUsed;
-  final bool completeLevelClaimed;
-  final bool matchTilesClaimed;
-  final bool luckyWheelClaimed;
+  final List<DailyChallengeEntry> challenges;
+  final bool bonusClaimed;
 
   bool isComplete(DailyChallengeId id) {
-    switch (id) {
-      case DailyChallengeId.completeLevel:
-        return completedLevels >= 1;
-      case DailyChallengeId.matchTiles:
-        return matchedTiles >= 30;
-      case DailyChallengeId.useLuckyWheel:
-        return luckyWheelUsed;
-    }
+    return challenges
+        .where((challenge) => challenge.definition.id == id)
+        .any((challenge) => challenge.complete);
   }
 
   bool isClaimed(DailyChallengeId id) {
-    switch (id) {
-      case DailyChallengeId.completeLevel:
-        return completeLevelClaimed;
-      case DailyChallengeId.matchTiles:
-        return matchTilesClaimed;
-      case DailyChallengeId.useLuckyWheel:
-        return luckyWheelClaimed;
-    }
+    return challenges
+        .where((challenge) => challenge.definition.id == id)
+        .any((challenge) => challenge.claimed);
   }
+
+  bool get allClaimed =>
+      challenges.isNotEmpty &&
+      challenges.every((challenge) => challenge.claimed);
+
+  bool get bonusAvailable => allClaimed && !bonusClaimed;
 }
 
 class ProgressRepository {
@@ -310,14 +360,18 @@ class ProgressRepository {
   static const _extraShuffleBoostersKey = 'extra_shuffle_boosters';
   static const _extraUndoBoostersKey = 'extra_undo_boosters';
   static const _dailyChallengeDateKey = 'daily_challenge_date';
+  static const _dailyChallengeIdsKey = 'daily_challenge_ids';
+  static const _dailyChallengeClaimedIdsKey = 'daily_challenge_claimed_ids';
+  static const _dailyChallengeBonusClaimedKey = 'daily_challenge_bonus_claimed';
   static const _dailyChallengeCompletedLevelsKey =
       'daily_challenge_completed_levels';
   static const _dailyChallengeMatchedTilesKey = 'daily_challenge_matched_tiles';
   static const _dailyChallengeLuckyWheelUsedKey =
       'daily_challenge_lucky_wheel_used';
-  static const _dailyChallengeLevelClaimedKey = 'daily_challenge_level_claimed';
-  static const _dailyChallengeTilesClaimedKey = 'daily_challenge_tiles_claimed';
-  static const _dailyChallengeWheelClaimedKey = 'daily_challenge_wheel_claimed';
+  static const _dailyChallengeOpenedChestsKey = 'daily_challenge_opened_chests';
+  static const _dailyChallengeCoinsEarnedKey = 'daily_challenge_coins_earned';
+  static const _dailyChallengeBoostersUsedKey = 'daily_challenge_boosters_used';
+  static const _dailyChallengeBossLevelsKey = 'daily_challenge_boss_levels';
   static const _levelStarsPrefix = 'level_stars_';
   static const _achievementPrefix = 'achievement_';
   static const _pendingAchievementPopupIdsKey = 'pending_achievement_popup_ids';
@@ -420,6 +474,65 @@ class ProgressRepository {
     ),
   ];
 
+  static const dailyChallengeCatalog = <DailyChallengeDefinition>[
+    DailyChallengeDefinition(
+      id: DailyChallengeId.completeTwoLevels,
+      title: 'Complete 2 levels',
+      target: 2,
+      rewardType: DailyChallengeRewardType.coins,
+      rewardAmount: 150,
+      rewardLabel: '150 coins',
+    ),
+    DailyChallengeDefinition(
+      id: DailyChallengeId.matchTiles,
+      title: 'Match 30 tiles',
+      target: 30,
+      rewardType: DailyChallengeRewardType.coins,
+      rewardAmount: 100,
+      rewardLabel: '100 coins',
+    ),
+    DailyChallengeDefinition(
+      id: DailyChallengeId.useLuckyWheel,
+      title: 'Use Lucky Wheel',
+      target: 1,
+      rewardType: DailyChallengeRewardType.coins,
+      rewardAmount: 75,
+      rewardLabel: '75 coins',
+    ),
+    DailyChallengeDefinition(
+      id: DailyChallengeId.openChest,
+      title: 'Open 1 Chest',
+      target: 1,
+      rewardType: DailyChallengeRewardType.coins,
+      rewardAmount: 100,
+      rewardLabel: '100 coins',
+    ),
+    DailyChallengeDefinition(
+      id: DailyChallengeId.earnCoins,
+      title: 'Earn 100 coins',
+      target: 100,
+      rewardType: DailyChallengeRewardType.hintBooster,
+      rewardAmount: 1,
+      rewardLabel: '+1 Hint',
+    ),
+    DailyChallengeDefinition(
+      id: DailyChallengeId.useBooster,
+      title: 'Use 1 Booster',
+      target: 1,
+      rewardType: DailyChallengeRewardType.shuffleBooster,
+      rewardAmount: 1,
+      rewardLabel: '+1 Shuffle',
+    ),
+    DailyChallengeDefinition(
+      id: DailyChallengeId.completeBossLevel,
+      title: 'Complete 1 Boss Level',
+      target: 1,
+      rewardType: DailyChallengeRewardType.goldChest,
+      rewardAmount: 1,
+      rewardLabel: 'Gold Chest',
+    ),
+  ];
+
   String _normalizeFinalCode(String value) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     return digits.padLeft(4, '0').substring(0, 4);
@@ -474,9 +587,11 @@ class ProgressRepository {
 
   Future<int> addCoins(int amount) async {
     final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
     final updated = (prefs.getInt(_coinsKey) ?? 0) + amount;
     await prefs.setInt(_coinsKey, updated);
     await _incrementInt(prefs, _statsCoinsEarnedKey, amount);
+    await _incrementInt(prefs, _dailyChallengeCoinsEarnedKey, amount);
     return updated;
   }
 
@@ -513,6 +628,8 @@ class ProgressRepository {
     await prefs.setInt(_dailyLoginStreakKey, status.claimDay);
     await prefs.setInt(_coinsKey, updatedCoins);
     await _incrementInt(prefs, _statsCoinsEarnedKey, status.reward);
+    await _ensureDailyChallengesForToday(prefs);
+    await _incrementInt(prefs, _dailyChallengeCoinsEarnedKey, status.reward);
 
     return DailyLoginStreakClaim(
       status: DailyLoginStreakStatus(
@@ -535,6 +652,8 @@ class ProgressRepository {
     await prefs.setString(_lastDailyRewardDateKey, today);
     await prefs.setInt(_coinsKey, updated);
     await _incrementInt(prefs, _statsCoinsEarnedKey, reward);
+    await _ensureDailyChallengesForToday(prefs);
+    await _incrementInt(prefs, _dailyChallengeCoinsEarnedKey, reward);
     return updated;
   }
 
@@ -665,6 +784,9 @@ class ProgressRepository {
     final prefs = await SharedPreferences.getInstance();
     await _ensureDailyChallengesForToday(prefs);
     await _incrementInt(prefs, _dailyChallengeCompletedLevelsKey, 1);
+    if (level % 10 == 0) {
+      await _incrementInt(prefs, _dailyChallengeBossLevelsKey, 1);
+    }
     await _incrementInt(prefs, _statsLevelsCompletedKey, 1);
     await _incrementInt(prefs, _totalXpKey, stars == 3 ? 150 : 100);
     await saveBestStarsForLevel(level, stars, prefs: prefs);
@@ -679,15 +801,21 @@ class ProgressRepository {
   }
 
   Future<ChestGrantResult> grantChestForLevel(int level) async {
+    return _grantChestByType(_chestTypeForLevel(level), idSuffix: '$level');
+  }
+
+  Future<ChestGrantResult> _grantChestByType(
+    TreasureChestType type, {
+    String? idSuffix,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final chests = _chestsFromPrefs(prefs);
     if (chests.length >= 3) {
       return const ChestGrantResult(granted: false, slotsFull: true);
     }
     final now = DateTime.now().millisecondsSinceEpoch;
-    final type = _chestTypeForLevel(level);
     final chest = TreasureChest(
-      id: '${now}_$level',
+      id: '${now}_${idSuffix ?? type.name}',
       type: type,
       grantedAtMillis: now,
       unlockAtMillis: now + _chestUnlockDuration(type).inMilliseconds,
@@ -712,6 +840,8 @@ class ProgressRepository {
     final reward = _rollChestReward(chest.type);
     final updatedChests = <TreasureChest>[...chests]..removeAt(index);
     await _saveChests(prefs, updatedChests);
+    await _ensureDailyChallengesForToday(prefs);
+    await _incrementInt(prefs, _dailyChallengeOpenedChestsKey, 1);
     await addCoins(reward.coins);
     if (reward.undo > 0) await addExtraUndoBoosters(reward.undo);
     if (reward.hint > 0) await addExtraHintBoosters(reward.hint);
@@ -738,6 +868,8 @@ class ProgressRepository {
     final reward = _rollChestReward(chest.type);
     final updatedChests = <TreasureChest>[...chests]..removeAt(index);
     await _saveChests(prefs, updatedChests);
+    await _ensureDailyChallengesForToday(prefs);
+    await _incrementInt(prefs, _dailyChallengeOpenedChestsKey, 1);
     await addCoins(reward.coins);
     if (reward.undo > 0) await addExtraUndoBoosters(reward.undo);
     if (reward.hint > 0) await addExtraHintBoosters(reward.hint);
@@ -762,6 +894,8 @@ class ProgressRepository {
 
   Future<void> recordBoosterUsed(BoosterKind kind) async {
     final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    await _incrementInt(prefs, _dailyChallengeBoostersUsedKey, 1);
     await _incrementInt(prefs, _statsBoostersUsedKey, 1);
     switch (kind) {
       case BoosterKind.undo:
@@ -963,13 +1097,74 @@ class ProgressRepository {
   }
 
   Future<int?> claimDailyChallenge(DailyChallengeId id) async {
+    final result = await claimDailyChallengeReward(id);
+    return result.claimed ? result.coins : null;
+  }
+
+  Future<DailyChallengeClaimResult> claimDailyChallengeReward(
+    DailyChallengeId id,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await _ensureDailyChallengesForToday(prefs);
     final state = _dailyChallengesFromPrefs(prefs);
-    if (!state.isComplete(id) || state.isClaimed(id)) return null;
+    final activeIds = state.challenges.map((entry) => entry.definition.id);
+    if (!activeIds.contains(id)) {
+      return DailyChallengeClaimResult(
+        claimed: false,
+        coins: prefs.getInt(_coinsKey) ?? 0,
+        message: 'Challenge is not active today',
+      );
+    }
+    if (!state.isComplete(id) || state.isClaimed(id)) {
+      return DailyChallengeClaimResult(
+        claimed: false,
+        coins: prefs.getInt(_coinsKey) ?? 0,
+        message: null,
+      );
+    }
 
-    await prefs.setBool(_dailyChallengeClaimedKey(id), true);
-    return addCoins(_dailyChallengeReward(id));
+    final definition = _dailyChallengeDefinition(id);
+    final rewardResult = await _grantDailyChallengeReward(prefs, definition);
+    if (!rewardResult.claimed) return rewardResult;
+    final claimedIds =
+        prefs.getStringList(_dailyChallengeClaimedIdsKey) ?? const <String>[];
+    await prefs.setStringList(
+      _dailyChallengeClaimedIdsKey,
+      <String>{...claimedIds, id.name}.toList(),
+    );
+    return DailyChallengeClaimResult(
+      claimed: true,
+      coins: rewardResult.coins,
+      message: rewardResult.message,
+    );
+  }
+
+  Future<DailyChallengeClaimResult> claimDailyChallengeBonus() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureDailyChallengesForToday(prefs);
+    final state = _dailyChallengesFromPrefs(prefs);
+    if (!state.bonusAvailable) {
+      return DailyChallengeClaimResult(
+        claimed: false,
+        coins: prefs.getInt(_coinsKey) ?? 0,
+        message: null,
+      );
+    }
+    final chestGrant = await _grantChestByType(TreasureChestType.silver);
+    if (chestGrant.slotsFull) {
+      return DailyChallengeClaimResult(
+        claimed: false,
+        coins: prefs.getInt(_coinsKey) ?? 0,
+        message: 'Chest slots full',
+      );
+    }
+    final coins = await addCoins(300);
+    await prefs.setBool(_dailyChallengeBonusClaimedKey, true);
+    return DailyChallengeClaimResult(
+      claimed: true,
+      coins: coins,
+      message: 'Bonus claimed',
+    );
   }
 
   Future<String> finalCode() async {
@@ -993,50 +1188,148 @@ class ProgressRepository {
   }
 
   Future<void> _ensureDailyChallengesForToday(SharedPreferences prefs) async {
-    final today = _polishDateKey(DateTime.now());
+    final today = _dateKey(DateTime.now().toLocal());
     if (prefs.getString(_dailyChallengeDateKey) == today) return;
+    final challengeIds = _dailyChallengeIdsForDate(today);
     await prefs.setString(_dailyChallengeDateKey, today);
+    await prefs.setStringList(
+      _dailyChallengeIdsKey,
+      challengeIds.map((id) => id.name).toList(),
+    );
+    await prefs.setStringList(_dailyChallengeClaimedIdsKey, const <String>[]);
+    await prefs.setBool(_dailyChallengeBonusClaimedKey, false);
     await prefs.setInt(_dailyChallengeCompletedLevelsKey, 0);
     await prefs.setInt(_dailyChallengeMatchedTilesKey, 0);
     await prefs.setBool(_dailyChallengeLuckyWheelUsedKey, false);
-    await prefs.setBool(_dailyChallengeLevelClaimedKey, false);
-    await prefs.setBool(_dailyChallengeTilesClaimedKey, false);
-    await prefs.setBool(_dailyChallengeWheelClaimedKey, false);
+    await prefs.setInt(_dailyChallengeOpenedChestsKey, 0);
+    await prefs.setInt(_dailyChallengeCoinsEarnedKey, 0);
+    await prefs.setInt(_dailyChallengeBoostersUsedKey, 0);
+    await prefs.setInt(_dailyChallengeBossLevelsKey, 0);
   }
 
   DailyChallengesState _dailyChallengesFromPrefs(SharedPreferences prefs) {
+    final dateKey =
+        prefs.getString(_dailyChallengeDateKey) ?? _dateKey(DateTime.now());
+    final ids = _activeDailyChallengeIds(prefs, dateKey);
+    final claimedIds =
+        (prefs.getStringList(_dailyChallengeClaimedIdsKey) ?? const <String>[])
+            .toSet();
     return DailyChallengesState(
-      dateKey: prefs.getString(_dailyChallengeDateKey) ??
-          _polishDateKey(DateTime.now()),
-      completedLevels: prefs.getInt(_dailyChallengeCompletedLevelsKey) ?? 0,
-      matchedTiles: prefs.getInt(_dailyChallengeMatchedTilesKey) ?? 0,
-      luckyWheelUsed: prefs.getBool(_dailyChallengeLuckyWheelUsedKey) ?? false,
-      completeLevelClaimed:
-          prefs.getBool(_dailyChallengeLevelClaimedKey) ?? false,
-      matchTilesClaimed: prefs.getBool(_dailyChallengeTilesClaimedKey) ?? false,
-      luckyWheelClaimed: prefs.getBool(_dailyChallengeWheelClaimedKey) ?? false,
+      dateKey: dateKey,
+      challenges: [
+        for (final id in ids)
+          DailyChallengeEntry(
+            definition: _dailyChallengeDefinition(id),
+            progress: _dailyChallengeProgress(prefs, id),
+            claimed: claimedIds.contains(id.name),
+          ),
+      ],
+      bonusClaimed: prefs.getBool(_dailyChallengeBonusClaimedKey) ?? false,
     );
   }
 
-  int _dailyChallengeReward(DailyChallengeId id) {
+  List<DailyChallengeId> _activeDailyChallengeIds(
+    SharedPreferences prefs,
+    String dateKey,
+  ) {
+    final storedIds = prefs.getStringList(_dailyChallengeIdsKey);
+    final ids = storedIds
+            ?.map(_dailyChallengeIdFromName)
+            .whereType<DailyChallengeId>()
+            .toList() ??
+        const <DailyChallengeId>[];
+    if (ids.length == 3) return ids;
+    return _dailyChallengeIdsForDate(dateKey);
+  }
+
+  List<DailyChallengeId> _dailyChallengeIdsForDate(String dateKey) {
+    final ids = DailyChallengeId.values.toList();
+    var seed = 0;
+    for (final unit in dateKey.codeUnits) {
+      seed = (seed * 31 + unit) & 0x7fffffff;
+    }
+    for (var index = ids.length - 1; index > 0; index--) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      final swapIndex = seed % (index + 1);
+      final current = ids[index];
+      ids[index] = ids[swapIndex];
+      ids[swapIndex] = current;
+    }
+    return ids.take(3).toList(growable: false);
+  }
+
+  DailyChallengeId? _dailyChallengeIdFromName(String name) {
+    for (final id in DailyChallengeId.values) {
+      if (id.name == name) return id;
+    }
+    return null;
+  }
+
+  DailyChallengeDefinition _dailyChallengeDefinition(DailyChallengeId id) {
+    return dailyChallengeCatalog.firstWhere(
+      (definition) => definition.id == id,
+    );
+  }
+
+  int _dailyChallengeProgress(SharedPreferences prefs, DailyChallengeId id) {
     switch (id) {
-      case DailyChallengeId.completeLevel:
-        return 100;
+      case DailyChallengeId.completeTwoLevels:
+        return prefs.getInt(_dailyChallengeCompletedLevelsKey) ?? 0;
       case DailyChallengeId.matchTiles:
-        return 75;
+        return prefs.getInt(_dailyChallengeMatchedTilesKey) ?? 0;
       case DailyChallengeId.useLuckyWheel:
-        return 50;
+        return prefs.getBool(_dailyChallengeLuckyWheelUsedKey) ?? false ? 1 : 0;
+      case DailyChallengeId.openChest:
+        return prefs.getInt(_dailyChallengeOpenedChestsKey) ?? 0;
+      case DailyChallengeId.earnCoins:
+        return prefs.getInt(_dailyChallengeCoinsEarnedKey) ?? 0;
+      case DailyChallengeId.useBooster:
+        return prefs.getInt(_dailyChallengeBoostersUsedKey) ?? 0;
+      case DailyChallengeId.completeBossLevel:
+        return prefs.getInt(_dailyChallengeBossLevelsKey) ?? 0;
     }
   }
 
-  String _dailyChallengeClaimedKey(DailyChallengeId id) {
-    switch (id) {
-      case DailyChallengeId.completeLevel:
-        return _dailyChallengeLevelClaimedKey;
-      case DailyChallengeId.matchTiles:
-        return _dailyChallengeTilesClaimedKey;
-      case DailyChallengeId.useLuckyWheel:
-        return _dailyChallengeWheelClaimedKey;
+  Future<DailyChallengeClaimResult> _grantDailyChallengeReward(
+    SharedPreferences prefs,
+    DailyChallengeDefinition definition,
+  ) async {
+    switch (definition.rewardType) {
+      case DailyChallengeRewardType.coins:
+        final coins = await addCoins(definition.rewardAmount);
+        return DailyChallengeClaimResult(
+          claimed: true,
+          coins: coins,
+          message: null,
+        );
+      case DailyChallengeRewardType.hintBooster:
+        await addExtraHintBoosters(definition.rewardAmount);
+        return DailyChallengeClaimResult(
+          claimed: true,
+          coins: prefs.getInt(_coinsKey) ?? 0,
+          message: null,
+        );
+      case DailyChallengeRewardType.shuffleBooster:
+        await addExtraShuffleBoosters(definition.rewardAmount);
+        return DailyChallengeClaimResult(
+          claimed: true,
+          coins: prefs.getInt(_coinsKey) ?? 0,
+          message: null,
+        );
+      case DailyChallengeRewardType.silverChest:
+        final result = await _grantChestByType(TreasureChestType.silver);
+        return DailyChallengeClaimResult(
+          claimed: result.granted,
+          coins: prefs.getInt(_coinsKey) ?? 0,
+          message: result.slotsFull ? 'Chest slots full' : null,
+        );
+      case DailyChallengeRewardType.goldChest:
+        final result = await _grantChestByType(TreasureChestType.gold);
+        return DailyChallengeClaimResult(
+          claimed: result.granted,
+          coins: prefs.getInt(_coinsKey) ?? 0,
+          message: result.slotsFull ? 'Chest slots full' : null,
+        );
     }
   }
 
@@ -1067,6 +1360,8 @@ class ProgressRepository {
       final updatedCoins = (prefs.getInt(_coinsKey) ?? 0) + reward;
       await prefs.setInt(_coinsKey, updatedCoins);
       await _incrementInt(prefs, _statsCoinsEarnedKey, reward);
+      await _ensureDailyChallengesForToday(prefs);
+      await _incrementInt(prefs, _dailyChallengeCoinsEarnedKey, reward);
       await _incrementInt(prefs, _totalXpKey, 75);
       await _queueAchievementPopup(prefs, id);
       debugPrint('Achievement unlocked: ${id.name}, reward=$reward');
