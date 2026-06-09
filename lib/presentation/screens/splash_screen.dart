@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/app_flavor.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
 import 'main_menu_screen.dart';
@@ -68,8 +69,8 @@ class _SplashScreenState extends State<SplashScreen> {
                     ),
                   ),
                   const SizedBox(height: GameSpacing.xl),
-                  const Text(
-                    'Triple Tile\nAdventure',
+                  Text(
+                    AppFlavorConfig.appName,
                     textAlign: TextAlign.center,
                     style: GameTextStyles.h1,
                   ),

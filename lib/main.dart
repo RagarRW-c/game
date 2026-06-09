@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'core/app_flavor.dart';
 import 'core/audio_service.dart';
 import 'data/level_repository.dart';
 import 'data/progress_repository.dart';
@@ -68,7 +69,7 @@ class _TripleTileAppState extends State<TripleTileApp> {
       audioService: widget.audioService,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'Triple Tile Adventure',
+        title: AppFlavorConfig.appName,
         theme: GameTheme.theme(),
         locale: const Locale('en'),
         supportedLocales: const [Locale('en')],

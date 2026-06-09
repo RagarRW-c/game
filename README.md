@@ -19,7 +19,19 @@ A complete Android-first Flutter puzzle game inspired by Triple Tile / Tile Expl
 
 ```bash
 flutter pub get
-flutter run
+flutter run --flavor dev --dart-define=FLAVOR=dev
+flutter run --flavor prod --dart-define=FLAVOR=prod
+```
+
+The `dev` flavor installs as **Tile Adventure DEV** with application ID
+`com.ragarrwc.game.dev` and enables the QA menu. The `prod` flavor installs as
+**Tile Adventure** with application ID `com.ragarrwc.game` and excludes QA
+controls.
+
+## Production bundle
+
+```bash
+flutter build appbundle --flavor prod --dart-define=FLAVOR=prod
 ```
 
 ## Configure reward code
@@ -27,24 +39,23 @@ flutter run
 The default code is `4286`. You can override it at build time:
 
 ```bash
-flutter build appbundle --release --dart-define=FINAL_CODE=1234
+flutter build appbundle --release --flavor prod --dart-define=FLAVOR=prod --dart-define=FINAL_CODE=1234
 ```
 
 The Settings screen also allows changing the code locally for QA or promotional builds.
 
 ## Google Play publishing checklist
 
-1. Change `applicationId` in `android/app/build.gradle` from the sample package to your production package.
-2. Create an upload keystore and provide these environment variables before release builds:
+1. Create an upload keystore and provide these environment variables before release builds:
    - `ANDROID_KEYSTORE_PATH`
    - `ANDROID_KEYSTORE_PASSWORD`
    - `ANDROID_KEY_ALIAS`
    - `ANDROID_KEY_PASSWORD`
-3. Build an Android App Bundle:
+2. Build an Android App Bundle:
 
 ```bash
-flutter build appbundle --release --dart-define=FINAL_CODE=1234
+flutter build appbundle --release --flavor prod --dart-define=FLAVOR=prod --dart-define=FINAL_CODE=1234
 ```
 
-4. Replace the simple XML launcher icon with final brand art if desired; avoid committing binary icon files if your PR tool rejects binary diffs.
-5. Complete Play Console store listing, screenshots, content rating, privacy policy, and data safety declarations.
+3. Replace the simple XML launcher icon with final brand art if desired; avoid committing binary icon files if your PR tool rejects binary diffs.
+4. Complete Play Console store listing, screenshots, content rating, privacy policy, and data safety declarations.

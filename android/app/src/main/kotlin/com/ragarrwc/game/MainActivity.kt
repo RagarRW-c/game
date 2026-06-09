@@ -1,4 +1,4 @@
-package com.example.triple_tile_adventure
+package com.ragarrwc.game
 
 import io.flutter.embedding.android.FlutterActivity
 

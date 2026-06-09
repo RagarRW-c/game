@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/app_flavor.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
@@ -219,7 +219,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: () => _showInfoDialog(
                             title: 'Privacy Policy',
                             icon: Icons.privacy_tip_rounded,
-                            body: 'Triple Tile Adventure stores game progress '
+                            body:
+                                '${AppFlavorConfig.appName} stores game progress '
                                 'and preferences locally on your device. The '
                                 'game does not require an account or collect '
                                 'personal information.',
@@ -231,7 +232,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: () => _showInfoDialog(
                             title: 'Terms of Service',
                             icon: Icons.description_rounded,
-                            body: 'Triple Tile Adventure is provided for '
+                            body: '${AppFlavorConfig.appName} is provided for '
                                 'personal entertainment. Progress and rewards '
                                 'are stored locally and may be lost when app '
                                 'data is removed.',
@@ -243,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: () => _showInfoDialog(
                             title: 'Credits',
                             icon: Icons.favorite_rounded,
-                            body: 'Triple Tile Adventure\n'
+                            body: '${AppFlavorConfig.appName}\n'
                                 'Design, development, and original game assets.',
                           ),
                         ),
@@ -261,7 +262,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ],
                     ),
-                    if (kDebugMode) ...[
+                    if (AppFlavorConfig.qaToolsEnabled) ...[
                       const SizedBox(height: GameSpacing.lg),
                       const _QaMenu(),
                     ],
