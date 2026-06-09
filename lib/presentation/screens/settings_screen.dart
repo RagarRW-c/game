@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../main.dart';
@@ -57,9 +58,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await scope.progressRepository.setVibrationEnabled(value);
   }
 
+  Future<void> _showInfoDialog({
+    required String title,
+    required IconData icon,
+    required String body,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => GameDialogFrame(
+        title: title,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: GameColors.primaryBlue, size: 64),
+            const SizedBox(height: GameSpacing.lg),
+            Text(body, textAlign: TextAlign.center, style: GameTextStyles.body),
+            const SizedBox(height: GameSpacing.xl),
+            GameButton(
+              label: 'Close',
+              icon: Icons.close_rounded,
+              onPressed: () => Navigator.of(context).pop(),
+              variant: GameButtonVariant.secondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmResetProgress() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => GameDialogFrame(
+        title: 'Reset Progress?',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: GameColors.dangerRed,
+              size: 68,
+            ),
+            const SizedBox(height: GameSpacing.md),
+            const Text(
+              'This removes levels, coins, boosters, rewards, achievements, '
+              'statistics, chests, and cosmetics. Audio settings are kept.',
+              textAlign: TextAlign.center,
+              style: GameTextStyles.body,
+            ),
+            const SizedBox(height: GameSpacing.xl),
+            GameButton(
+              label: 'Reset Progress',
+              icon: Icons.delete_forever_rounded,
+              onPressed: () => Navigator.of(context).pop(true),
+              variant: GameButtonVariant.danger,
+            ),
+            const SizedBox(height: GameSpacing.md),
+            GameButton(
+              label: 'Cancel',
+              icon: Icons.close_rounded,
+              onPressed: () => Navigator.of(context).pop(false),
+              variant: GameButtonVariant.secondary,
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await AppScope.of(context).progressRepository.resetProgress();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Progress reset')),
+    );
+  }
+
+  Future<void> _runQaAction(
+    String message,
+    Future<void> Function() action,
+  ) async {
+    await action();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scope = AppScope.of(context);
     return Scaffold(
       body: GameBackground(
         child: SafeArea(
@@ -124,19 +210,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: GameSpacing.lg),
-                    GameButton(
-                      label: 'Reset progress',
-                      icon: Icons.restart_alt_rounded,
-                      onPressed: () async {
-                        await scope.progressRepository.reset();
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Progress reset')),
-                          );
-                        }
-                      },
-                      variant: GameButtonVariant.danger,
+                    _SettingsSection(
+                      title: 'About',
+                      children: [
+                        _SettingsAction(
+                          icon: Icons.privacy_tip_rounded,
+                          label: 'Privacy Policy',
+                          onTap: () => _showInfoDialog(
+                            title: 'Privacy Policy',
+                            icon: Icons.privacy_tip_rounded,
+                            body: 'Triple Tile Adventure stores game progress '
+                                'and preferences locally on your device. The '
+                                'game does not require an account or collect '
+                                'personal information.',
+                          ),
+                        ),
+                        _SettingsAction(
+                          icon: Icons.description_rounded,
+                          label: 'Terms of Service',
+                          onTap: () => _showInfoDialog(
+                            title: 'Terms of Service',
+                            icon: Icons.description_rounded,
+                            body: 'Triple Tile Adventure is provided for '
+                                'personal entertainment. Progress and rewards '
+                                'are stored locally and may be lost when app '
+                                'data is removed.',
+                          ),
+                        ),
+                        _SettingsAction(
+                          icon: Icons.favorite_rounded,
+                          label: 'Credits',
+                          onTap: () => _showInfoDialog(
+                            title: 'Credits',
+                            icon: Icons.favorite_rounded,
+                            body: 'Triple Tile Adventure\n'
+                                'Design, development, and original game assets.',
+                          ),
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: GameSpacing.lg),
+                    _SettingsSection(
+                      title: 'Data',
+                      children: [
+                        _SettingsAction(
+                          icon: Icons.restart_alt_rounded,
+                          label: 'Reset Progress',
+                          color: GameColors.dangerRed,
+                          onTap: _confirmResetProgress,
+                        ),
+                      ],
+                    ),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: GameSpacing.lg),
+                      const _QaMenu(),
+                    ],
                   ],
                 ),
               ),
@@ -144,6 +272,120 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SettingsSection extends StatelessWidget {
+  const _SettingsSection({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return GameCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: GameTextStyles.h2.copyWith(fontSize: 22)),
+          const SizedBox(height: GameSpacing.md),
+          for (var index = 0; index < children.length; index++) ...[
+            children[index],
+            if (index != children.length - 1)
+              const SizedBox(height: GameSpacing.sm),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsAction extends StatelessWidget {
+  const _SettingsAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color = GameColors.primaryBlue,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.74),
+      borderRadius: GameRadius.largeRadius,
+      child: InkWell(
+        borderRadius: GameRadius.largeRadius,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(GameSpacing.md),
+          child: Row(
+            children: [
+              Icon(icon, color: color),
+              const SizedBox(width: GameSpacing.md),
+              Expanded(child: Text(label, style: GameTextStyles.body)),
+              Icon(Icons.chevron_right_rounded, color: color),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QaMenu extends StatelessWidget {
+  const _QaMenu();
+
+  @override
+  Widget build(BuildContext context) {
+    final repository = AppScope.of(context).progressRepository;
+    final state = context.findAncestorStateOfType<_SettingsScreenState>()!;
+    return _SettingsSection(
+      title: 'Debug QA',
+      children: [
+        _SettingsAction(
+          icon: Icons.lock_open_rounded,
+          label: 'Unlock All Worlds',
+          onTap: () => state._runQaAction(
+            'All worlds unlocked',
+            repository.debugUnlockAllWorlds,
+          ),
+        ),
+        _SettingsAction(
+          icon: Icons.monetization_on_rounded,
+          label: 'Add 1000 Coins',
+          onTap: () => state._runQaAction('1000 coins added', () async {
+            await repository.debugAddCoins();
+          }),
+        ),
+        _SettingsAction(
+          icon: Icons.casino_rounded,
+          label: 'Reset Daily Spin',
+          onTap: () => state._runQaAction(
+            'Daily spin reset',
+            repository.debugResetDailySpin,
+          ),
+        ),
+        _SettingsAction(
+          icon: Icons.task_alt_rounded,
+          label: 'Reset Daily Challenges',
+          onTap: () => state._runQaAction(
+            'Daily challenges reset',
+            repository.debugResetDailyChallenges,
+          ),
+        ),
+        _SettingsAction(
+          icon: Icons.delete_forever_rounded,
+          label: 'Reset Progress',
+          color: GameColors.dangerRed,
+          onTap: state._confirmResetProgress,
+        ),
+      ],
     );
   }
 }

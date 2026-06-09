@@ -1,8 +1,6 @@
 import 'dart:math';
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
-
 import 'game_result.dart';
 import 'level.dart';
 import 'tile.dart';
@@ -131,7 +129,6 @@ class GameEngine {
         .toList();
     tray = <String>[...tray, id];
     _selectionHistory.add(id);
-    debugPrint('Tile hidden from board and inserted into tray: id=$id');
     _removeTriplesFromTray();
     _updateResult();
     return true;
@@ -177,7 +174,6 @@ class GameEngine {
             : tile)
         .toList();
     tray = tray.where((id) => !matchedIds.contains(id)).toList();
-    debugPrint('Matched tiles hidden/removed: ids=${matchedIds.join(',')}');
   }
 
   bool shuffleBoard() {
@@ -192,11 +188,6 @@ class GameEngine {
     tiles = tiles.map((tile) {
       if (!activeIds.contains(tile.id)) return tile;
       final newType = shuffledTypes[typeIndex++];
-      if (tile.type != newType) {
-        debugPrint('Tile shuffled: id=${tile.id}, ${tile.type}->$newType');
-      } else {
-        debugPrint('Tile shuffled unchanged: id=${tile.id}, type=${tile.type}');
-      }
       return tile.copyWith(type: newType);
     }).toList();
     return true;
@@ -236,9 +227,6 @@ class GameEngine {
         final selectableIds = selectableByType[type] ?? const <String>[];
         if (selectableIds.length >= needed) {
           final hintIds = selectableIds.take(needed).toList(growable: false);
-          debugPrint(
-            'Hint found tray-aware move: type=$type, needed=$needed, ids=${hintIds.join(',')}',
-          );
           return hintIds;
         }
       }
@@ -247,9 +235,6 @@ class GameEngine {
     for (final entry in selectableByType.entries) {
       if (entry.value.length >= 3) {
         final hintIds = entry.value.take(3).toList(growable: false);
-        debugPrint(
-          'Hint found new triple: type=${entry.key}, ids=${hintIds.join(',')}',
-        );
         return hintIds;
       }
     }
@@ -268,7 +253,6 @@ class GameEngine {
     for (final id in uniqueIds) {
       final tile = tileById(id);
       if (tile == null || !_isRenderedOnBoard(tile) || isTileCovered(tile)) {
-        debugPrint('Hint/Cat rejected non-selectable tile: id=$id');
         return false;
       }
     }
@@ -287,8 +271,6 @@ class GameEngine {
         .toList();
     tray = <String>[...tray, ...uniqueIds];
     _selectionHistory.addAll(uniqueIds);
-    debugPrint(
-        'Hint/Cat collected selectable tiles: ids=${uniqueIds.join(',')}');
     _removeTriplesFromTray(preferredMatchedIds: idSet);
     _updateResult();
     return true;
@@ -311,7 +293,6 @@ class GameEngine {
     tray = tray.where((item) => item != id).toList();
     _sanitizeTray();
     result = GameResult.playing;
-    debugPrint('Undo restored tile to board: id=$id');
     return true;
   }
 

@@ -1,3 +1,16 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <gradient android:startColor="#8EC5FC" android:endColor="#E0C3FC" android:angle="45" />
-</shape>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <gradient
+                android:angle="90"
+                android:endColor="#6E6CE8"
+                android:startColor="#1129A8" />
+        </shape>
+    </item>
+    <item
+        android:bottom="132dp"
+        android:drawable="@drawable/ic_launcher"
+        android:left="132dp"
+        android:right="132dp"
+        android:top="132dp" />
+</layer-list>

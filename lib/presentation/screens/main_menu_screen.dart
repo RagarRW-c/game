@@ -21,7 +21,7 @@ import 'world_selection_screen.dart';
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
 
-  static const route = '/';
+  static const route = '/main-menu';
 
   @override
   State<MainMenuScreen> createState() => _MainMenuScreenState();

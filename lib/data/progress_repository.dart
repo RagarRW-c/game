@@ -1,6 +1,5 @@
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum TreasureChestType { wood, silver, gold }
@@ -659,9 +658,6 @@ class ProgressRepository {
 
   Future<bool> dailySpinAvailable(DateTime now) async {
     final status = await dailySpinStatus(now);
-    debugPrint('polishTodayKey=${status.polishTodayKey}');
-    debugPrint('lastSpinDate=${status.lastSpinDate}');
-    debugPrint('canSpin=${status.canSpin}');
     return status.canSpin;
   }
 
@@ -1181,10 +1177,37 @@ class ProgressRepository {
     await prefs.setString(_codeKey, _normalizeFinalCode(code));
   }
 
-  Future<void> reset() async {
+  Future<void> resetProgress() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_highestLevelKey, 1);
-    await prefs.setBool(_finalRewardUnlockedKey, false);
+    final music = prefs.getBool(_musicKey);
+    final sfx = prefs.getBool(_sfxKey);
+    final vibration = prefs.getBool(_vibrationKey);
+    final finalCode = prefs.getString(_codeKey);
+    await prefs.clear();
+    if (music != null) await prefs.setBool(_musicKey, music);
+    if (sfx != null) await prefs.setBool(_sfxKey, sfx);
+    if (vibration != null) await prefs.setBool(_vibrationKey, vibration);
+    if (finalCode != null) await prefs.setString(_codeKey, finalCode);
+  }
+
+  Future<void> reset() => resetProgress();
+
+  Future<void> debugUnlockAllWorlds() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_highestLevelKey, 40);
+  }
+
+  Future<int> debugAddCoins() => addCoins(1000);
+
+  Future<void> debugResetDailySpin() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastDailySpinDateKey);
+  }
+
+  Future<void> debugResetDailyChallenges() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_dailyChallengeDateKey);
+    await _ensureDailyChallengesForToday(prefs);
   }
 
   Future<void> _ensureDailyChallengesForToday(SharedPreferences prefs) async {
@@ -1364,7 +1387,6 @@ class ProgressRepository {
       await _incrementInt(prefs, _dailyChallengeCoinsEarnedKey, reward);
       await _incrementInt(prefs, _totalXpKey, 75);
       await _queueAchievementPopup(prefs, id);
-      debugPrint('Achievement unlocked: ${id.name}, reward=$reward');
     }
   }
 

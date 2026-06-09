@@ -223,107 +223,6 @@ class _GameScreenState extends State<GameScreen> {
     return '$_boosterCoinCost';
   }
 
-  void _debugValidateTiles(String source, GameEngine engine) {
-    final trayIds = List<String>.from(engine.tray);
-    final trayIdSet = trayIds.toSet();
-    final seenTileIds = <String>{};
-    final duplicateTileIds = <String>{};
-    final seenTrayIds = <String>{};
-    final duplicateTrayIds = <String>{};
-    final unknownTrayIds = <String>[];
-    final invalidTypeIds = <String>[];
-    final boardTrayConflicts = <String>[];
-    final activeButNotBoardOrTray = <String>[];
-
-    for (final id in trayIds) {
-      if (!seenTrayIds.add(id)) duplicateTrayIds.add(id);
-      if (engine.tileById(id) == null) unknownTrayIds.add(id);
-    }
-
-    for (final tile in engine.tiles) {
-      if (!seenTileIds.add(tile.id)) duplicateTileIds.add(tile.id);
-      if (tile.state != TileState.matched &&
-          !tileCatalog.containsKey(tile.type)) {
-        invalidTypeIds.add('${tile.id}:${tile.type}');
-      }
-      if (tile.state == TileState.board && trayIdSet.contains(tile.id)) {
-        boardTrayConflicts.add(tile.id);
-      }
-    }
-
-    final boardVisibleCount = engine.tiles
-        .where((tile) =>
-            tile.state != TileState.matched && !trayIdSet.contains(tile.id))
-        .length;
-    final removedCount =
-        engine.tiles.where((tile) => tile.state == TileState.matched).length;
-
-    debugPrint(
-      'Tile validation [$source]: total=${engine.tiles.length}, '
-      'boardVisible=$boardVisibleCount, tray=${trayIds.length}, '
-      'removed=$removedCount, activeNeither=${activeButNotBoardOrTray.length}',
-    );
-    if (duplicateTileIds.isNotEmpty) {
-      debugPrint(
-          'Tile validation [$source]: duplicate tile ids=${duplicateTileIds.join(',')}');
-    }
-    if (duplicateTrayIds.isNotEmpty) {
-      debugPrint(
-          'Tile validation [$source]: duplicate tray ids=${duplicateTrayIds.join(',')}');
-    }
-    if (unknownTrayIds.isNotEmpty) {
-      debugPrint(
-          'Tile validation [$source]: unknown tray ids=${unknownTrayIds.join(',')}');
-    }
-    if (invalidTypeIds.isNotEmpty) {
-      debugPrint(
-          'Tile validation [$source]: active invalid type/icon=${invalidTypeIds.join(',')}');
-    }
-    if (boardTrayConflicts.isNotEmpty) {
-      debugPrint(
-          'Tile validation [$source]: board/tray conflicts=${boardTrayConflicts.join(',')}');
-    }
-    if (activeButNotBoardOrTray.isNotEmpty) {
-      debugPrint(
-          'Tile validation [$source]: active neither board nor tray=${activeButNotBoardOrTray.join(',')}');
-    }
-  }
-
-  void _debugTrayChange(
-    String source,
-    GameEngine engine, {
-    Iterable<String> changedTileIds = const <String>[],
-  }) {
-    final visualTheme = tileVisualThemeForLevel(widget.level);
-    final visualCatalog = tileCatalogForTheme(visualTheme);
-    final trayTypeCounts = <String, int>{};
-
-    for (final id in engine.tray) {
-      final tile = engine.tileById(id);
-      if (tile == null) continue;
-      trayTypeCounts[tile.type] = (trayTypeCounts[tile.type] ?? 0) + 1;
-    }
-
-    for (final id in changedTileIds) {
-      final tile = engine.tileById(id);
-      if (tile == null) {
-        debugPrint('Tray change [$source]: tile id=$id missing');
-        continue;
-      }
-      final art = visualCatalog[tile.type];
-      final displayType = tileLabelForTheme(visualTheme, tile.type);
-      debugPrint(
-        'Tray change [$source]: tile id=${tile.id}, type=${tile.type}, '
-        'displayed=$displayType, iconCode=${art?.icon.codePoint}',
-      );
-    }
-
-    final counts = trayTypeCounts.entries
-        .map((entry) => '${entry.key}:${entry.value}')
-        .join(', ');
-    debugPrint('Tray type counts [$source]: {$counts}');
-  }
-
   Future<void> _onTileTap(
     LevelDefinition level,
     Tile tile,
@@ -338,13 +237,10 @@ class _GameScreenState extends State<GameScreen> {
     final canonicalTile = engine.tileById(tile.id);
     if (canonicalTile == null ||
         !engine.isUncovered(canonicalTile, boardSize, tileSize)) {
-      debugPrint('Tile selection ignored: id=${tile.id}, selectable=false');
       return;
     }
 
     final beforeTrayIds = List<String>.from(engine.tray);
-    debugPrint(
-        'Tile selection started: id=${canonicalTile.id}, tray=${beforeTrayIds.length}');
 
     late final bool moved;
     if (!_safeSetState(() {
@@ -357,9 +253,6 @@ class _GameScreenState extends State<GameScreen> {
     _haptic(HapticFeedback.lightImpact);
 
     if (!moved) {
-      debugPrint(
-          'Tile selection aborted: id=${canonicalTile.id}, engine rejected move');
-      _debugValidateTiles('tap-rejected', engine);
       if (engine.result == GameResult.lost) {
         await _handleGameOver(level: level);
       }
@@ -370,15 +263,7 @@ class _GameScreenState extends State<GameScreen> {
       beforeTrayIds,
       collectedId: canonicalTile.id,
     );
-    debugPrint(
-        'Tray insertion complete: id=${canonicalTile.id}, tray=${engine.tray.length}');
-    _debugTrayChange(
-      'tap',
-      engine,
-      changedTileIds: <String>{canonicalTile.id, ...matchedIds},
-    );
     if (matchedIds.isNotEmpty) {
-      debugPrint('Match removed: ids=${matchedIds.join(',')}');
       await _recordMatchedTiles(
         matchedIds.length,
         tileTypes: _tileTypesForIds(matchedIds),
@@ -386,8 +271,6 @@ class _GameScreenState extends State<GameScreen> {
       _playSfx(_scope.audioService.playMatch, 'match');
       _haptic(HapticFeedback.mediumImpact);
     }
-    _debugValidateTiles('tap', engine);
-
     if (engine.result == GameResult.won) await _handleWin();
     if (!mounted) return;
     if (engine.result == GameResult.lost) await _handleGameOver(level: level);
@@ -405,7 +288,6 @@ class _GameScreenState extends State<GameScreen> {
     engine.updateBoardGeometry(boardSize, tileSize);
     final hintIds = engine.findBestHintTileIds();
     if (hintIds.isEmpty) {
-      debugPrint('Cat helper hint unavailable');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No hint available')),
@@ -424,7 +306,6 @@ class _GameScreenState extends State<GameScreen> {
     }
 
     final beforeTrayIds = List<String>.from(engine.tray);
-    debugPrint('Cat helper started: ids=${hintIds.join(',')}');
     late final bool collected;
     if (!_safeSetState(() {
       _hintedTileIds.clear();
@@ -437,23 +318,13 @@ class _GameScreenState extends State<GameScreen> {
     _playSfx(_scope.audioService.playBooster, 'booster');
 
     if (!collected) {
-      debugPrint('Cat helper aborted: hint tiles were not collected');
-      _debugValidateTiles('cat-rejected', engine);
       if (engine.result == GameResult.lost) await _handleGameOver(level: level);
       return;
     }
 
     final removedIds =
         _matchedIdsAfterMove(beforeTrayIds, preferredIds: hintIds.toSet());
-    debugPrint(
-        'Cat helper tray insertion: ids=${hintIds.join(',')}, tray=${engine.tray.length}');
-    _debugTrayChange(
-      'hint',
-      engine,
-      changedTileIds: <String>{...hintIds, ...removedIds},
-    );
     if (removedIds.isNotEmpty) {
-      debugPrint('Match removed: ids=${removedIds.join(',')}');
       await _recordMatchedTiles(
         removedIds.length,
         tileTypes: _tileTypesForIds(removedIds),
@@ -462,8 +333,6 @@ class _GameScreenState extends State<GameScreen> {
       _haptic(HapticFeedback.mediumImpact);
     }
     unawaited(_recordBoosterUsed(BoosterKind.hint));
-    debugPrint('Cat helper complete');
-    _debugValidateTiles('cat', engine);
     if (engine.result == GameResult.won) await _handleWin();
     if (!mounted) return;
     if (engine.result == GameResult.lost) await _handleGameOver(level: level);
@@ -517,7 +386,6 @@ class _GameScreenState extends State<GameScreen> {
       return false;
     }
 
-    debugPrint('Shuffle started');
     late final bool shuffled;
     if (!_safeSetState(() {
       _hintedTileIds.clear();
@@ -533,8 +401,6 @@ class _GameScreenState extends State<GameScreen> {
     if (!shuffled) return false;
     _playSfx(_scope.audioService.playBooster, 'booster');
     unawaited(_recordBoosterUsed(BoosterKind.shuffle));
-    _debugValidateTiles('shuffle', engine);
-    debugPrint('Shuffle completed');
     return true;
   }
 
@@ -550,8 +416,6 @@ class _GameScreenState extends State<GameScreen> {
       return;
     }
 
-    debugPrint('Undo requested');
-    final beforeTrayIds = Set<String>.from(engine.tray);
     late final bool undone;
     _safeSetState(() {
       undone = engine.undo();
@@ -564,10 +428,6 @@ class _GameScreenState extends State<GameScreen> {
     if (undone) {
       _playSfx(_scope.audioService.playBooster, 'booster');
       unawaited(_recordBoosterUsed(BoosterKind.undo));
-      final afterTrayIds = Set<String>.from(engine.tray);
-      final restoredIds = beforeTrayIds.difference(afterTrayIds);
-      _debugTrayChange('undo', engine, changedTileIds: restoredIds);
-      _debugValidateTiles('undo', engine);
     }
   }
 
@@ -815,20 +675,9 @@ class _GameScreenState extends State<GameScreen> {
     final seenIds = <String>{};
     final boardIds = List<Tile>.from(engine.tiles)
         .where((tile) {
-          if (!seenIds.add(tile.id)) {
-            debugPrint('Board render skipped duplicate tile id=${tile.id}');
-            return false;
-          }
+          if (!seenIds.add(tile.id)) return false;
           if (tile.state == TileState.matched) return false;
-          if (trayIds.contains(tile.id)) {
-            debugPrint('Board render skipped tray tile id=${tile.id}');
-            return false;
-          }
-          if (!tileCatalog.containsKey(tile.type)) {
-            debugPrint(
-              'Board render active tile has unknown type/icon id=${tile.id}, type=${tile.type}',
-            );
-          }
+          if (trayIds.contains(tile.id)) return false;
           return true;
         })
         .map((tile) => tile.id)
@@ -862,19 +711,8 @@ class _GameScreenState extends State<GameScreen> {
     final visibleIds = List<String>.from(engine.tray)
         .where((id) {
           final tile = tilesById[id];
-          if (tile == null) {
-            debugPrint('Tray render skipped unknown tile id=$id');
-            return false;
-          }
-          if (!seenIds.add(id)) {
-            debugPrint('Tray render skipped duplicate tile id=$id');
-            return false;
-          }
-          if (!tileCatalog.containsKey(tile.type)) {
-            debugPrint(
-              'Tray render tile has unknown type/icon id=$id, type=${tile.type}',
-            );
-          }
+          if (tile == null) return false;
+          if (!seenIds.add(id)) return false;
           return true;
         })
         .take(GameEngine.trayLimit)

@@ -15,6 +15,7 @@ import 'presentation/screens/main_menu_screen.dart';
 import 'presentation/screens/map_screen.dart';
 import 'presentation/screens/player_profile_screen.dart';
 import 'presentation/screens/settings_screen.dart';
+import 'presentation/screens/splash_screen.dart';
 import 'presentation/screens/statistics_screen.dart';
 import 'presentation/screens/treasure_chests_screen.dart';
 import 'presentation/screens/world_selection_screen.dart';
@@ -71,7 +72,9 @@ class _TripleTileAppState extends State<TripleTileApp> {
         theme: GameTheme.theme(),
         locale: const Locale('en'),
         supportedLocales: const [Locale('en')],
+        initialRoute: SplashScreen.route,
         routes: {
+          SplashScreen.route: (_) => const SplashScreen(),
           MainMenuScreen.route: (_) => const MainMenuScreen(),
           AchievementsScreen.route: (_) => const AchievementsScreen(),
           BoosterShopScreen.route: (_) => const BoosterShopScreen(),
