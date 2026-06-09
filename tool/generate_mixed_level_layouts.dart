@@ -2,6 +2,24 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+const _tileTypes = <String>[
+  'apple',
+  'banana',
+  'berry',
+  'carrot',
+  'star',
+  'shell',
+  'flower',
+  'moon',
+  'gem',
+  'leaf',
+  'candy',
+  'heart',
+  'sun',
+  'drop',
+  'clover',
+];
+
 const _layoutByLevel = <int, String>{
   1: 'grid',
   2: 'grid',
@@ -45,6 +63,92 @@ const _layoutByLevel = <int, String>{
   40: 'diamond',
 };
 
+const _tileCounts = <int>[
+  24,
+  24,
+  27,
+  27,
+  30,
+  30,
+  33,
+  33,
+  36,
+  36,
+  36,
+  36,
+  39,
+  39,
+  42,
+  42,
+  45,
+  45,
+  48,
+  48,
+  48,
+  48,
+  51,
+  51,
+  54,
+  54,
+  57,
+  57,
+  60,
+  60,
+  60,
+  63,
+  66,
+  69,
+  72,
+  75,
+  78,
+  81,
+  84,
+  90,
+];
+
+const _layerCounts = <int>[
+  2,
+  2,
+  2,
+  2,
+  2,
+  3,
+  3,
+  3,
+  3,
+  3,
+  3,
+  3,
+  3,
+  3,
+  4,
+  4,
+  4,
+  4,
+  4,
+  4,
+  4,
+  4,
+  4,
+  4,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  6,
+  6,
+  6,
+  6,
+  6,
+  6,
+];
+
 void main() {
   final levelsDirectory = Directory('assets/levels');
   for (var level = 1; level <= 40; level++) {
@@ -52,197 +156,225 @@ void main() {
         '${levelsDirectory.path}/level_${level.toString().padLeft(2, '0')}.json';
     final file = File(path);
     final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-    final tiles = (json['tiles'] as List<dynamic>)
-        .cast<Map<String, dynamic>>()
-        .map(Map<String, dynamic>.from)
-        .toList();
-    final style = _layoutByLevel[level]!;
-    final arranged = _arrangeTiles(level, style, tiles);
-    json['tiles'] = arranged;
-    file.writeAsStringSync(
-        '${const JsonEncoder.withIndent('  ').convert(json)}\n');
-  }
-}
-
-List<Map<String, dynamic>> _arrangeTiles(
-  int level,
-  String style,
-  List<Map<String, dynamic>> tiles,
-) {
-  final triples = _tileTriples(tiles, level);
-  final arranged = <Map<String, dynamic>>[];
-  for (var group = 0; group < triples.length; group++) {
-    final positions = _positionsForTriple(level, style, group, triples.length);
-    for (var member = 0; member < 3; member++) {
-      final source = triples[group][member];
-      final position = positions[member];
-      arranged.add({
-        'id': source['id'],
-        'type': source['type'],
-        'x': _round(position.x),
-        'y': _round(position.y),
-        'layer': position.layer,
-      });
-    }
-  }
-  return arranged;
-}
-
-List<List<Map<String, dynamic>>> _tileTriples(
-  List<Map<String, dynamic>> tiles,
-  int level,
-) {
-  final tilesByType = <String, List<Map<String, dynamic>>>{};
-  for (final tile in tiles) {
-    final type = tile['type'] as String;
-    tilesByType.putIfAbsent(type, () => []).add(tile);
-  }
-  final triples = <List<Map<String, dynamic>>>[];
-  for (final entry in tilesByType.entries) {
-    if (entry.value.length % 3 != 0) {
-      throw StateError('Level $level has invalid count for ${entry.key}.');
-    }
-    for (var index = 0; index < entry.value.length; index += 3) {
-      triples.add(entry.value.sublist(index, index + 3));
-    }
-  }
-  triples.shuffle(Random(level * 7919));
-  return triples;
-}
-
-List<_Position> _positionsForTriple(
-  int level,
-  String style,
-  int group,
-  int groupCount,
-) {
-  if (style == 'grid') return _gridTriple(level, group);
-  if (style == 'scatter') return _scatterTriple(level, group);
-  if (style == 'pyramid') return _pyramidTriple(level, group, groupCount);
-  return _shapeTriple(level, style, group, groupCount);
-}
-
-List<_Position> _gridTriple(int level, int group) {
-  const grid = <List<double>>[
-    [0.05, 0.07],
-    [0.27, 0.07],
-    [0.49, 0.07],
-    [0.71, 0.07],
-    [0.05, 0.31],
-    [0.27, 0.31],
-    [0.49, 0.31],
-    [0.71, 0.31],
-    [0.05, 0.55],
-    [0.27, 0.55],
-    [0.49, 0.55],
-    [0.71, 0.55],
-  ];
-  final band = group ~/ 4;
-  final start = (group % 4) * 3;
-  final offset = band * 0.007;
-  return List<_Position>.generate(3, (member) {
-    final point = grid[start + member];
-    return _Position(point[0] + offset, point[1] + offset, band);
-  });
-}
-
-List<_Position> _scatterTriple(int level, int group) {
-  final random = Random(level * 100003 + group * 97);
-  final points = <_Position>[];
-  while (points.length < 3) {
-    final candidate = _Position(
-      0.07 + random.nextDouble() * 0.72,
-      0.06 + random.nextDouble() * 0.68,
-      group,
+    json['tiles'] = _buildLevel(
+      level: level,
+      tileCount: _tileCounts[level - 1],
+      layerCount: _layerCounts[level - 1],
+      style: _layoutByLevel[level]!,
+      objectiveType:
+          (json['objective'] as Map<String, dynamic>?)?['type'] as String?,
+      objectiveTarget:
+          (json['objective'] as Map<String, dynamic>?)?['target'] as int?,
     );
-    final separated = points.every((point) {
-      final dx = (candidate.x - point.x).abs();
-      final dy = (candidate.y - point.y).abs();
-      return dx >= 0.18 || dy >= 0.15;
-    });
-    if (separated) points.add(candidate);
+    file.writeAsStringSync(
+      '${const JsonEncoder.withIndent('  ').convert(json)}\n',
+    );
   }
-  return points;
 }
 
-List<_Position> _pyramidTriple(int level, int group, int groupCount) {
-  final progress = groupCount <= 1 ? 0.0 : group / (groupCount - 1);
-  final width = 0.72 - progress * 0.34;
-  final y = 0.7 - progress * 0.58;
-  final center = 0.44 + ((group % 2 == 0) ? -0.012 : 0.012);
-  return [
-    _Position(center - width / 2, y, group),
-    _Position(center, y - 0.025, group),
-    _Position(center + width / 2, y, group),
-  ];
-}
+List<Map<String, dynamic>> _buildLevel({
+  required int level,
+  required int tileCount,
+  required int layerCount,
+  required String style,
+  required String? objectiveType,
+  required int? objectiveTarget,
+}) {
+  final positions = _buildPositions(level, tileCount, layerCount, style);
+  final removalOrder = positions.reversed.toList(growable: false);
+  final typesInRemovalOrder = _buildSolvableTypeSequence(
+    level,
+    tileCount,
+    objectiveType,
+    objectiveTarget,
+  );
+  final typeByPosition = <_Position, String>{};
+  for (var index = 0; index < removalOrder.length; index++) {
+    typeByPosition[removalOrder[index]] = typesInRemovalOrder[index];
+  }
 
-List<_Position> _shapeTriple(
-  int level,
-  String style,
-  int group,
-  int groupCount,
-) {
-  final phase = groupCount <= 1 ? 0.0 : group / groupCount;
-  return List<_Position>.generate(3, (member) {
-    final t = (phase + member / 3) % 1.0;
-    final point = _shapePoint(style, t, group, groupCount);
-    return _Position(point.x, point.y, group);
+  return List<Map<String, dynamic>>.generate(tileCount, (index) {
+    final position = positions[index];
+    return {
+      'id': 'L${level}_T${index.toString().padLeft(3, '0')}',
+      'type': typeByPosition[position],
+      'x': _round(position.x),
+      'y': _round(position.y),
+      'layer': position.layer,
+    };
   });
 }
 
-Point<double> _shapePoint(
-  String style,
-  double t,
-  int group,
-  int groupCount,
+List<String> _buildSolvableTypeSequence(
+  int level,
+  int tileCount,
+  String? objectiveType,
+  int? objectiveTarget,
 ) {
+  final pool = List<String>.from(_tileTypes);
+  if (objectiveType != null && pool.remove(objectiveType)) {
+    pool.insert(0, objectiveType);
+  }
+  final rotation = (level * 3) % pool.length;
+  final rotated = [...pool.skip(rotation), ...pool.take(rotation)];
+  if (objectiveType != null && rotated.remove(objectiveType)) {
+    rotated.insert(0, objectiveType);
+  }
+
+  final sequence = <String>[];
+  var chunk = 0;
+  final objectiveChunks =
+      objectiveTarget == null ? 0 : (objectiveTarget / 3).ceil();
+  while (sequence.length + 9 <= tileCount) {
+    final a = objectiveType != null && chunk < objectiveChunks
+        ? objectiveType
+        : rotated[(chunk * 3) % rotated.length];
+    final alternatives = rotated.where((type) => type != a).toList();
+    final b = alternatives[(chunk * 2) % alternatives.length];
+    final c = alternatives[(chunk * 2 + 1) % alternatives.length];
+    sequence.addAll([a, b, c, a, b, c, a, b, c]);
+    chunk++;
+  }
+  if (sequence.length < tileCount) {
+    final remainderType = rotated[(chunk * 3) % rotated.length];
+    while (sequence.length < tileCount) {
+      sequence.add(remainderType);
+    }
+  }
+  return sequence;
+}
+
+List<_Position> _buildPositions(
+  int level,
+  int tileCount,
+  int layerCount,
+  String style,
+) {
+  final counts = _tilesPerLayer(tileCount, layerCount);
+  final positions = <_Position>[];
+  List<_Position> parents = const [];
+
+  for (var layer = layerCount - 1; layer >= 0; layer--) {
+    final count = counts[layer];
+    final current = <_Position>[];
+    for (var index = 0; index < count; index++) {
+      final rawPoint = parents.isEmpty
+          ? _topPoint(style, index, count, level)
+          : _childPoint(
+              parent: parents[index % parents.length],
+              childIndex: index,
+              layer: layer,
+              level: level,
+            );
+      final point = parents.isEmpty && level % 10 == 0
+          ? Point(
+              0.44 + (rawPoint.x - 0.44) * 0.55,
+              0.38 + (rawPoint.y - 0.38) * 0.55,
+            )
+          : rawPoint;
+      current.add(_Position(point.x, point.y, layer));
+    }
+    positions.insertAll(0, current);
+    parents = current;
+  }
+  return positions;
+}
+
+List<int> _tilesPerLayer(int tileCount, int layerCount) {
+  final counts = List<int>.filled(layerCount, 0);
+  counts[layerCount - 1] = min(6, tileCount);
+  var remaining = tileCount - counts[layerCount - 1];
+  for (var layer = layerCount - 2; layer >= 0; layer--) {
+    final layersLeft = layer + 1;
+    final count = (remaining / layersLeft).ceil();
+    counts[layer] = count;
+    remaining -= count;
+  }
+  return counts;
+}
+
+Point<double> _topPoint(String style, int index, int count, int level) {
+  final t = count <= 1 ? 0.0 : index / count;
   final angle = 2 * pi * t;
   switch (style) {
+    case 'pyramid':
+      const points = [
+        Point<double>(0.27, 0.22),
+        Point<double>(0.44, 0.16),
+        Point<double>(0.61, 0.22),
+        Point<double>(0.31, 0.43),
+        Point<double>(0.44, 0.49),
+        Point<double>(0.57, 0.43),
+      ];
+      return points[index % points.length];
     case 'circle':
-      final radius = 0.27 + (group % 3) * 0.018;
-      return Point(0.44 + cos(angle) * radius, 0.4 + sin(angle) * 0.3);
+      return Point(0.44 + cos(angle) * 0.2, 0.37 + sin(angle) * 0.24);
     case 'diamond':
-      final segment = t * 4;
-      final side = segment.floor();
-      final local = segment - side;
-      const top = Point<double>(0.44, 0.06);
-      const right = Point<double>(0.8, 0.4);
-      const bottom = Point<double>(0.44, 0.74);
-      const left = Point<double>(0.08, 0.4);
-      const points = [top, right, bottom, left, top];
-      return _lerp(points[side], points[side + 1], local);
+      const points = [
+        Point<double>(0.44, 0.13),
+        Point<double>(0.62, 0.29),
+        Point<double>(0.62, 0.5),
+        Point<double>(0.44, 0.66),
+        Point<double>(0.26, 0.5),
+        Point<double>(0.26, 0.29),
+      ];
+      return points[index % points.length];
     case 'heart':
-      final x = 16 * pow(sin(angle), 3).toDouble();
-      final y = 13 * cos(angle) -
-          5 * cos(2 * angle) -
-          2 * cos(3 * angle) -
-          cos(4 * angle);
-      return Point(0.44 + x * 0.021, 0.4 - y * 0.021);
+      const points = [
+        Point<double>(0.28, 0.25),
+        Point<double>(0.39, 0.2),
+        Point<double>(0.5, 0.2),
+        Point<double>(0.61, 0.25),
+        Point<double>(0.54, 0.45),
+        Point<double>(0.44, 0.58),
+      ];
+      return points[index % points.length];
     case 'wave':
-      final x = 0.08 + t * 0.72;
-      final y = 0.4 + sin(t * pi * 4 + group * 0.3) * 0.25;
-      return Point(x, y);
+      return Point(0.18 + index * 0.105, 0.37 + sin(index * 1.25) * 0.13);
     case 'spiral':
-      final progress = (group + t) / max(1, groupCount);
-      final radius = 0.08 + progress * 0.3;
-      final spiralAngle = progress * pi * 5.5 + t * pi * 2;
+      final radius = 0.08 + index * 0.035;
+      final spiralAngle = index * 1.35;
       return Point(
         0.44 + cos(spiralAngle) * radius,
-        0.4 + sin(spiralAngle) * radius,
+        0.38 + sin(spiralAngle) * radius,
+      );
+    case 'scatter':
+      final random = Random(level * 104729 + index * 8191);
+      return Point(
+        0.19 + random.nextDouble() * 0.5,
+        0.16 + random.nextDouble() * 0.45,
       );
     default:
-      throw StateError('Unknown shape style: $style');
+      const points = [
+        Point<double>(0.24, 0.23),
+        Point<double>(0.44, 0.23),
+        Point<double>(0.64, 0.23),
+        Point<double>(0.24, 0.48),
+        Point<double>(0.44, 0.48),
+        Point<double>(0.64, 0.48),
+      ];
+      return points[index % points.length];
   }
 }
 
-Point<double> _lerp(Point<double> a, Point<double> b, double t) {
-  return Point(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+Point<double> _childPoint({
+  required _Position parent,
+  required int childIndex,
+  required int layer,
+  required int level,
+}) {
+  final world = (level - 1) ~/ 10;
+  const spreadByWorld = [0.09, 0.068, 0.048, 0.032];
+  final spread = spreadByWorld[world] * (level % 10 == 0 ? 0.35 : 1);
+  final angle = (childIndex * 2.399963 + layer * 0.71 + level * 0.13);
+  final radius = spread * (0.35 + (childIndex % 4) * 0.2);
+  return Point(
+    (parent.x + cos(angle) * radius).clamp(0.06, 0.81).toDouble(),
+    (parent.y + sin(angle) * radius * 0.72).clamp(0.06, 0.72).toDouble(),
+  );
 }
 
-double _round(double value) {
-  return (value.clamp(0.04, 0.84) * 1000).round() / 1000;
-}
+double _round(double value) => (value * 1000).round() / 1000;
 
 class _Position {
   const _Position(this.x, this.y, this.layer);
