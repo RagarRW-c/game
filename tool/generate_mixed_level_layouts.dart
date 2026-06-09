@@ -64,54 +64,50 @@ const _layoutByLevel = <int, String>{
 };
 
 const _tileCounts = <int>[
-  24,
-  24,
-  27,
-  27,
   30,
   30,
-  33,
-  33,
   36,
   36,
   36,
   36,
-  39,
-  39,
   42,
   42,
-  45,
-  45,
+  42,
+  54,
+  42,
+  42,
   48,
   48,
   48,
-  48,
-  51,
-  51,
   54,
   54,
-  57,
-  57,
-  60,
-  60,
-  60,
-  63,
+  54,
+  54,
   66,
-  69,
+  54,
+  54,
+  60,
+  60,
+  60,
+  66,
+  66,
   72,
-  75,
+  72,
   78,
-  81,
+  72,
+  72,
+  78,
+  78,
+  78,
   84,
+  84,
+  84,
+  90,
   90,
 ];
 
 const _layerCounts = <int>[
-  2,
-  2,
-  2,
-  2,
-  2,
+  3,
   3,
   3,
   3,
@@ -141,6 +137,10 @@ const _layerCounts = <int>[
   5,
   5,
   5,
+  6,
+  6,
+  6,
+  6,
   6,
   6,
   6,
@@ -193,7 +193,7 @@ List<Map<String, dynamic>> _buildLevel({
     typeByPosition[removalOrder[index]] = typesInRemovalOrder[index];
   }
 
-  return List<Map<String, dynamic>>.generate(tileCount, (index) {
+  final tiles = List<Map<String, dynamic>>.generate(tileCount, (index) {
     final position = positions[index];
     return {
       'id': 'L${level}_T${index.toString().padLeft(3, '0')}',
@@ -203,6 +203,48 @@ List<Map<String, dynamic>> _buildLevel({
       'layer': position.layer,
     };
   });
+  _separateSameTypeVerticalPairs(tiles);
+  return tiles;
+}
+
+void _separateSameTypeVerticalPairs(List<Map<String, dynamic>> tiles) {
+  const offsets = <Point<double>>[
+    Point(0, 0),
+    Point(0.04, 0),
+    Point(-0.04, 0),
+    Point(0, 0.04),
+    Point(0, -0.04),
+    Point(0.07, 0.025),
+    Point(-0.07, -0.025),
+    Point(0.07, -0.025),
+    Point(-0.07, 0.025),
+    Point(0.1, 0),
+    Point(-0.1, 0),
+    Point(0, 0.08),
+    Point(0, -0.08),
+  ];
+  for (var index = 0; index < tiles.length; index++) {
+    final tile = tiles[index];
+    final originalX = (tile['x'] as num).toDouble();
+    final originalY = (tile['y'] as num).toDouble();
+    for (final offset in offsets) {
+      final candidateX = (originalX + offset.x).clamp(0.06, 0.81).toDouble();
+      final candidateY = (originalY + offset.y).clamp(0.06, 0.72).toDouble();
+      final nearSameType = tiles.take(index).any((other) {
+        if (other['type'] != tile['type']) return false;
+        final layerDistance =
+            ((other['layer'] as int) - (tile['layer'] as int)).abs();
+        if (layerDistance != 1) return false;
+        final dx = ((other['x'] as num) - candidateX).abs();
+        final dy = ((other['y'] as num) - candidateY).abs();
+        return dx < 0.03 && dy < 0.03;
+      });
+      if (nearSameType) continue;
+      tile['x'] = _round(candidateX);
+      tile['y'] = _round(candidateY);
+      break;
+    }
+  }
 }
 
 List<String> _buildSolvableTypeSequence(
@@ -223,23 +265,26 @@ List<String> _buildSolvableTypeSequence(
 
   final sequence = <String>[];
   var chunk = 0;
-  final objectiveChunks =
+  var objectiveTriplesRemaining =
       objectiveTarget == null ? 0 : (objectiveTarget / 3).ceil();
-  while (sequence.length + 9 <= tileCount) {
-    final a = objectiveType != null && chunk < objectiveChunks
+  while (sequence.length + 12 <= tileCount) {
+    final a = objectiveType != null && objectiveTriplesRemaining > 0
         ? objectiveType
         : rotated[(chunk * 3) % rotated.length];
     final alternatives = rotated.where((type) => type != a).toList();
-    final b = alternatives[(chunk * 2) % alternatives.length];
-    final c = alternatives[(chunk * 2 + 1) % alternatives.length];
-    sequence.addAll([a, b, c, a, b, c, a, b, c]);
+    final b = alternatives[(chunk * 3) % alternatives.length];
+    final c = alternatives[(chunk * 3 + 1) % alternatives.length];
+    final d = alternatives[(chunk * 3 + 2) % alternatives.length];
+    sequence.addAll([a, b, c, d, a, b, a, c, d, b, c, d]);
+    if (a == objectiveType) objectiveTriplesRemaining--;
     chunk++;
   }
-  if (sequence.length < tileCount) {
-    final remainderType = rotated[(chunk * 3) % rotated.length];
-    while (sequence.length < tileCount) {
-      sequence.add(remainderType);
-    }
+  if (sequence.length + 6 == tileCount) {
+    final a = objectiveType != null && objectiveTriplesRemaining > 0
+        ? objectiveType
+        : rotated[(chunk * 3) % rotated.length];
+    final b = rotated.firstWhere((type) => type != a);
+    sequence.addAll([a, b, a, b, a, b]);
   }
   return sequence;
 }
@@ -282,7 +327,7 @@ List<_Position> _buildPositions(
 
 List<int> _tilesPerLayer(int tileCount, int layerCount) {
   final counts = List<int>.filled(layerCount, 0);
-  counts[layerCount - 1] = min(6, tileCount);
+  counts[layerCount - 1] = min(5, tileCount);
   var remaining = tileCount - counts[layerCount - 1];
   for (var layer = layerCount - 2; layer >= 0; layer--) {
     final layersLeft = layer + 1;
@@ -364,8 +409,8 @@ Point<double> _childPoint({
   required int level,
 }) {
   final world = (level - 1) ~/ 10;
-  const spreadByWorld = [0.09, 0.068, 0.048, 0.032];
-  final spread = spreadByWorld[world] * (level % 10 == 0 ? 0.35 : 1);
+  const spreadByWorld = [0.06, 0.045, 0.032, 0.022];
+  final spread = spreadByWorld[world] * (level % 10 == 0 ? 0.28 : 1);
   final angle = (childIndex * 2.399963 + layer * 0.71 + level * 0.13);
   final radius = spread * (0.35 + (childIndex % 4) * 0.2);
   return Point(
