@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/app_flavor.dart';
+
 enum TreasureChestType { wood, silver, gold }
 
 class TreasureChest {
@@ -1193,21 +1195,93 @@ class ProgressRepository {
   Future<void> reset() => resetProgress();
 
   Future<void> debugUnlockAllWorlds() async {
+    _ensureDevQa();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_highestLevelKey, 31);
+  }
+
+  Future<void> debugUnlockAllLevels() async {
+    _ensureDevQa();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_highestLevelKey, 40);
   }
 
-  Future<int> debugAddCoins() => addCoins(1000);
+  Future<int> debugAddCoins() {
+    _ensureDevQa();
+    return addCoins(10000);
+  }
+
+  Future<void> debugAddBoosters() async {
+    _ensureDevQa();
+    await addExtraUndoBoosters(10);
+    await addExtraHintBoosters(10);
+    await addExtraShuffleBoosters(10);
+  }
+
+  Future<void> debugAddXp() {
+    _ensureDevQa();
+    return addXp(1000);
+  }
 
   Future<void> debugResetDailySpin() async {
+    _ensureDevQa();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_lastDailySpinDateKey);
   }
 
   Future<void> debugResetDailyChallenges() async {
+    _ensureDevQa();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_dailyChallengeDateKey);
     await _ensureDailyChallengesForToday(prefs);
+  }
+
+  Future<void> debugResetChests() async {
+    _ensureDevQa();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_treasureChestsKey);
+  }
+
+  Future<void> debugResetAchievements() async {
+    _ensureDevQa();
+    final prefs = await SharedPreferences.getInstance();
+    await _removeKeysWithPrefix(prefs, _achievementPrefix);
+    await prefs.remove(_pendingAchievementPopupIdsKey);
+    await prefs.remove(_selectedAvatarFrameKey);
+    await prefs.remove(_selectedProfileBackgroundKey);
+    await prefs.remove(_selectedProfileBadgeKey);
+  }
+
+  Future<void> debugResetCollectionBook() async {
+    _ensureDevQa();
+    final prefs = await SharedPreferences.getInstance();
+    await _removeKeysWithPrefix(prefs, _collectionPrefix);
+    await prefs.remove(_selectedProfileBadgeKey);
+  }
+
+  Future<void> debugCompleteLevel40() async {
+    _ensureDevQa();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_highestLevelKey, 40);
+    await recordLevelCompleted(40, 3);
+    await prefs.setBool(_finalRewardUnlockedKey, true);
+  }
+
+  void _ensureDevQa() {
+    if (!AppFlavorConfig.qaToolsEnabled) {
+      throw StateError('QA tools are available only in the dev flavor.');
+    }
+  }
+
+  Future<void> _removeKeysWithPrefix(
+    SharedPreferences prefs,
+    String prefix,
+  ) async {
+    final keys =
+        prefs.getKeys().where((key) => key.startsWith(prefix)).toList();
+    for (final key in keys) {
+      await prefs.remove(key);
+    }
   }
 
   Future<void> _ensureDailyChallengesForToday(SharedPreferences prefs) async {

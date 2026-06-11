@@ -15,6 +15,7 @@ import 'presentation/screens/lucky_wheel_screen.dart';
 import 'presentation/screens/main_menu_screen.dart';
 import 'presentation/screens/map_screen.dart';
 import 'presentation/screens/player_profile_screen.dart';
+import 'presentation/screens/qa_screen.dart';
 import 'presentation/screens/settings_screen.dart';
 import 'presentation/screens/splash_screen.dart';
 import 'presentation/screens/statistics_screen.dart';
@@ -84,6 +85,8 @@ class _TripleTileAppState extends State<TripleTileApp> {
           FinalCodeScreen.route: (_) => const FinalCodeScreen(),
           LuckyWheelScreen.route: (_) => const LuckyWheelScreen(),
           PlayerProfileScreen.route: (_) => const PlayerProfileScreen(),
+          if (AppFlavorConfig.qaToolsEnabled)
+            QaScreen.route: (_) => const QaScreen(),
           WorldSelectionScreen.route: (_) => const WorldSelectionScreen(),
           SettingsScreen.route: (_) => const SettingsScreen(),
           StatisticsScreen.route: (_) => const StatisticsScreen(),

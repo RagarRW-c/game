@@ -4,6 +4,7 @@ import '../../core/app_flavor.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
+import 'qa_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,6 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _music = true;
   bool _sfx = true;
   bool _vibration = true;
+  bool _progressChanged = false;
 
   @override
   void didChangeDependencies() {
@@ -128,148 +130,165 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed != true || !mounted) return;
     await AppScope.of(context).progressRepository.resetProgress();
     if (!mounted) return;
+    _progressChanged = true;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Progress reset')),
     );
   }
 
-  Future<void> _runQaAction(
-    String message,
-    Future<void> Function() action,
-  ) async {
-    await action();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+  Future<void> _openQaTools() async {
+    final changed = await Navigator.pushNamed<bool>(context, QaScreen.route);
+    if (!mounted || changed != true) return;
+    setState(() => _progressChanged = true);
+  }
+
+  void _close() {
+    Navigator.of(context).pop(_progressChanged);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: GameBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              GameHeader(
-                title: 'Settings',
-                onBack: () => Navigator.of(context).maybePop(),
-              ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(GameSpacing.lg),
-                  children: [
-                    GameCard(
-                      child: Column(
+    return PopScope<bool>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _close();
+      },
+      child: Scaffold(
+        body: GameBackground(
+          child: SafeArea(
+            child: Column(
+              children: [
+                GameHeader(
+                  title: 'Settings',
+                  onBack: _close,
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(GameSpacing.lg),
+                    children: [
+                      GameCard(
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                _SettingsIcon(
+                                  icon: Icons.music_note_rounded,
+                                  label: 'Music',
+                                  enabled: _music,
+                                  onTap: () => _setMusicEnabled(!_music),
+                                ),
+                                _SettingsIcon(
+                                  icon: Icons.volume_up_rounded,
+                                  label: 'Sound effects',
+                                  enabled: _sfx,
+                                  onTap: () => _setSfxEnabled(!_sfx),
+                                ),
+                                _SettingsIcon(
+                                  icon: Icons.vibration_rounded,
+                                  label: 'Vibration',
+                                  enabled: _vibration,
+                                  onTap: () =>
+                                      _setVibrationEnabled(!_vibration),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: GameSpacing.lg),
+                            _SettingsSwitch(
+                              icon: Icons.music_note_rounded,
+                              label: 'Background music',
+                              value: _music,
+                              onChanged: _setMusicEnabled,
+                            ),
+                            const SizedBox(height: GameSpacing.sm),
+                            _SettingsSwitch(
+                              icon: Icons.volume_up_rounded,
+                              label: 'Sound effects',
+                              value: _sfx,
+                              onChanged: _setSfxEnabled,
+                            ),
+                            const SizedBox(height: GameSpacing.sm),
+                            _SettingsSwitch(
+                              icon: Icons.vibration_rounded,
+                              label: 'Vibration',
+                              value: _vibration,
+                              onChanged: _setVibrationEnabled,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: GameSpacing.lg),
+                      _SettingsSection(
+                        title: 'About',
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _SettingsIcon(
-                                icon: Icons.music_note_rounded,
-                                label: 'Music',
-                                enabled: _music,
-                                onTap: () => _setMusicEnabled(!_music),
-                              ),
-                              _SettingsIcon(
-                                icon: Icons.volume_up_rounded,
-                                label: 'Sound effects',
-                                enabled: _sfx,
-                                onTap: () => _setSfxEnabled(!_sfx),
-                              ),
-                              _SettingsIcon(
-                                icon: Icons.vibration_rounded,
-                                label: 'Vibration',
-                                enabled: _vibration,
-                                onTap: () => _setVibrationEnabled(!_vibration),
-                              ),
-                            ],
+                          _SettingsAction(
+                            icon: Icons.privacy_tip_rounded,
+                            label: 'Privacy Policy',
+                            onTap: () => _showInfoDialog(
+                              title: 'Privacy Policy',
+                              icon: Icons.privacy_tip_rounded,
+                              body:
+                                  '${AppFlavorConfig.appName} stores game progress '
+                                  'and preferences locally on your device. The '
+                                  'game does not require an account or collect '
+                                  'personal information.',
+                            ),
                           ),
-                          const SizedBox(height: GameSpacing.lg),
-                          _SettingsSwitch(
-                            icon: Icons.music_note_rounded,
-                            label: 'Background music',
-                            value: _music,
-                            onChanged: _setMusicEnabled,
+                          _SettingsAction(
+                            icon: Icons.description_rounded,
+                            label: 'Terms of Service',
+                            onTap: () => _showInfoDialog(
+                              title: 'Terms of Service',
+                              icon: Icons.description_rounded,
+                              body:
+                                  '${AppFlavorConfig.appName} is provided for '
+                                  'personal entertainment. Progress and rewards '
+                                  'are stored locally and may be lost when app '
+                                  'data is removed.',
+                            ),
                           ),
-                          const SizedBox(height: GameSpacing.sm),
-                          _SettingsSwitch(
-                            icon: Icons.volume_up_rounded,
-                            label: 'Sound effects',
-                            value: _sfx,
-                            onChanged: _setSfxEnabled,
-                          ),
-                          const SizedBox(height: GameSpacing.sm),
-                          _SettingsSwitch(
-                            icon: Icons.vibration_rounded,
-                            label: 'Vibration',
-                            value: _vibration,
-                            onChanged: _setVibrationEnabled,
+                          _SettingsAction(
+                            icon: Icons.favorite_rounded,
+                            label: 'Credits',
+                            onTap: () => _showInfoDialog(
+                              title: 'Credits',
+                              icon: Icons.favorite_rounded,
+                              body: '${AppFlavorConfig.appName}\n'
+                                  'Design, development, and original game assets.',
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: GameSpacing.lg),
-                    _SettingsSection(
-                      title: 'About',
-                      children: [
-                        _SettingsAction(
-                          icon: Icons.privacy_tip_rounded,
-                          label: 'Privacy Policy',
-                          onTap: () => _showInfoDialog(
-                            title: 'Privacy Policy',
-                            icon: Icons.privacy_tip_rounded,
-                            body:
-                                '${AppFlavorConfig.appName} stores game progress '
-                                'and preferences locally on your device. The '
-                                'game does not require an account or collect '
-                                'personal information.',
-                          ),
-                        ),
-                        _SettingsAction(
-                          icon: Icons.description_rounded,
-                          label: 'Terms of Service',
-                          onTap: () => _showInfoDialog(
-                            title: 'Terms of Service',
-                            icon: Icons.description_rounded,
-                            body: '${AppFlavorConfig.appName} is provided for '
-                                'personal entertainment. Progress and rewards '
-                                'are stored locally and may be lost when app '
-                                'data is removed.',
-                          ),
-                        ),
-                        _SettingsAction(
-                          icon: Icons.favorite_rounded,
-                          label: 'Credits',
-                          onTap: () => _showInfoDialog(
-                            title: 'Credits',
-                            icon: Icons.favorite_rounded,
-                            body: '${AppFlavorConfig.appName}\n'
-                                'Design, development, and original game assets.',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: GameSpacing.lg),
-                    _SettingsSection(
-                      title: 'Data',
-                      children: [
-                        _SettingsAction(
-                          icon: Icons.restart_alt_rounded,
-                          label: 'Reset Progress',
-                          color: GameColors.dangerRed,
-                          onTap: _confirmResetProgress,
-                        ),
-                      ],
-                    ),
-                    if (AppFlavorConfig.qaToolsEnabled) ...[
                       const SizedBox(height: GameSpacing.lg),
-                      const _QaMenu(),
+                      _SettingsSection(
+                        title: 'Data',
+                        children: [
+                          _SettingsAction(
+                            icon: Icons.restart_alt_rounded,
+                            label: 'Reset Progress',
+                            color: GameColors.dangerRed,
+                            onTap: _confirmResetProgress,
+                          ),
+                        ],
+                      ),
+                      if (AppFlavorConfig.qaToolsEnabled) ...[
+                        const SizedBox(height: GameSpacing.lg),
+                        _SettingsSection(
+                          title: 'Development',
+                          children: [
+                            _SettingsAction(
+                              icon: Icons.science_rounded,
+                              label: 'DEV QA Tools',
+                              onTap: _openQaTools,
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -335,58 +354,6 @@ class _SettingsAction extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _QaMenu extends StatelessWidget {
-  const _QaMenu();
-
-  @override
-  Widget build(BuildContext context) {
-    final repository = AppScope.of(context).progressRepository;
-    final state = context.findAncestorStateOfType<_SettingsScreenState>()!;
-    return _SettingsSection(
-      title: 'Debug QA',
-      children: [
-        _SettingsAction(
-          icon: Icons.lock_open_rounded,
-          label: 'Unlock All Worlds',
-          onTap: () => state._runQaAction(
-            'All worlds unlocked',
-            repository.debugUnlockAllWorlds,
-          ),
-        ),
-        _SettingsAction(
-          icon: Icons.monetization_on_rounded,
-          label: 'Add 1000 Coins',
-          onTap: () => state._runQaAction('1000 coins added', () async {
-            await repository.debugAddCoins();
-          }),
-        ),
-        _SettingsAction(
-          icon: Icons.casino_rounded,
-          label: 'Reset Daily Spin',
-          onTap: () => state._runQaAction(
-            'Daily spin reset',
-            repository.debugResetDailySpin,
-          ),
-        ),
-        _SettingsAction(
-          icon: Icons.task_alt_rounded,
-          label: 'Reset Daily Challenges',
-          onTap: () => state._runQaAction(
-            'Daily challenges reset',
-            repository.debugResetDailyChallenges,
-          ),
-        ),
-        _SettingsAction(
-          icon: Icons.delete_forever_rounded,
-          label: 'Reset Progress',
-          color: GameColors.dangerRed,
-          onTap: state._confirmResetProgress,
-        ),
-      ],
     );
   }
 }

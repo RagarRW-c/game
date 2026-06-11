@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_flavor.dart';
 import '../../data/progress_repository.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
@@ -13,6 +14,7 @@ import 'daily_challenges_screen.dart';
 import 'final_code_screen.dart';
 import 'lucky_wheel_screen.dart';
 import 'player_profile_screen.dart';
+import 'qa_screen.dart';
 import 'settings_screen.dart';
 import 'statistics_screen.dart';
 import 'treasure_chests_screen.dart';
@@ -34,6 +36,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   int _coins = 0;
   bool _loginStreakPromptQueued = false;
   bool _loginStreakPromptShowing = false;
+
+  Future<void> _openProgressScreen(String route) async {
+    final changed = await Navigator.pushNamed<bool>(context, route);
+    if (mounted && changed == true) await _loadRewards();
+  }
 
   @override
   void didChangeDependencies() {
@@ -316,8 +323,16 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       label: 'Settings',
                       icon: Icons.settings_rounded,
                       onPressed: () =>
-                          Navigator.pushNamed(context, SettingsScreen.route),
+                          _openProgressScreen(SettingsScreen.route),
                     ),
+                    if (AppFlavorConfig.qaToolsEnabled) ...[
+                      const SizedBox(height: GameSpacing.md),
+                      PrimaryButton(
+                        label: 'DEV QA Tools',
+                        icon: Icons.science_rounded,
+                        onPressed: () => _openProgressScreen(QaScreen.route),
+                      ),
+                    ],
                   ],
                 ),
               ),
