@@ -45,6 +45,7 @@ class _TreasureChestsScreenState extends State<TreasureChestsScreen> {
     final repository = AppScope.of(context).progressRepository;
     final reward = await repository.openTreasureChest(chest.id);
     if (!mounted || reward == null) return;
+    unawaited(AppScope.of(context).audioService.playChestOpen());
     _reload();
     await _showRewardDialog(chest, reward);
   }
@@ -61,6 +62,7 @@ class _TreasureChestsScreenState extends State<TreasureChestsScreen> {
     }
     final reward = result.reward;
     if (reward == null) return;
+    unawaited(AppScope.of(context).audioService.playChestOpen());
     _reload();
     await _showRewardDialog(chest, reward);
   }

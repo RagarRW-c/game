@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -48,21 +49,15 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
   }
 
   Future<void> _loadAvailability() async {
-    debugPrint('LuckyWheel init start');
     var canSpin = true;
     try {
       final status = await AppScope.of(context)
           .progressRepository
           .dailySpinStatus(DateTime.now());
-      debugPrint('LuckyWheel prefs loaded');
-      debugPrint('LuckyWheel lastSpinDate=${status.lastSpinDate}');
-      debugPrint('LuckyWheel canSpin=${status.canSpin}');
       canSpin = status.canSpin;
-    } catch (error, stackTrace) {
-      debugPrint('LuckyWheel error: $error');
-      debugPrint('$stackTrace');
+    } catch (_) {
+      canSpin = true;
     } finally {
-      debugPrint('LuckyWheel init complete');
       if (mounted) {
         setState(() {
           _available = canSpin;
@@ -86,6 +81,7 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
       return;
     }
 
+    unawaited(AppScope.of(context).audioService.playLuckyWheelSpin());
     final random = Random();
     final selectedIndex = random.nextInt(_rewards.length);
     final fullTurns = 4 + random.nextInt(2);
@@ -111,7 +107,11 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
     await repository.markDailySpinClaimed(DateTime.now());
     await repository.recordLuckyWheelSpin();
     if (mounted) {
-      await showPendingAchievementPopups(context, repository);
+      await showPendingAchievementPopups(
+        context,
+        repository,
+        onPopup: AppScope.of(context).audioService.playAchievementUnlocked,
+      );
     }
     if (!mounted) return;
 

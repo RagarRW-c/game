@@ -143,7 +143,7 @@ class _FinalRewardContent extends StatelessWidget {
                         Expanded(
                           child: _SummaryBadge(
                             icon: Icons.star_rounded,
-                            label: 'Stars',
+                            label: 'Total stars',
                             value: '${summary.totalStars}',
                           ),
                         ),
@@ -151,16 +151,28 @@ class _FinalRewardContent extends StatelessWidget {
                         Expanded(
                           child: _SummaryBadge(
                             icon: Icons.flag_rounded,
-                            label: 'Levels',
+                            label: 'Levels completed',
                             value: '${summary.levelsCompleted}',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: GameSpacing.sm),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _SummaryBadge(
+                            icon: Icons.emoji_events_rounded,
+                            label: 'Achievements unlocked',
+                            value: '${summary.achievementsUnlocked}',
                           ),
                         ),
                         const SizedBox(width: GameSpacing.sm),
                         Expanded(
                           child: _SummaryBadge(
-                            icon: Icons.emoji_events_rounded,
-                            label: 'Achievements',
-                            value: '${summary.achievementsUnlocked}',
+                            icon: Icons.collections_bookmark_rounded,
+                            label: 'Collections completed',
+                            value: '${summary.collectionsCompleted}',
                           ),
                         ),
                       ],
@@ -209,8 +221,12 @@ class _SummaryBadge extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: GameTextStyles.caption.copyWith(color: Colors.white)),
           Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: GameTextStyles.button.copyWith(color: Colors.white)),
         ],
       ),

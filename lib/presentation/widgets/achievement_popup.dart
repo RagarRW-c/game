@@ -8,13 +8,15 @@ import 'game_ui.dart';
 
 Future<void> showPendingAchievementPopups(
   BuildContext context,
-  ProgressRepository repository,
-) async {
+  ProgressRepository repository, {
+  Future<void> Function()? onPopup,
+}) async {
   final popups = await repository.consumePendingAchievementPopups();
   if (!context.mounted || popups.isEmpty) return;
 
   for (final popup in popups) {
     if (!context.mounted) return;
+    if (onPopup != null) unawaited(onPopup());
     await showDialog<void>(
       context: context,
       barrierDismissible: true,

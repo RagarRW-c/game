@@ -253,12 +253,14 @@ class FinalRewardSummary {
     required this.totalStars,
     required this.levelsCompleted,
     required this.achievementsUnlocked,
+    required this.collectionsCompleted,
   });
 
   final String code;
   final int totalStars;
   final int levelsCompleted;
   final int achievementsUnlocked;
+  final int collectionsCompleted;
 }
 
 class PlayerProfileSummary {
@@ -1091,6 +1093,7 @@ class ProgressRepository {
       totalStars: _bestStarsTotal(prefs),
       levelsCompleted: 40,
       achievementsUnlocked: achievementsUnlocked,
+      collectionsCompleted: _collectionUnlockedCount(prefs),
     );
   }
 

@@ -3,7 +3,6 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart';
 
 class GameAudioService {
   static const String _backgroundMusicAsset = 'audio/background.mp3';
@@ -28,7 +27,6 @@ class GameAudioService {
 
     await _music.resume();
     _musicPlaying = true;
-    debugPrint('Music started');
   }
 
   Future<void> _configureMusic() async {
@@ -38,7 +36,6 @@ class GameAudioService {
     await _music.setVolume(0.35);
     await _music.setSource(AssetSource(_backgroundMusicAsset));
     _musicConfigured = true;
-    debugPrint('Asset loaded successfully: assets/$_backgroundMusicAsset');
   }
 
   Future<void> _resumeMusic() async {
@@ -47,7 +44,6 @@ class GameAudioService {
 
     await _music.resume();
     _musicPlaying = true;
-    debugPrint('Music resumed');
   }
 
   Future<void> _stopMusic() async {
@@ -55,7 +51,6 @@ class GameAudioService {
 
     await _music.pause();
     _musicPlaying = false;
-    debugPrint('Music stopped');
   }
 
   Future<void> setMusicEnabled(bool enabled) async {
@@ -74,6 +69,12 @@ class GameAudioService {
   Future<void> playWin() => _play('win');
   Future<void> playLose() => _play('lose');
   Future<void> playBooster() => _play('booster');
+  Future<void> playLevelComplete() => _play('level_complete');
+  Future<void> playGameOver() => _play('game_over');
+  Future<void> playChestOpen() => _play('chest_open');
+  Future<void> playLuckyWheelSpin() => _play('wheel_spin');
+  Future<void> playAchievementUnlocked() => _play('achievement');
+  Future<void> playWorldUnlocked() => _play('world_unlock');
 
   Future<void> _play(String cue) async {
     if (!sfxEnabled) return;
@@ -158,6 +159,7 @@ class GameAudioService {
           (frequency: 1320, seconds: 0.12),
         ];
       case 'win':
+      case 'level_complete':
         return [
           (frequency: 523, seconds: 0.12),
           (frequency: 659, seconds: 0.12),
@@ -165,6 +167,7 @@ class GameAudioService {
           (frequency: 1046, seconds: 0.25),
         ];
       case 'lose':
+      case 'game_over':
         return [
           (frequency: 330, seconds: 0.15),
           (frequency: 220, seconds: 0.25),
@@ -173,6 +176,32 @@ class GameAudioService {
         return [
           (frequency: 700, seconds: 0.05),
           (frequency: 1000, seconds: 0.08),
+        ];
+      case 'chest_open':
+        return [
+          (frequency: 392, seconds: 0.08),
+          (frequency: 784, seconds: 0.08),
+          (frequency: 1175, seconds: 0.16),
+        ];
+      case 'wheel_spin':
+        return [
+          (frequency: 740, seconds: 0.04),
+          (frequency: 830, seconds: 0.04),
+          (frequency: 932, seconds: 0.04),
+          (frequency: 1046, seconds: 0.08),
+        ];
+      case 'achievement':
+        return [
+          (frequency: 659, seconds: 0.08),
+          (frequency: 880, seconds: 0.08),
+          (frequency: 1318, seconds: 0.16),
+        ];
+      case 'world_unlock':
+        return [
+          (frequency: 523, seconds: 0.08),
+          (frequency: 784, seconds: 0.08),
+          (frequency: 1046, seconds: 0.08),
+          (frequency: 1568, seconds: 0.2),
         ];
       default:
         return [(frequency: 880, seconds: 0.07)];

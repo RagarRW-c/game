@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' show max;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -136,7 +137,7 @@ class _GameScreenState extends State<GameScreen> {
   void _playSfx(Future<void> Function() play, String cue) {
     unawaited(
       play().catchError((Object error, StackTrace stackTrace) {
-        debugPrint('SFX $cue failed: $error');
+        if (kDebugMode) debugPrint('SFX $cue failed: $error');
       }),
     );
   }
@@ -178,7 +179,11 @@ class _GameScreenState extends State<GameScreen> {
     final coins = await _scope.progressRepository.coins();
     if (mounted) setState(() => _coins = coins);
     if (mounted) {
-      await showPendingAchievementPopups(context, _scope.progressRepository);
+      await showPendingAchievementPopups(
+        context,
+        _scope.progressRepository,
+        onPopup: _scope.audioService.playAchievementUnlocked,
+      );
     }
   }
 
@@ -187,7 +192,11 @@ class _GameScreenState extends State<GameScreen> {
     final coins = await _scope.progressRepository.coins();
     if (mounted) setState(() => _coins = coins);
     if (mounted) {
-      await showPendingAchievementPopups(context, _scope.progressRepository);
+      await showPendingAchievementPopups(
+        context,
+        _scope.progressRepository,
+        onPopup: _scope.audioService.playAchievementUnlocked,
+      );
     }
   }
 
@@ -434,7 +443,7 @@ class _GameScreenState extends State<GameScreen> {
   Future<void> _handleGameOver({required LevelDefinition? level}) async {
     if (_gameOverDialogShowing || !mounted) return;
     _gameOverDialogShowing = true;
-    _playSfx(_scope.audioService.playLose, 'lose');
+    _playSfx(_scope.audioService.playGameOver, 'game_over');
     _haptic(HapticFeedback.heavyImpact);
     if (!mounted) return;
 
@@ -567,12 +576,17 @@ class _GameScreenState extends State<GameScreen> {
         SnackBar(content: Text('${chestGrant.chest!.title} added')),
       );
     }
-    _playSfx(scope.audioService.playWin, 'win');
+    _playSfx(scope.audioService.playLevelComplete, 'level_complete');
     _haptic(HapticFeedback.heavyImpact);
-    await showPendingAchievementPopups(context, scope.progressRepository);
+    await showPendingAchievementPopups(
+      context,
+      scope.progressRepository,
+      onPopup: scope.audioService.playAchievementUnlocked,
+    );
     if (!mounted) return;
 
     if (bossInfo != null) {
+      _playSfx(scope.audioService.playWorldUnlocked, 'world_unlock');
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
@@ -732,7 +746,9 @@ class _GameScreenState extends State<GameScreen> {
       future: _levelFuture,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          debugPrint('Game build failed to load level: ${snapshot.error}');
+          if (kDebugMode) {
+            debugPrint('Game build failed to load level: ${snapshot.error}');
+          }
           return _FallbackGameScaffold(
             title: 'Level ${widget.level}',
             message:
@@ -965,8 +981,10 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 );
               } catch (error, stackTrace) {
-                debugPrint('Game build fallback: $error');
-                debugPrint('$stackTrace');
+                if (kDebugMode) {
+                  debugPrint('Game build fallback: $error');
+                  debugPrint('$stackTrace');
+                }
                 return const _FallbackGameBody();
               }
             },

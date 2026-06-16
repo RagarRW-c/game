@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/level.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/game_ui.dart';
@@ -43,6 +44,27 @@ class _MapScreenState extends State<MapScreen> {
         .dailySpinAvailable(DateTime.now());
     if (!mounted) return;
     setState(() => _dailySpinAvailable = available);
+  }
+
+  Future<void> _openLevelPreview(int level) async {
+    final started = await showDialog<bool>(
+      context: context,
+      builder: (_) => _LevelPreviewDialog(
+        levelFuture: AppScope.of(context).levelRepository.loadLevel(level),
+        world: widget.world,
+      ),
+    );
+    if (!mounted || started != true) return;
+    await Navigator.pushNamed(
+      context,
+      GameScreen.route,
+      arguments: level,
+    );
+    if (mounted) {
+      setState(() {
+        _progressFuture = _loadMapProgress();
+      });
+    }
   }
 
   @override
@@ -131,20 +153,8 @@ class _MapScreenState extends State<MapScreen> {
                               : unlocked
                                   ? 'Ready'
                                   : 'Locked',
-                          onTap: unlocked
-                              ? () async {
-                                  await Navigator.pushNamed(
-                                    context,
-                                    GameScreen.route,
-                                    arguments: level,
-                                  );
-                                  if (mounted) {
-                                    setState(() {
-                                      _progressFuture = _loadMapProgress();
-                                    });
-                                  }
-                                }
-                              : null,
+                          onTap:
+                              unlocked ? () => _openLevelPreview(level) : null,
                         );
                       },
                     );
@@ -330,6 +340,175 @@ class _LevelCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LevelPreviewDialog extends StatelessWidget {
+  const _LevelPreviewDialog({
+    required this.levelFuture,
+    required this.world,
+  });
+
+  final Future<LevelDefinition> levelFuture;
+  final GameWorld world;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<LevelDefinition>(
+      future: levelFuture,
+      builder: (context, snapshot) {
+        final level = snapshot.data;
+        return GameDialogFrame(
+          title: level == null ? 'Level Preview' : 'Level ${level.level}',
+          child: level == null
+              ? const Padding(
+                  padding: EdgeInsets.all(GameSpacing.lg),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : _LevelPreviewContent(level: level, world: world),
+        );
+      },
+    );
+  }
+}
+
+class _LevelPreviewContent extends StatelessWidget {
+  const _LevelPreviewContent({
+    required this.level,
+    required this.world,
+  });
+
+  final LevelDefinition level;
+  final GameWorld world;
+
+  @override
+  Widget build(BuildContext context) {
+    final bossInfo = _BossMapInfo.forLevel(level.level);
+    final difficulty = _difficultyForLevel(level.level);
+    final chestLabel = _chestPreviewForLevel(level.level);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 82,
+          height: 82,
+          decoration: BoxDecoration(
+            gradient: bossInfo == null ? world.gradient : GameGradients.badge,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 4),
+            boxShadow: GameShadows.glow(world.visualTheme.primaryAccent),
+          ),
+          child: Icon(
+            bossInfo?.icon ?? world.icon,
+            color: Colors.white,
+            size: 46,
+          ),
+        ),
+        const SizedBox(height: GameSpacing.lg),
+        Text(world.name, textAlign: TextAlign.center, style: GameTextStyles.h2),
+        const SizedBox(height: GameSpacing.sm),
+        _PreviewRow(
+          icon: Icons.speed_rounded,
+          label: 'Difficulty',
+          value: difficulty,
+        ),
+        _PreviewRow(
+          icon: Icons.monetization_on_rounded,
+          label: 'Coins',
+          value: '+${_coinRewardForLevel(level.level)}',
+        ),
+        _PreviewRow(
+          icon: Icons.bolt_rounded,
+          label: 'XP',
+          value: _xpRewardPreviewForLevel(level.level),
+        ),
+        if (chestLabel != null)
+          _PreviewRow(
+            icon: Icons.inventory_2_rounded,
+            label: 'Chest',
+            value: chestLabel,
+          ),
+        if (level.objective != null)
+          _PreviewRow(
+            icon: Icons.track_changes_rounded,
+            label: 'Objective',
+            value: '${level.objective!.target} ${level.objective!.type}',
+          ),
+        const SizedBox(height: GameSpacing.xl),
+        GameButton(
+          label: 'Start',
+          icon: Icons.play_arrow_rounded,
+          onPressed: () => Navigator.of(context).pop(true),
+          variant: GameButtonVariant.success,
+        ),
+        const SizedBox(height: GameSpacing.md),
+        GameButton(
+          label: 'Back',
+          icon: Icons.arrow_back_rounded,
+          onPressed: () => Navigator.of(context).pop(false),
+          variant: GameButtonVariant.secondary,
+        ),
+      ],
+    );
+  }
+}
+
+class _PreviewRow extends StatelessWidget {
+  const _PreviewRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: GameSpacing.sm),
+      child: GameCard(
+        padding: const EdgeInsets.all(GameSpacing.md),
+        shadow: GameShadows.light(),
+        child: Row(
+          children: [
+            Icon(icon, color: GameColors.primaryBlue),
+            const SizedBox(width: GameSpacing.md),
+            Expanded(child: Text(label, style: GameTextStyles.body)),
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: GameTextStyles.button.copyWith(color: GameColors.ink),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _difficultyForLevel(int level) {
+  if (level % 10 == 0) return 'Boss';
+  final worldIndex = (level - 1) % 10;
+  if (worldIndex <= 2) return 'Easy';
+  if (worldIndex <= 5) return 'Medium';
+  if (worldIndex <= 7) return 'Hard';
+  return 'Very Hard';
+}
+
+int _coinRewardForLevel(int level) => level % 10 == 0 ? 350 : 50;
+
+String _xpRewardPreviewForLevel(int level) =>
+    level % 10 == 0 ? '+300-350' : '+100-150';
+
+String? _chestPreviewForLevel(int level) {
+  if (level % 10 == 0) return 'Gold Chest';
+  if (level % 5 == 0) return 'Silver Chest';
+  return null;
 }
 
 class _BossMapInfo {

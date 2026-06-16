@@ -60,29 +60,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await scope.progressRepository.setVibrationEnabled(value);
   }
 
-  Future<void> _showInfoDialog({
+  Future<void> _openInfoScreen({
     required String title,
     required IconData icon,
     required String body,
   }) async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => GameDialogFrame(
-        title: title,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: GameColors.primaryBlue, size: 64),
-            const SizedBox(height: GameSpacing.lg),
-            Text(body, textAlign: TextAlign.center, style: GameTextStyles.body),
-            const SizedBox(height: GameSpacing.xl),
-            GameButton(
-              label: 'Close',
-              icon: Icons.close_rounded,
-              onPressed: () => Navigator.of(context).pop(),
-              variant: GameButtonVariant.secondary,
-            ),
-          ],
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _InfoScreen(
+          title: title,
+          icon: icon,
+          body: body,
         ),
       ),
     );
@@ -137,7 +125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _openQaTools() async {
-    final changed = await Navigator.pushNamed<bool>(context, QaScreen.route);
+    final changed = await Navigator.pushNamed(context, QaScreen.route);
     if (!mounted || changed != true) return;
     setState(() => _progressChanged = true);
   }
@@ -224,33 +212,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           _SettingsAction(
                             icon: Icons.privacy_tip_rounded,
                             label: 'Privacy Policy',
-                            onTap: () => _showInfoDialog(
+                            onTap: () => _openInfoScreen(
                               title: 'Privacy Policy',
                               icon: Icons.privacy_tip_rounded,
-                              body:
-                                  '${AppFlavorConfig.appName} stores game progress '
-                                  'and preferences locally on your device. The '
-                                  'game does not require an account or collect '
-                                  'personal information.',
+                              body: 'Privacy Policy coming soon',
                             ),
                           ),
                           _SettingsAction(
                             icon: Icons.description_rounded,
                             label: 'Terms of Service',
-                            onTap: () => _showInfoDialog(
+                            onTap: () => _openInfoScreen(
                               title: 'Terms of Service',
                               icon: Icons.description_rounded,
-                              body:
-                                  '${AppFlavorConfig.appName} is provided for '
-                                  'personal entertainment. Progress and rewards '
-                                  'are stored locally and may be lost when app '
-                                  'data is removed.',
+                              body: 'Terms of Service coming soon',
                             ),
                           ),
                           _SettingsAction(
                             icon: Icons.favorite_rounded,
                             label: 'Credits',
-                            onTap: () => _showInfoDialog(
+                            onTap: () => _openInfoScreen(
                               title: 'Credits',
                               icon: Icons.favorite_rounded,
                               body: '${AppFlavorConfig.appName}\n'
@@ -289,6 +269,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoScreen extends StatelessWidget {
+  const _InfoScreen({
+    required this.title,
+    required this.icon,
+    required this.body,
+  });
+
+  final String title;
+  final IconData icon;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: GameBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              GameHeader(
+                title: title,
+                onBack: () => Navigator.of(context).maybePop(),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(GameSpacing.lg),
+                  children: [
+                    GameCard(
+                      child: Column(
+                        children: [
+                          Icon(icon, color: GameColors.primaryBlue, size: 72),
+                          const SizedBox(height: GameSpacing.lg),
+                          Text(
+                            body,
+                            textAlign: TextAlign.center,
+                            style: GameTextStyles.body,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),

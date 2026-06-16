@@ -38,7 +38,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   bool _loginStreakPromptShowing = false;
 
   Future<void> _openProgressScreen(String route) async {
-    final changed = await Navigator.pushNamed<bool>(context, route);
+    final changed = await Navigator.pushNamed(context, route);
     if (mounted && changed == true) await _loadRewards();
   }
 
@@ -64,7 +64,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       _finalRewardUnlocked = finalRewardUnlocked;
     });
     _queueLoginStreakPopup(loginStreakStatus);
-    await showPendingAchievementPopups(context, repository);
+    await showPendingAchievementPopups(
+      context,
+      repository,
+      onPopup: AppScope.of(context).audioService.playAchievementUnlocked,
+    );
   }
 
   Future<void> _claimDailyReward() async {
