@@ -111,6 +111,42 @@ const _collections = <_CollectionDefinition>[
     theme: TileVisualTheme.space,
     worldTheme: WorldThemes.space,
   ),
+  _CollectionDefinition(
+    key: 'desert',
+    title: 'Desert Collection',
+    theme: TileVisualTheme.desert,
+    worldTheme: WorldThemes.desert,
+  ),
+  _CollectionDefinition(
+    key: 'ice',
+    title: 'Ice Collection',
+    theme: TileVisualTheme.ice,
+    worldTheme: WorldThemes.ice,
+  ),
+  _CollectionDefinition(
+    key: 'jungle',
+    title: 'Jungle Collection',
+    theme: TileVisualTheme.jungle,
+    worldTheme: WorldThemes.jungle,
+  ),
+  _CollectionDefinition(
+    key: 'volcano',
+    title: 'Volcano Collection',
+    theme: TileVisualTheme.volcano,
+    worldTheme: WorldThemes.volcano,
+  ),
+  _CollectionDefinition(
+    key: 'dream',
+    title: 'Dream Collection',
+    theme: TileVisualTheme.dream,
+    worldTheme: WorldThemes.dream,
+  ),
+  _CollectionDefinition(
+    key: 'crystal',
+    title: 'Crystal Collection',
+    theme: TileVisualTheme.crystal,
+    worldTheme: WorldThemes.crystal,
+  ),
 ];
 
 class _CollectionWorldCard extends StatelessWidget {

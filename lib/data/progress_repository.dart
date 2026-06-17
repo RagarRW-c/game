@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_flavor.dart';
+import 'level_repository.dart';
 
 enum TreasureChestType { wood, silver, gold }
 
@@ -189,8 +190,15 @@ enum AchievementId {
   oceanWorld,
   candyWorld,
   spaceWorld,
+  desertWorld,
+  iceWorld,
+  jungleWorld,
+  volcanoWorld,
+  dreamWorld,
+  crystalWorld,
   luckyPlayer,
   boosterMaster,
+  endlessExplorer,
 }
 
 class AchievementDefinition {
@@ -234,6 +242,9 @@ class GameStatistics {
     required this.undosUsed,
     required this.luckyWheelSpins,
     required this.bestStarsTotal,
+    required this.bestEndlessScore,
+    required this.totalEndlessRuns,
+    required this.totalEndlessBoardsCleared,
   });
 
   final int levelsCompleted;
@@ -245,6 +256,9 @@ class GameStatistics {
   final int undosUsed;
   final int luckyWheelSpins;
   final int bestStarsTotal;
+  final int bestEndlessScore;
+  final int totalEndlessRuns;
+  final int totalEndlessBoardsCleared;
 }
 
 class FinalRewardSummary {
@@ -278,6 +292,9 @@ class PlayerProfileSummary {
     required this.dailyStreak,
     required this.totalBoostersUsed,
     required this.totalTilesMatched,
+    required this.bestEndlessScore,
+    required this.totalEndlessRuns,
+    required this.totalEndlessBoardsCleared,
   });
 
   final int playerLevel;
@@ -293,6 +310,9 @@ class PlayerProfileSummary {
   final int dailyStreak;
   final int totalBoostersUsed;
   final int totalTilesMatched;
+  final int bestEndlessScore;
+  final int totalEndlessRuns;
+  final int totalEndlessBoardsCleared;
 }
 
 class PlayerCosmetics {
@@ -379,6 +399,8 @@ class ProgressRepository {
   static const _achievementPrefix = 'achievement_';
   static const _pendingAchievementPopupIdsKey = 'pending_achievement_popup_ids';
   static const _collectionPrefix = 'collection_';
+  static const _collectionWorldCount = 10;
+  static const _collectionTileTypeCount = 5;
   static const _statsLevelsCompletedKey = 'stats_levels_completed';
   static const _statsTilesMatchedKey = 'stats_tiles_matched';
   static const _statsCoinsEarnedKey = 'stats_coins_earned';
@@ -387,6 +409,9 @@ class ProgressRepository {
   static const _statsShufflesUsedKey = 'stats_shuffles_used';
   static const _statsUndosUsedKey = 'stats_undos_used';
   static const _statsLuckyWheelSpinsKey = 'stats_lucky_wheel_spins';
+  static const _bestEndlessScoreKey = 'best_endless_score';
+  static const _totalEndlessRunsKey = 'total_endless_runs';
+  static const _totalEndlessBoardsClearedKey = 'total_endless_boards_cleared';
   static const _finalRewardUnlockedKey = 'final_reward_unlocked';
   static const _treasureChestsKey = 'treasure_chests';
   static const _totalXpKey = 'total_xp';
@@ -399,10 +424,22 @@ class ProgressRepository {
   static const avatarFrameOcean = 'ocean_frame';
   static const avatarFrameCandy = 'candy_frame';
   static const avatarFrameSpace = 'space_frame';
+  static const avatarFrameDesert = 'desert_frame';
+  static const avatarFrameIce = 'ice_frame';
+  static const avatarFrameJungle = 'jungle_frame';
+  static const avatarFrameVolcano = 'volcano_frame';
+  static const avatarFrameDream = 'dream_frame';
+  static const avatarFrameCrystal = 'crystal_frame';
   static const profileBackgroundGarden = 'garden_theme';
   static const profileBackgroundOcean = 'ocean_theme';
   static const profileBackgroundCandy = 'candy_theme';
   static const profileBackgroundSpace = 'space_theme';
+  static const profileBackgroundDesert = 'desert_theme';
+  static const profileBackgroundIce = 'ice_theme';
+  static const profileBackgroundJungle = 'jungle_theme';
+  static const profileBackgroundVolcano = 'volcano_theme';
+  static const profileBackgroundDream = 'dream_theme';
+  static const profileBackgroundCrystal = 'crystal_theme';
   static const badgeWorldConqueror = 'world_conqueror';
   static const badgeLuckyPlayer = 'lucky_player';
   static const badgeCollector = 'collector';
@@ -464,6 +501,42 @@ class ProgressRepository {
       reward: 700,
     ),
     AchievementDefinition(
+      id: AchievementId.desertWorld,
+      name: 'Complete Desert World',
+      description: 'Complete Level 50.',
+      reward: 800,
+    ),
+    AchievementDefinition(
+      id: AchievementId.iceWorld,
+      name: 'Complete Ice World',
+      description: 'Complete Level 60.',
+      reward: 900,
+    ),
+    AchievementDefinition(
+      id: AchievementId.jungleWorld,
+      name: 'Complete Jungle World',
+      description: 'Complete Level 70.',
+      reward: 1000,
+    ),
+    AchievementDefinition(
+      id: AchievementId.volcanoWorld,
+      name: 'Complete Volcano World',
+      description: 'Complete Level 80.',
+      reward: 1100,
+    ),
+    AchievementDefinition(
+      id: AchievementId.dreamWorld,
+      name: 'Complete Dream World',
+      description: 'Complete Level 90.',
+      reward: 1200,
+    ),
+    AchievementDefinition(
+      id: AchievementId.crystalWorld,
+      name: 'Complete Crystal World',
+      description: 'Complete Level 100.',
+      reward: 1500,
+    ),
+    AchievementDefinition(
       id: AchievementId.luckyPlayer,
       name: 'Lucky Player',
       description: 'Use the Lucky Wheel 7 times.',
@@ -474,6 +547,12 @@ class ProgressRepository {
       name: 'Booster Master',
       description: 'Use 25 boosters.',
       reward: 250,
+    ),
+    AchievementDefinition(
+      id: AchievementId.endlessExplorer,
+      name: 'Endless Explorer',
+      description: 'Score 10000 points in Endless Mode.',
+      reward: 300,
     ),
   ];
 
@@ -549,7 +628,7 @@ class ProgressRepository {
   Future<void> unlockNextLevel(int completedLevel) async {
     final prefs = await SharedPreferences.getInstance();
     final current = prefs.getInt(_highestLevelKey) ?? 1;
-    final next = (completedLevel + 1).clamp(1, 40);
+    final next = (completedLevel + 1).clamp(1, LevelRepository.levelCount);
     if (next > current) await prefs.setInt(_highestLevelKey, next);
   }
 
@@ -609,6 +688,31 @@ class ProgressRepository {
     if (current < amount) return false;
     await prefs.setInt(_coinsKey, current - amount);
     return true;
+  }
+
+  Future<int> bestEndlessScore() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_bestEndlessScoreKey) ?? 0;
+  }
+
+  Future<ChestGrantResult> grantEndlessSilverChest() {
+    return _grantChestByType(TreasureChestType.silver, idSuffix: 'endless');
+  }
+
+  Future<void> recordEndlessRun({
+    required int score,
+    required int boardsCleared,
+    required int tilesMatched,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _incrementInt(prefs, _totalEndlessRunsKey, 1);
+    await _incrementInt(prefs, _totalEndlessBoardsClearedKey, boardsCleared);
+    await _incrementInt(prefs, _statsTilesMatchedKey, tilesMatched);
+    final currentBest = prefs.getInt(_bestEndlessScoreKey) ?? 0;
+    if (score > currentBest) await prefs.setInt(_bestEndlessScoreKey, score);
+    if (score >= 10000) {
+      await _unlockAchievements(prefs, const [AchievementId.endlessExplorer]);
+    }
   }
 
   Future<bool> dailyRewardAvailable(DateTime now) async {
@@ -796,8 +900,16 @@ class ProgressRepository {
     if (level >= 20) achievementIds.add(AchievementId.oceanWorld);
     if (level >= 30) achievementIds.add(AchievementId.candyWorld);
     if (level >= 40) achievementIds.add(AchievementId.spaceWorld);
+    if (level >= 50) achievementIds.add(AchievementId.desertWorld);
+    if (level >= 60) achievementIds.add(AchievementId.iceWorld);
+    if (level >= 70) achievementIds.add(AchievementId.jungleWorld);
+    if (level >= 80) achievementIds.add(AchievementId.volcanoWorld);
+    if (level >= 90) achievementIds.add(AchievementId.dreamWorld);
+    if (level >= 100) achievementIds.add(AchievementId.crystalWorld);
     await _unlockAchievements(prefs, achievementIds);
-    if (level >= 40) await prefs.setBool(_finalRewardUnlockedKey, true);
+    if (level >= LevelRepository.levelCount) {
+      await prefs.setBool(_finalRewardUnlockedKey, true);
+    }
   }
 
   Future<ChestGrantResult> grantChestForLevel(int level) async {
@@ -1000,6 +1112,10 @@ class ProgressRepository {
       undosUsed: prefs.getInt(_statsUndosUsedKey) ?? 0,
       luckyWheelSpins: prefs.getInt(_statsLuckyWheelSpinsKey) ?? 0,
       bestStarsTotal: _bestStarsTotal(prefs),
+      bestEndlessScore: prefs.getInt(_bestEndlessScoreKey) ?? 0,
+      totalEndlessRuns: prefs.getInt(_totalEndlessRunsKey) ?? 0,
+      totalEndlessBoardsCleared:
+          prefs.getInt(_totalEndlessBoardsClearedKey) ?? 0,
     );
   }
 
@@ -1032,11 +1148,15 @@ class ProgressRepository {
       achievementsUnlocked: achievementsUnlocked,
       achievementsTotal: achievementsCatalog.length,
       collectionUnlocked: collectionUnlocked,
-      collectionTotal: 20,
+      collectionTotal: _collectionWorldCount * _collectionTileTypeCount,
       luckyWheelSpins: prefs.getInt(_statsLuckyWheelSpinsKey) ?? 0,
       dailyStreak: dailyStreak,
       totalBoostersUsed: prefs.getInt(_statsBoostersUsedKey) ?? 0,
       totalTilesMatched: prefs.getInt(_statsTilesMatchedKey) ?? 0,
+      bestEndlessScore: prefs.getInt(_bestEndlessScoreKey) ?? 0,
+      totalEndlessRuns: prefs.getInt(_totalEndlessRunsKey) ?? 0,
+      totalEndlessBoardsCleared:
+          prefs.getInt(_totalEndlessBoardsClearedKey) ?? 0,
     );
   }
 
@@ -1091,7 +1211,7 @@ class ProgressRepository {
     return FinalRewardSummary(
       code: await finalCode(),
       totalStars: _bestStarsTotal(prefs),
-      levelsCompleted: 40,
+      levelsCompleted: LevelRepository.levelCount,
       achievementsUnlocked: achievementsUnlocked,
       collectionsCompleted: _collectionUnlockedCount(prefs),
     );
@@ -1200,13 +1320,13 @@ class ProgressRepository {
   Future<void> debugUnlockAllWorlds() async {
     _ensureDevQa();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_highestLevelKey, 31);
+    await prefs.setInt(_highestLevelKey, 91);
   }
 
   Future<void> debugUnlockAllLevels() async {
     _ensureDevQa();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_highestLevelKey, 40);
+    await prefs.setInt(_highestLevelKey, LevelRepository.levelCount);
   }
 
   Future<int> debugAddCoins() {
@@ -1262,11 +1382,11 @@ class ProgressRepository {
     await prefs.remove(_selectedProfileBadgeKey);
   }
 
-  Future<void> debugCompleteLevel40() async {
+  Future<void> debugCompleteLevel100() async {
     _ensureDevQa();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_highestLevelKey, 40);
-    await recordLevelCompleted(40, 3);
+    await prefs.setInt(_highestLevelKey, LevelRepository.levelCount);
+    await recordLevelCompleted(LevelRepository.levelCount, 3);
     await prefs.setBool(_finalRewardUnlockedKey, true);
   }
 
@@ -1505,7 +1625,7 @@ class ProgressRepository {
 
   int _bestStarsTotal(SharedPreferences prefs) {
     var total = 0;
-    for (var level = 1; level <= 40; level++) {
+    for (var level = 1; level <= LevelRepository.levelCount; level++) {
       total += prefs.getInt(_levelStarsKey(level)) ?? 0;
     }
     return total;
@@ -1563,6 +1683,24 @@ class ProgressRepository {
     if (_achievementUnlocked(prefs, AchievementId.spaceWorld)) {
       unlocked.add(avatarFrameSpace);
     }
+    if (_achievementUnlocked(prefs, AchievementId.desertWorld)) {
+      unlocked.add(avatarFrameDesert);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.iceWorld)) {
+      unlocked.add(avatarFrameIce);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.jungleWorld)) {
+      unlocked.add(avatarFrameJungle);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.volcanoWorld)) {
+      unlocked.add(avatarFrameVolcano);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.dreamWorld)) {
+      unlocked.add(avatarFrameDream);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.crystalWorld)) {
+      unlocked.add(avatarFrameCrystal);
+    }
     return unlocked;
   }
 
@@ -1580,6 +1718,24 @@ class ProgressRepository {
     if (_achievementUnlocked(prefs, AchievementId.spaceWorld)) {
       unlocked.add(profileBackgroundSpace);
     }
+    if (_achievementUnlocked(prefs, AchievementId.desertWorld)) {
+      unlocked.add(profileBackgroundDesert);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.iceWorld)) {
+      unlocked.add(profileBackgroundIce);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.jungleWorld)) {
+      unlocked.add(profileBackgroundJungle);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.volcanoWorld)) {
+      unlocked.add(profileBackgroundVolcano);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.dreamWorld)) {
+      unlocked.add(profileBackgroundDream);
+    }
+    if (_achievementUnlocked(prefs, AchievementId.crystalWorld)) {
+      unlocked.add(profileBackgroundCrystal);
+    }
     return unlocked;
   }
 
@@ -1589,13 +1745,24 @@ class ProgressRepository {
         _achievementUnlocked(prefs, AchievementId.gardenWorld) &&
             _achievementUnlocked(prefs, AchievementId.oceanWorld) &&
             _achievementUnlocked(prefs, AchievementId.candyWorld) &&
-            _achievementUnlocked(prefs, AchievementId.spaceWorld);
+            _achievementUnlocked(prefs, AchievementId.spaceWorld) &&
+            _achievementUnlocked(prefs, AchievementId.desertWorld) &&
+            _achievementUnlocked(prefs, AchievementId.iceWorld) &&
+            _achievementUnlocked(prefs, AchievementId.jungleWorld) &&
+            _achievementUnlocked(prefs, AchievementId.volcanoWorld) &&
+            _achievementUnlocked(prefs, AchievementId.dreamWorld) &&
+            _achievementUnlocked(prefs, AchievementId.crystalWorld);
     if (allWorldsComplete) unlocked.add(badgeWorldConqueror);
     if (_achievementUnlocked(prefs, AchievementId.luckyPlayer)) {
       unlocked.add(badgeLuckyPlayer);
     }
-    if (_collectionUnlockedCount(prefs) >= 20) unlocked.add(badgeCollector);
-    if (_bestStarsTotal(prefs) >= 120) unlocked.add(badgeThreeStarMaster);
+    if (_collectionUnlockedCount(prefs) >=
+        _collectionWorldCount * _collectionTileTypeCount) {
+      unlocked.add(badgeCollector);
+    }
+    if (_bestStarsTotal(prefs) >= LevelRepository.levelCount * 3) {
+      unlocked.add(badgeThreeStarMaster);
+    }
     return unlocked;
   }
 
@@ -1655,7 +1822,13 @@ class ProgressRepository {
     if (level <= 10) return 'garden';
     if (level <= 20) return 'ocean';
     if (level <= 30) return 'candy';
-    return 'space';
+    if (level <= 40) return 'space';
+    if (level <= 50) return 'desert';
+    if (level <= 60) return 'ice';
+    if (level <= 70) return 'jungle';
+    if (level <= 80) return 'volcano';
+    if (level <= 90) return 'dream';
+    return 'crystal';
   }
 
   String _collectionKey(String world, String tileType) {

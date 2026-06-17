@@ -542,6 +542,36 @@ class _BossMapInfo {
           title: 'Space Boss',
           icon: Icons.auto_awesome_rounded,
         );
+      case 50:
+        return const _BossMapInfo(
+          title: 'Desert Boss',
+          icon: Icons.wb_sunny_rounded,
+        );
+      case 60:
+        return const _BossMapInfo(
+          title: 'Ice Boss',
+          icon: Icons.ac_unit_rounded,
+        );
+      case 70:
+        return const _BossMapInfo(
+          title: 'Jungle Boss',
+          icon: Icons.forest_rounded,
+        );
+      case 80:
+        return const _BossMapInfo(
+          title: 'Volcano Boss',
+          icon: Icons.local_fire_department_rounded,
+        );
+      case 90:
+        return const _BossMapInfo(
+          title: 'Dream Boss',
+          icon: Icons.cloud_rounded,
+        );
+      case 100:
+        return const _BossMapInfo(
+          title: 'Crystal Boss',
+          icon: Icons.diamond_rounded,
+        );
       default:
         return null;
     }

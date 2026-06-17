@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import '../domain/level.dart';
 
 class LevelRepository {
-  static const int levelCount = 40;
+  static const int levelCount = 100;
 
   Future<LevelDefinition> loadLevel(int level) async {
     final padded = level.toString().padLeft(2, '0');

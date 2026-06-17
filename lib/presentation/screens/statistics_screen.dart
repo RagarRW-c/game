@@ -94,6 +94,21 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                           label: 'Best Stars',
                           value: '${stats.bestStarsTotal}',
                         ),
+                        _StatCard(
+                          icon: Icons.all_inclusive_rounded,
+                          label: 'Best Endless',
+                          value: '${stats.bestEndlessScore}',
+                        ),
+                        _StatCard(
+                          icon: Icons.replay_rounded,
+                          label: 'Endless Runs',
+                          value: '${stats.totalEndlessRuns}',
+                        ),
+                        _StatCard(
+                          icon: Icons.grid_view_rounded,
+                          label: 'Endless Boards',
+                          value: '${stats.totalEndlessBoardsCleared}',
+                        ),
                       ],
                     );
                   },

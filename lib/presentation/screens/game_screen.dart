@@ -1085,9 +1085,57 @@ class _BossLevelInfo {
         return const _BossLevelInfo(
           level: 40,
           bossTitle: 'Space Boss',
+          completeTitle: 'World Complete!',
+          subtitle: 'New World Unlocked!',
+          icon: Icons.auto_awesome_rounded,
+        );
+      case 50:
+        return const _BossLevelInfo(
+          level: 50,
+          bossTitle: 'Desert Boss',
+          completeTitle: 'World Complete!',
+          subtitle: 'New World Unlocked!',
+          icon: Icons.wb_sunny_rounded,
+        );
+      case 60:
+        return const _BossLevelInfo(
+          level: 60,
+          bossTitle: 'Ice Boss',
+          completeTitle: 'World Complete!',
+          subtitle: 'New World Unlocked!',
+          icon: Icons.ac_unit_rounded,
+        );
+      case 70:
+        return const _BossLevelInfo(
+          level: 70,
+          bossTitle: 'Jungle Boss',
+          completeTitle: 'World Complete!',
+          subtitle: 'New World Unlocked!',
+          icon: Icons.forest_rounded,
+        );
+      case 80:
+        return const _BossLevelInfo(
+          level: 80,
+          bossTitle: 'Volcano Boss',
+          completeTitle: 'World Complete!',
+          subtitle: 'New World Unlocked!',
+          icon: Icons.local_fire_department_rounded,
+        );
+      case 90:
+        return const _BossLevelInfo(
+          level: 90,
+          bossTitle: 'Dream Boss',
+          completeTitle: 'World Complete!',
+          subtitle: 'New World Unlocked!',
+          icon: Icons.cloud_rounded,
+        );
+      case 100:
+        return const _BossLevelInfo(
+          level: 100,
+          bossTitle: 'Crystal Boss',
           completeTitle: 'Final World Complete',
           subtitle: 'Game Completed',
-          icon: Icons.auto_awesome_rounded,
+          icon: Icons.diamond_rounded,
         );
       default:
         return null;

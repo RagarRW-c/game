@@ -137,11 +137,11 @@ class _QaScreenState extends State<QaScreen> {
                           ),
                           _QaAction(
                             icon: Icons.flag_rounded,
-                            label: 'Complete Level 40 / Unlock Final Code',
+                            label: 'Complete Level 100 / Unlock Final Code',
                             enabled: !_busy,
                             onTap: () => _run(
-                              'Level 40 and final code unlocked',
-                              repository.debugCompleteLevel40,
+                              'Level 100 and final code unlocked',
+                              repository.debugCompleteLevel100,
                             ),
                           ),
                         ],

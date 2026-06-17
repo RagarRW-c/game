@@ -256,7 +256,7 @@ class _LockedFinalReward extends StatelessWidget {
             const Text('Reward Locked', style: GameTextStyles.h2),
             const SizedBox(height: GameSpacing.sm),
             const Text(
-              'Complete Level 40 to unlock the final reward.',
+              'Complete Level 100 to unlock the final reward.',
               textAlign: TextAlign.center,
               style: GameTextStyles.body,
             ),

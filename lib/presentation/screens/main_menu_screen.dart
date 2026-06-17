@@ -11,6 +11,7 @@ import 'achievements_screen.dart';
 import 'booster_shop_screen.dart';
 import 'collection_book_screen.dart';
 import 'daily_challenges_screen.dart';
+import 'endless_screen.dart';
 import 'final_code_screen.dart';
 import 'lucky_wheel_screen.dart';
 import 'player_profile_screen.dart';
@@ -214,10 +215,19 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     ),
                     const SizedBox(height: GameSpacing.md),
                     PrimaryButton(
-                      label: 'Play',
+                      label: 'Adventure',
                       icon: Icons.map_rounded,
                       onPressed: () => Navigator.pushNamed(
                           context, WorldSelectionScreen.route),
+                    ),
+                    const SizedBox(height: GameSpacing.md),
+                    PrimaryButton(
+                      label: 'Endless Mode',
+                      icon: Icons.all_inclusive_rounded,
+                      onPressed: () async {
+                        await Navigator.pushNamed(context, EndlessScreen.route);
+                        if (mounted) await _loadRewards();
+                      },
                     ),
                     const SizedBox(height: GameSpacing.md),
                     if (_finalRewardUnlocked) ...[
