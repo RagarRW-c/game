@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 
+enum _MusicTrack { menu, gameplay }
+
 class GameAudioService {
   static const String _backgroundMusicAsset = 'audio/background.mp3';
   static const int _sfxPoolSize = 4;
@@ -19,52 +21,106 @@ class GameAudioService {
   bool _musicConfigured = false;
   bool _sfxConfigured = false;
   bool _musicPlaying = false;
+  bool _pausedByLifecycle = false;
   int _nextSfxPlayer = 0;
+  int _nextTapVariant = 0;
+  _MusicTrack? _activeMusicTrack;
+  Future<void> _musicQueue = Future<void>.value();
 
-  Future<void> startMusic() async {
-    await _configureMusic();
+  Future<void> startMenuMusic() =>
+      _runMusicOperation(() => _startMusic(_MusicTrack.menu));
+
+  Future<void> startGameplayMusic() =>
+      _runMusicOperation(() => _startMusic(_MusicTrack.gameplay));
+
+  Future<void> startMusic() => startMenuMusic();
+
+  Future<void> _runMusicOperation(Future<void> Function() operation) {
+    final next = _musicQueue.then((_) => operation());
+    _musicQueue = next.catchError((_) {});
+    return next;
+  }
+
+  Future<void> _startMusic(_MusicTrack track) async {
+    await _configureMusic(track);
     if (!musicEnabled || _musicPlaying) return;
 
     await _music.resume();
     _musicPlaying = true;
   }
 
-  Future<void> _configureMusic() async {
-    if (_musicConfigured) return;
+  Future<void> _configureMusic(_MusicTrack track) async {
+    if (_musicConfigured && _activeMusicTrack == track) return;
 
+    if (_musicPlaying) await _music.stop();
     await _music.setReleaseMode(ReleaseMode.loop);
     await _music.setVolume(0.35);
     await _music.setSource(AssetSource(_backgroundMusicAsset));
+    _activeMusicTrack = track;
     _musicConfigured = true;
+    _musicPlaying = false;
   }
 
   Future<void> _resumeMusic() async {
-    await _configureMusic();
-    if (_musicPlaying) return;
+    if (_activeMusicTrack == null) return;
+    if (!_musicConfigured) await _configureMusic(_activeMusicTrack!);
+    if (!musicEnabled || _musicPlaying) return;
 
     await _music.resume();
     _musicPlaying = true;
   }
 
-  Future<void> _stopMusic() async {
+  Future<void> _pauseMusic({bool clearTrack = false}) async {
     if (!_musicConfigured && !_musicPlaying) return;
 
     await _music.pause();
     _musicPlaying = false;
-  }
-
-  Future<void> setMusicEnabled(bool enabled) async {
-    if (musicEnabled == enabled) return;
-
-    musicEnabled = enabled;
-    if (enabled) {
-      await _resumeMusic();
-    } else {
-      await _stopMusic();
+    if (clearTrack) {
+      _activeMusicTrack = null;
+      _musicConfigured = false;
     }
   }
 
-  Future<void> playTap() => _play('tap');
+  Future<void> stopGameplayMusic() async {
+    await _runMusicOperation(() async {
+      if (_activeMusicTrack != _MusicTrack.gameplay) return;
+      await _pauseMusic(clearTrack: true);
+    });
+  }
+
+  Future<void> pauseMusicForBackground() async {
+    await _runMusicOperation(() async {
+      _pausedByLifecycle = _musicPlaying;
+      await _pauseMusic();
+    });
+  }
+
+  Future<void> resumeMusicFromBackground() async {
+    await _runMusicOperation(() async {
+      if (!_pausedByLifecycle) return;
+      _pausedByLifecycle = false;
+      await _resumeMusic();
+    });
+  }
+
+  Future<void> setMusicEnabled(bool enabled) async {
+    await _runMusicOperation(() async {
+      if (musicEnabled == enabled) return;
+
+      musicEnabled = enabled;
+      if (enabled) {
+        await _resumeMusic();
+      } else {
+        await _pauseMusic();
+      }
+    });
+  }
+
+  Future<void> playTap() {
+    final cue = 'tap_${_nextTapVariant++ % 3}';
+    return _play(cue);
+  }
+
   Future<void> playMatch() => _play('match');
   Future<void> playWin() => _play('win');
   Future<void> playLose() => _play('lose');
@@ -84,6 +140,7 @@ class GameAudioService {
     _nextSfxPlayer = (_nextSfxPlayer + 1) % _sfxPlayers.length;
 
     await player.stop();
+    await player.setVolume(_volumeForCue(cue));
     await player.play(DeviceFileSource(await _audioPath(cue)));
   }
 
@@ -107,7 +164,7 @@ class GameAudioService {
     final existing = _generatedAudioPaths[cue];
     if (existing != null && File(existing).existsSync()) return existing;
 
-    final file = File('${Directory.systemTemp.path}/triple_tile_$cue.wav');
+    final file = File('${Directory.systemTemp.path}/triple_tile_v2_$cue.wav');
     await file.writeAsBytes(_buildWav(_notesForCue(cue)), flush: true);
     _generatedAudioPaths[cue] = file.path;
     return file.path;
@@ -149,9 +206,27 @@ class GameAudioService {
   }
 
   List<({double frequency, double seconds})> _notesForCue(String cue) {
+    if (cue.startsWith('tap')) {
+      switch (cue) {
+        case 'tap_1':
+          return [
+            (frequency: 494, seconds: 0.025),
+            (frequency: 660, seconds: 0.045),
+          ];
+        case 'tap_2':
+          return [
+            (frequency: 523, seconds: 0.025),
+            (frequency: 698, seconds: 0.04),
+          ];
+        default:
+          return [
+            (frequency: 440, seconds: 0.02),
+            (frequency: 587, seconds: 0.045),
+          ];
+      }
+    }
+
     switch (cue) {
-      case 'tap':
-        return [(frequency: 880, seconds: 0.07)];
       case 'match':
         return [
           (frequency: 660, seconds: 0.08),
@@ -206,6 +281,11 @@ class GameAudioService {
       default:
         return [(frequency: 880, seconds: 0.07)];
     }
+  }
+
+  double _volumeForCue(String cue) {
+    if (cue.startsWith('tap')) return 0.58;
+    return 1;
   }
 
   Uint8List _u16(int value) =>

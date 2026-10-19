@@ -2,593 +2,594 @@
     "level":  81,
     "name":  "Dream Level 81",
     "timeBonusSeconds":  65,
+    "layoutPattern":  "Cloud Drift",
     "tiles":  [
                   {
                       "id":  "L81_T000",
-                      "type":  "moon",
-                      "x":  0.142,
-                      "y":  0.122,
+                      "type":  "flower",
+                      "x":  0.273,
+                      "y":  0.465,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T001",
-                      "type":  "gem",
-                      "x":  0.311,
-                      "y":  0.114,
+                      "type":  "flower",
+                      "x":  0.327,
+                      "y":  0.301,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T002",
-                      "type":  "berry",
-                      "x":  0.509,
-                      "y":  0.124,
+                      "type":  "flower",
+                      "x":  0.526,
+                      "y":  0.411,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T003",
-                      "type":  "banana",
-                      "x":  0.685,
-                      "y":  0.121,
+                      "type":  "moon",
+                      "x":  0.701,
+                      "y":  0.471,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T004",
-                      "type":  "heart",
-                      "x":  0.86,
-                      "y":  0.119,
+                      "type":  "moon",
+                      "x":  0.385,
+                      "y":  0.588,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T005",
-                      "type":  "leaf",
-                      "x":  0.134,
-                      "y":  0.33,
+                      "type":  "moon",
+                      "x":  0.3,
+                      "y":  0.502,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T006",
-                      "type":  "star",
-                      "x":  0.328,
-                      "y":  0.319,
+                      "type":  "gem",
+                      "x":  0.346,
+                      "y":  0.273,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T007",
-                      "type":  "sun",
-                      "x":  0.499,
-                      "y":  0.322,
+                      "type":  "gem",
+                      "x":  0.472,
+                      "y":  0.419,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T008",
-                      "type":  "moon",
-                      "x":  0.678,
-                      "y":  0.322,
+                      "type":  "gem",
+                      "x":  0.752,
+                      "y":  0.476,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T009",
-                      "type":  "banana",
-                      "x":  0.837,
-                      "y":  0.317,
+                      "type":  "leaf",
+                      "x":  0.373,
+                      "y":  0.55,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T010",
-                      "type":  "heart",
-                      "x":  0.16,
-                      "y":  0.557,
+                      "type":  "leaf",
+                      "x":  0.27,
+                      "y":  0.549,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T011",
-                      "type":  "carrot",
-                      "x":  0.309,
-                      "y":  0.559,
+                      "type":  "leaf",
+                      "x":  0.399,
+                      "y":  0.25,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T012",
-                      "type":  "banana",
-                      "x":  0.486,
-                      "y":  0.542,
+                      "type":  "candy",
+                      "x":  0.416,
+                      "y":  0.407,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T013",
-                      "type":  "heart",
-                      "x":  0.66,
-                      "y":  0.562,
+                      "type":  "candy",
+                      "x":  0.784,
+                      "y":  0.522,
                       "layer":  0
                   },
                   {
                       "id":  "L81_T014",
-                      "type":  "apple",
-                      "x":  0.169,
-                      "y":  0.119,
-                      "layer":  1
+                      "type":  "candy",
+                      "x":  0.374,
+                      "y":  0.512,
+                      "layer":  0
                   },
                   {
                       "id":  "L81_T015",
-                      "type":  "apple",
-                      "x":  0.329,
-                      "y":  0.126,
+                      "type":  "heart",
+                      "x":  0.291,
+                      "y":  0.479,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T016",
-                      "type":  "sun",
-                      "x":  0.525,
-                      "y":  0.139,
+                      "type":  "heart",
+                      "x":  0.344,
+                      "y":  0.302,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T017",
-                      "type":  "drop",
-                      "x":  0.676,
-                      "y":  0.135,
+                      "type":  "heart",
+                      "x":  0.527,
+                      "y":  0.409,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T018",
-                      "type":  "flower",
-                      "x":  0.86,
-                      "y":  0.139,
+                      "type":  "sun",
+                      "x":  0.732,
+                      "y":  0.483,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T019",
-                      "type":  "berry",
-                      "x":  0.172,
-                      "y":  0.336,
+                      "type":  "sun",
+                      "x":  0.4,
+                      "y":  0.59,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T020",
-                      "type":  "moon",
-                      "x":  0.337,
-                      "y":  0.345,
+                      "type":  "sun",
+                      "x":  0.301,
+                      "y":  0.521,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T021",
-                      "type":  "leaf",
-                      "x":  0.503,
-                      "y":  0.349,
+                      "type":  "drop",
+                      "x":  0.383,
+                      "y":  0.273,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T022",
-                      "type":  "banana",
-                      "x":  0.689,
-                      "y":  0.361,
+                      "type":  "drop",
+                      "x":  0.478,
+                      "y":  0.417,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T023",
-                      "type":  "apple",
-                      "x":  0.857,
-                      "y":  0.362,
+                      "type":  "drop",
+                      "x":  0.772,
+                      "y":  0.504,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T024",
-                      "type":  "carrot",
-                      "x":  0.155,
-                      "y":  0.573,
+                      "type":  "clover",
+                      "x":  0.393,
+                      "y":  0.552,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T025",
-                      "type":  "flower",
-                      "x":  0.321,
-                      "y":  0.562,
+                      "type":  "clover",
+                      "x":  0.254,
+                      "y":  0.563,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T026",
-                      "type":  "drop",
-                      "x":  0.499,
-                      "y":  0.558,
+                      "type":  "clover",
+                      "x":  0.445,
+                      "y":  0.257,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T027",
-                      "type":  "sun",
-                      "x":  0.677,
-                      "y":  0.558,
+                      "type":  "apple",
+                      "x":  0.418,
+                      "y":  0.392,
                       "layer":  1
                   },
                   {
                       "id":  "L81_T028",
-                      "type":  "candy",
-                      "x":  0.172,
-                      "y":  0.137,
-                      "layer":  2
+                      "type":  "apple",
+                      "x":  0.794,
+                      "y":  0.551,
+                      "layer":  1
                   },
                   {
                       "id":  "L81_T029",
-                      "type":  "drop",
-                      "x":  0.335,
-                      "y":  0.139,
-                      "layer":  2
+                      "type":  "apple",
+                      "x":  0.422,
+                      "y":  0.501,
+                      "layer":  1
                   },
                   {
                       "id":  "L81_T030",
-                      "type":  "carrot",
-                      "x":  0.523,
-                      "y":  0.153,
+                      "type":  "banana",
+                      "x":  0.3,
+                      "y":  0.495,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T031",
-                      "type":  "heart",
-                      "x":  0.715,
-                      "y":  0.148,
+                      "type":  "banana",
+                      "x":  0.375,
+                      "y":  0.302,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T032",
-                      "type":  "sun",
-                      "x":  0.86,
-                      "y":  0.155,
+                      "type":  "banana",
+                      "x":  0.53,
+                      "y":  0.416,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T033",
-                      "type":  "leaf",
-                      "x":  0.178,
-                      "y":  0.369,
+                      "type":  "berry",
+                      "x":  0.746,
+                      "y":  0.502,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T034",
-                      "type":  "apple",
-                      "x":  0.364,
-                      "y":  0.371,
+                      "type":  "berry",
+                      "x":  0.413,
+                      "y":  0.591,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T035",
-                      "type":  "apple",
-                      "x":  0.524,
-                      "y":  0.369,
+                      "type":  "berry",
+                      "x":  0.294,
+                      "y":  0.534,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T036",
-                      "type":  "gem",
-                      "x":  0.697,
-                      "y":  0.373,
+                      "type":  "carrot",
+                      "x":  0.415,
+                      "y":  0.277,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T037",
-                      "type":  "clover",
-                      "x":  0.86,
-                      "y":  0.349,
+                      "type":  "carrot",
+                      "x":  0.469,
+                      "y":  0.42,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T038",
-                      "type":  "candy",
-                      "x":  0.175,
-                      "y":  0.571,
+                      "type":  "carrot",
+                      "x":  0.777,
+                      "y":  0.52,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T039",
-                      "type":  "flower",
-                      "x":  0.341,
-                      "y":  0.56,
+                      "type":  "star",
+                      "x":  0.405,
+                      "y":  0.544,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T040",
                       "type":  "star",
-                      "x":  0.545,
-                      "y":  0.559,
+                      "x":  0.252,
+                      "y":  0.566,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T041",
-                      "type":  "sun",
-                      "x":  0.705,
-                      "y":  0.579,
+                      "type":  "star",
+                      "x":  0.476,
+                      "y":  0.278,
                       "layer":  2
                   },
                   {
                       "id":  "L81_T042",
-                      "type":  "heart",
-                      "x":  0.165,
-                      "y":  0.163,
-                      "layer":  3
+                      "type":  "shell",
+                      "x":  0.427,
+                      "y":  0.387,
+                      "layer":  2
                   },
                   {
                       "id":  "L81_T043",
-                      "type":  "candy",
-                      "x":  0.345,
-                      "y":  0.15,
-                      "layer":  3
+                      "type":  "shell",
+                      "x":  0.794,
+                      "y":  0.563,
+                      "layer":  2
                   },
                   {
                       "id":  "L81_T044",
-                      "type":  "banana",
-                      "x":  0.535,
-                      "y":  0.165,
-                      "layer":  3
+                      "type":  "shell",
+                      "x":  0.457,
+                      "y":  0.509,
+                      "layer":  2
                   },
                   {
                       "id":  "L81_T045",
-                      "type":  "banana",
-                      "x":  0.696,
-                      "y":  0.151,
+                      "type":  "flower",
+                      "x":  0.303,
+                      "y":  0.517,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T046",
-                      "type":  "clover",
-                      "x":  0.86,
-                      "y":  0.152,
+                      "type":  "flower",
+                      "x":  0.398,
+                      "y":  0.306,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T047",
-                      "type":  "clover",
-                      "x":  0.196,
-                      "y":  0.377,
+                      "type":  "flower",
+                      "x":  0.519,
+                      "y":  0.42,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T048",
-                      "type":  "candy",
-                      "x":  0.366,
-                      "y":  0.375,
+                      "type":  "moon",
+                      "x":  0.77,
+                      "y":  0.512,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T049",
-                      "type":  "clover",
-                      "x":  0.534,
-                      "y":  0.378,
+                      "type":  "moon",
+                      "x":  0.435,
+                      "y":  0.583,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T050",
-                      "type":  "leaf",
-                      "x":  0.706,
-                      "y":  0.37,
+                      "type":  "moon",
+                      "x":  0.292,
+                      "y":  0.548,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T051",
-                      "type":  "flower",
-                      "x":  0.86,
-                      "y":  0.367,
+                      "type":  "gem",
+                      "x":  0.439,
+                      "y":  0.297,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T052",
-                      "type":  "flower",
-                      "x":  0.183,
-                      "y":  0.574,
+                      "type":  "gem",
+                      "x":  0.47,
+                      "y":  0.415,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T053",
-                      "type":  "star",
-                      "x":  0.347,
-                      "y":  0.573,
+                      "type":  "gem",
+                      "x":  0.799,
+                      "y":  0.542,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T054",
                       "type":  "leaf",
-                      "x":  0.556,
-                      "y":  0.566,
+                      "x":  0.433,
+                      "y":  0.551,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T055",
-                      "type":  "berry",
-                      "x":  0.73,
-                      "y":  0.598,
+                      "type":  "leaf",
+                      "x":  0.227,
+                      "y":  0.569,
                       "layer":  3
                   },
                   {
                       "id":  "L81_T056",
-                      "type":  "candy",
-                      "x":  0.218,
-                      "y":  0.185,
-                      "layer":  4
+                      "type":  "leaf",
+                      "x":  0.507,
+                      "y":  0.303,
+                      "layer":  3
                   },
                   {
                       "id":  "L81_T057",
-                      "type":  "shell",
-                      "x":  0.367,
-                      "y":  0.162,
-                      "layer":  4
+                      "type":  "candy",
+                      "x":  0.433,
+                      "y":  0.369,
+                      "layer":  3
                   },
                   {
                       "id":  "L81_T058",
-                      "type":  "drop",
-                      "x":  0.533,
-                      "y":  0.156,
-                      "layer":  4
+                      "type":  "candy",
+                      "x":  0.79,
+                      "y":  0.59,
+                      "layer":  3
                   },
                   {
                       "id":  "L81_T059",
-                      "type":  "clover",
-                      "x":  0.728,
-                      "y":  0.166,
-                      "layer":  4
+                      "type":  "candy",
+                      "x":  0.49,
+                      "y":  0.511,
+                      "layer":  3
                   },
                   {
                       "id":  "L81_T060",
-                      "type":  "sun",
-                      "x":  0.86,
-                      "y":  0.16,
+                      "type":  "heart",
+                      "x":  0.309,
+                      "y":  0.524,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T061",
-                      "type":  "moon",
-                      "x":  0.193,
-                      "y":  0.368,
+                      "type":  "heart",
+                      "x":  0.412,
+                      "y":  0.319,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T062",
-                      "type":  "apple",
-                      "x":  0.384,
-                      "y":  0.369,
+                      "type":  "heart",
+                      "x":  0.527,
+                      "y":  0.424,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T063",
-                      "type":  "flower",
-                      "x":  0.54,
-                      "y":  0.366,
+                      "type":  "sun",
+                      "x":  0.782,
+                      "y":  0.531,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T064",
-                      "type":  "candy",
-                      "x":  0.711,
-                      "y":  0.391,
+                      "type":  "sun",
+                      "x":  0.447,
+                      "y":  0.588,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T065",
-                      "type":  "gem",
-                      "x":  0.86,
-                      "y":  0.394,
+                      "type":  "sun",
+                      "x":  0.285,
+                      "y":  0.556,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T066",
-                      "type":  "berry",
-                      "x":  0.179,
-                      "y":  0.597,
+                      "type":  "drop",
+                      "x":  0.47,
+                      "y":  0.305,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T067",
-                      "type":  "shell",
-                      "x":  0.386,
-                      "y":  0.594,
+                      "type":  "drop",
+                      "x":  0.482,
+                      "y":  0.405,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T068",
-                      "type":  "carrot",
-                      "x":  0.569,
-                      "y":  0.585,
+                      "type":  "drop",
+                      "x":  0.803,
+                      "y":  0.566,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T069",
-                      "type":  "drop",
-                      "x":  0.715,
-                      "y":  0.603,
+                      "type":  "clover",
+                      "x":  0.466,
+                      "y":  0.541,
                       "layer":  4
                   },
                   {
                       "id":  "L81_T070",
-                      "type":  "gem",
-                      "x":  0.212,
-                      "y":  0.193,
-                      "layer":  5
+                      "type":  "clover",
+                      "x":  0.223,
+                      "y":  0.57,
+                      "layer":  4
                   },
                   {
                       "id":  "L81_T071",
-                      "type":  "moon",
-                      "x":  0.379,
-                      "y":  0.179,
-                      "layer":  5
+                      "type":  "clover",
+                      "x":  0.534,
+                      "y":  0.318,
+                      "layer":  4
                   },
                   {
                       "id":  "L81_T072",
-                      "type":  "berry",
-                      "x":  0.572,
-                      "y":  0.17,
+                      "type":  "banana",
+                      "x":  0.309,
+                      "y":  0.531,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T073",
-                      "type":  "carrot",
-                      "x":  0.73,
-                      "y":  0.182,
+                      "type":  "banana",
+                      "x":  0.438,
+                      "y":  0.318,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T074",
-                      "type":  "shell",
-                      "x":  0.86,
-                      "y":  0.177,
+                      "type":  "banana",
+                      "x":  0.524,
+                      "y":  0.43,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T075",
-                      "type":  "clover",
-                      "x":  0.214,
-                      "y":  0.393,
+                      "type":  "berry",
+                      "x":  0.79,
+                      "y":  0.545,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T076",
-                      "type":  "gem",
-                      "x":  0.366,
-                      "y":  0.376,
+                      "type":  "berry",
+                      "x":  0.478,
+                      "y":  0.582,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T077",
                       "type":  "berry",
-                      "x":  0.541,
-                      "y":  0.38,
+                      "x":  0.281,
+                      "y":  0.562,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T078",
-                      "type":  "moon",
-                      "x":  0.72,
-                      "y":  0.378,
+                      "type":  "carrot",
+                      "x":  0.495,
+                      "y":  0.325,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T079",
-                      "type":  "gem",
-                      "x":  0.86,
-                      "y":  0.387,
+                      "type":  "carrot",
+                      "x":  0.49,
+                      "y":  0.402,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T080",
                       "type":  "carrot",
-                      "x":  0.228,
-                      "y":  0.593,
+                      "x":  0.803,
+                      "y":  0.577,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T081",
-                      "type":  "leaf",
-                      "x":  0.364,
-                      "y":  0.597,
+                      "type":  "star",
+                      "x":  0.495,
+                      "y":  0.547,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T082",
-                      "type":  "drop",
-                      "x":  0.555,
-                      "y":  0.593,
+                      "type":  "star",
+                      "x":  0.207,
+                      "y":  0.574,
                       "layer":  5
                   },
                   {
                       "id":  "L81_T083",
-                      "type":  "heart",
-                      "x":  0.751,
-                      "y":  0.604,
+                      "type":  "star",
+                      "x":  0.549,
+                      "y":  0.345,
                       "layer":  5
                   }
               ]

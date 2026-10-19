@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/app_flavor.dart';
@@ -30,13 +32,14 @@ class MainMenuScreen extends StatefulWidget {
   State<MainMenuScreen> createState() => _MainMenuScreenState();
 }
 
-class _MainMenuScreenState extends State<MainMenuScreen> {
+class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
   bool _dailyRewardAvailable = false;
   bool _dailySpinAvailable = false;
   bool _finalRewardUnlocked = false;
   int _coins = 0;
   bool _loginStreakPromptQueued = false;
   bool _loginStreakPromptShowing = false;
+  PageRoute<dynamic>? _route;
 
   Future<void> _openProgressScreen(String route) async {
     final changed = await Navigator.pushNamed(context, route);
@@ -46,7 +49,31 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (_route == null && route is PageRoute<dynamic>) {
+      _route = route;
+      appRouteObserver.subscribe(this, route);
+    }
+    unawaited(AppScope.of(context).audioService.startMenuMusic());
     _loadRewards();
+  }
+
+  @override
+  void didPush() {
+    unawaited(AppScope.of(context).audioService.startMenuMusic());
+  }
+
+  @override
+  void didPopNext() {
+    unawaited(AppScope.of(context).audioService.startMenuMusic());
+    _loadRewards();
+  }
+
+  @override
+  void dispose() {
+    final route = _route;
+    if (route != null) appRouteObserver.unsubscribe(this);
+    super.dispose();
   }
 
   Future<void> _loadRewards() async {

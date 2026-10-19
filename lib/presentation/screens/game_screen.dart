@@ -32,7 +32,7 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> {
+class _GameScreenState extends State<GameScreen> with RouteAware {
   static const int _maxBoosterUses = 2;
   static const int _boosterCoinCost = 150;
   static const int _levelCompleteCoinReward = 50;
@@ -58,14 +58,39 @@ class _GameScreenState extends State<GameScreen> {
   bool _gameOverDialogShowing = false;
   bool _winDialogShowing = false;
   bool _tutorialQueued = false;
+  PageRoute<dynamic>? _route;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _scope = AppScope.of(context);
     _navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
+    if (_route == null && route is PageRoute<dynamic>) {
+      _route = route;
+      appRouteObserver.subscribe(this, route);
+    }
+    unawaited(_scope.audioService.startGameplayMusic());
     _levelFuture = _scope.levelRepository.loadLevel(widget.level);
     unawaited(_loadPlayerState());
+  }
+
+  @override
+  void didPush() {
+    unawaited(_scope.audioService.startGameplayMusic());
+  }
+
+  @override
+  void didPopNext() {
+    unawaited(_scope.audioService.startGameplayMusic());
+  }
+
+  @override
+  void dispose() {
+    final route = _route;
+    if (route != null) appRouteObserver.unsubscribe(this);
+    unawaited(_scope.audioService.stopGameplayMusic());
+    super.dispose();
   }
 
   @override

@@ -2,446 +2,447 @@
     "level":  43,
     "name":  "Desert Level 43",
     "timeBonusSeconds":  81,
+    "layoutPattern":  "Scarab Diamond",
     "tiles":  [
                   {
                       "id":  "L43_T000",
-                      "type":  "leaf",
-                      "x":  0.158,
-                      "y":  0.119,
+                      "type":  "drop",
+                      "x":  0.568,
+                      "y":  0.433,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T001",
-                      "type":  "shell",
-                      "x":  0.304,
-                      "y":  0.124,
+                      "type":  "drop",
+                      "x":  0.327,
+                      "y":  0.346,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T002",
-                      "type":  "banana",
-                      "x":  0.429,
-                      "y":  0.132,
+                      "type":  "drop",
+                      "x":  0.466,
+                      "y":  0.595,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T003",
-                      "type":  "berry",
-                      "x":  0.581,
-                      "y":  0.121,
+                      "type":  "clover",
+                      "x":  0.626,
+                      "y":  0.266,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T004",
-                      "type":  "apple",
-                      "x":  0.72,
-                      "y":  0.109,
+                      "type":  "clover",
+                      "x":  0.128,
+                      "y":  0.478,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T005",
                       "type":  "clover",
-                      "x":  0.859,
-                      "y":  0.114,
+                      "x":  0.772,
+                      "y":  0.581,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T006",
-                      "type":  "flower",
-                      "x":  0.149,
-                      "y":  0.34,
+                      "type":  "apple",
+                      "x":  0.339,
+                      "y":  0.132,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T007",
-                      "type":  "berry",
-                      "x":  0.301,
-                      "y":  0.326,
+                      "type":  "apple",
+                      "x":  0.223,
+                      "y":  0.745,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T008",
-                      "type":  "banana",
-                      "x":  0.436,
-                      "y":  0.325,
+                      "type":  "apple",
+                      "x":  0.87,
+                      "y":  0.295,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T009",
                       "type":  "banana",
-                      "x":  0.568,
-                      "y":  0.331,
+                      "x":  0.341,
+                      "y":  0.391,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T010",
-                      "type":  "moon",
-                      "x":  0.718,
-                      "y":  0.345,
+                      "type":  "banana",
+                      "x":  0.523,
+                      "y":  0.535,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T011",
-                      "type":  "drop",
-                      "x":  0.847,
-                      "y":  0.324,
+                      "type":  "banana",
+                      "x":  0.515,
+                      "y":  0.27,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T012",
-                      "type":  "banana",
-                      "x":  0.14,
-                      "y":  0.546,
+                      "type":  "berry",
+                      "x":  0.218,
+                      "y":  0.524,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T013",
-                      "type":  "heart",
-                      "x":  0.299,
-                      "y":  0.56,
+                      "type":  "berry",
+                      "x":  0.769,
+                      "y":  0.475,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T014",
                       "type":  "berry",
-                      "x":  0.436,
-                      "y":  0.549,
+                      "x":  0.234,
+                      "y":  0.208,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T015",
-                      "type":  "clover",
-                      "x":  0.578,
-                      "y":  0.538,
+                      "type":  "carrot",
+                      "x":  0.402,
+                      "y":  0.735,
                       "layer":  0
                   },
                   {
                       "id":  "L43_T016",
-                      "type":  "apple",
-                      "x":  0.155,
-                      "y":  0.129,
-                      "layer":  1
+                      "type":  "carrot",
+                      "x":  0.823,
+                      "y":  0.2,
+                      "layer":  0
                   },
                   {
                       "id":  "L43_T017",
-                      "type":  "moon",
-                      "x":  0.306,
-                      "y":  0.126,
-                      "layer":  1
+                      "type":  "carrot",
+                      "x":  0.07,
+                      "y":  0.416,
+                      "layer":  0
                   },
                   {
                       "id":  "L43_T018",
-                      "type":  "star",
-                      "x":  0.444,
-                      "y":  0.128,
+                      "type":  "carrot",
+                      "x":  0.588,
+                      "y":  0.453,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T019",
-                      "type":  "heart",
-                      "x":  0.599,
-                      "y":  0.119,
+                      "type":  "carrot",
+                      "x":  0.37,
+                      "y":  0.33,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T020",
-                      "type":  "sun",
-                      "x":  0.721,
-                      "y":  0.127,
+                      "type":  "carrot",
+                      "x":  0.436,
+                      "y":  0.596,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T021",
-                      "type":  "heart",
-                      "x":  0.86,
-                      "y":  0.119,
+                      "type":  "star",
+                      "x":  0.677,
+                      "y":  0.302,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T022",
-                      "type":  "apple",
-                      "x":  0.156,
-                      "y":  0.332,
+                      "type":  "star",
+                      "x":  0.128,
+                      "y":  0.425,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T023",
-                      "type":  "banana",
-                      "x":  0.315,
-                      "y":  0.338,
+                      "type":  "star",
+                      "x":  0.732,
+                      "y":  0.633,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T024",
-                      "type":  "leaf",
-                      "x":  0.437,
-                      "y":  0.341,
+                      "type":  "shell",
+                      "x":  0.445,
+                      "y":  0.121,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T025",
-                      "type":  "clover",
-                      "x":  0.575,
-                      "y":  0.352,
+                      "type":  "shell",
+                      "x":  0.161,
+                      "y":  0.706,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T026",
-                      "type":  "gem",
-                      "x":  0.711,
-                      "y":  0.351,
+                      "type":  "shell",
+                      "x":  0.87,
+                      "y":  0.388,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T027",
-                      "type":  "banana",
-                      "x":  0.853,
-                      "y":  0.355,
+                      "type":  "flower",
+                      "x":  0.371,
+                      "y":  0.384,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T028",
-                      "type":  "sun",
-                      "x":  0.146,
-                      "y":  0.565,
+                      "type":  "flower",
+                      "x":  0.504,
+                      "y":  0.557,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T029",
-                      "type":  "shell",
-                      "x":  0.3,
-                      "y":  0.545,
+                      "type":  "flower",
+                      "x":  0.577,
+                      "y":  0.302,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T030",
-                      "type":  "drop",
-                      "x":  0.43,
-                      "y":  0.569,
+                      "type":  "moon",
+                      "x":  0.202,
+                      "y":  0.502,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T031",
-                      "type":  "sun",
-                      "x":  0.593,
-                      "y":  0.551,
+                      "type":  "moon",
+                      "x":  0.765,
+                      "y":  0.538,
                       "layer":  1
                   },
                   {
                       "id":  "L43_T032",
-                      "type":  "apple",
-                      "x":  0.169,
-                      "y":  0.146,
-                      "layer":  2
+                      "type":  "moon",
+                      "x":  0.308,
+                      "y":  0.179,
+                      "layer":  1
                   },
                   {
                       "id":  "L43_T033",
-                      "type":  "star",
-                      "x":  0.331,
-                      "y":  0.132,
+                      "type":  "gem",
+                      "x":  0.584,
+                      "y":  0.475,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T034",
-                      "type":  "clover",
-                      "x":  0.442,
-                      "y":  0.145,
+                      "type":  "gem",
+                      "x":  0.408,
+                      "y":  0.33,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T035",
-                      "type":  "star",
-                      "x":  0.6,
-                      "y":  0.139,
+                      "type":  "gem",
+                      "x":  0.407,
+                      "y":  0.594,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T036",
-                      "type":  "clover",
-                      "x":  0.724,
-                      "y":  0.141,
+                      "type":  "leaf",
+                      "x":  0.72,
+                      "y":  0.346,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T037",
-                      "type":  "carrot",
-                      "x":  0.86,
-                      "y":  0.142,
+                      "type":  "leaf",
+                      "x":  0.158,
+                      "y":  0.392,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T038",
-                      "type":  "carrot",
-                      "x":  0.16,
-                      "y":  0.354,
+                      "type":  "leaf",
+                      "x":  0.685,
+                      "y":  0.68,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T039",
-                      "type":  "flower",
-                      "x":  0.325,
-                      "y":  0.349,
+                      "type":  "candy",
+                      "x":  0.539,
+                      "y":  0.136,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T040",
-                      "type":  "moon",
-                      "x":  0.457,
-                      "y":  0.358,
+                      "type":  "candy",
+                      "x":  0.101,
+                      "y":  0.661,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T041",
-                      "type":  "shell",
-                      "x":  0.598,
-                      "y":  0.353,
+                      "type":  "candy",
+                      "x":  0.87,
+                      "y":  0.469,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T042",
-                      "type":  "clover",
-                      "x":  0.726,
-                      "y":  0.371,
+                      "type":  "heart",
+                      "x":  0.398,
+                      "y":  0.381,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T043",
-                      "type":  "berry",
-                      "x":  0.857,
-                      "y":  0.36,
+                      "type":  "heart",
+                      "x":  0.479,
+                      "y":  0.567,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T044",
-                      "type":  "gem",
-                      "x":  0.162,
-                      "y":  0.578,
+                      "type":  "heart",
+                      "x":  0.624,
+                      "y":  0.317,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T045",
-                      "type":  "flower",
-                      "x":  0.305,
-                      "y":  0.579,
+                      "type":  "sun",
+                      "x":  0.195,
+                      "y":  0.464,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T046",
-                      "type":  "candy",
-                      "x":  0.468,
-                      "y":  0.584,
+                      "type":  "sun",
+                      "x":  0.745,
+                      "y":  0.578,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T047",
-                      "type":  "carrot",
-                      "x":  0.607,
-                      "y":  0.574,
+                      "type":  "sun",
+                      "x":  0.403,
+                      "y":  0.176,
                       "layer":  2
                   },
                   {
                       "id":  "L43_T048",
-                      "type":  "carrot",
-                      "x":  0.185,
-                      "y":  0.159,
+                      "type":  "drop",
+                      "x":  0.59,
+                      "y":  0.507,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T049",
-                      "type":  "berry",
-                      "x":  0.332,
-                      "y":  0.163,
+                      "type":  "drop",
+                      "x":  0.448,
+                      "y":  0.334,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T050",
-                      "type":  "leaf",
-                      "x":  0.45,
-                      "y":  0.165,
+                      "type":  "drop",
+                      "x":  0.378,
+                      "y":  0.596,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T051",
-                      "type":  "carrot",
-                      "x":  0.593,
-                      "y":  0.164,
+                      "type":  "clover",
+                      "x":  0.749,
+                      "y":  0.392,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T052",
-                      "type":  "apple",
-                      "x":  0.753,
-                      "y":  0.17,
+                      "type":  "clover",
+                      "x":  0.191,
+                      "y":  0.348,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T053",
-                      "type":  "apple",
-                      "x":  0.86,
-                      "y":  0.164,
+                      "type":  "clover",
+                      "x":  0.634,
+                      "y":  0.704,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T054",
-                      "type":  "drop",
-                      "x":  0.194,
-                      "y":  0.378,
+                      "type":  "apple",
+                      "x":  0.641,
+                      "y":  0.152,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T055",
-                      "type":  "berry",
-                      "x":  0.334,
-                      "y":  0.374,
+                      "type":  "apple",
+                      "x":  0.07,
+                      "y":  0.608,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T056",
-                      "type":  "gem",
-                      "x":  0.48,
-                      "y":  0.362,
+                      "type":  "apple",
+                      "x":  0.87,
+                      "y":  0.552,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T057",
-                      "type":  "drop",
-                      "x":  0.603,
+                      "type":  "banana",
+                      "x":  0.432,
                       "y":  0.373,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T058",
-                      "type":  "drop",
-                      "x":  0.737,
-                      "y":  0.37,
+                      "type":  "banana",
+                      "x":  0.455,
+                      "y":  0.569,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T059",
-                      "type":  "candy",
-                      "x":  0.86,
-                      "y":  0.366,
+                      "type":  "banana",
+                      "x":  0.675,
+                      "y":  0.356,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T060",
-                      "type":  "candy",
-                      "x":  0.188,
-                      "y":  0.579,
+                      "type":  "berry",
+                      "x":  0.215,
+                      "y":  0.436,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T061",
-                      "type":  "carrot",
-                      "x":  0.341,
-                      "y":  0.579,
+                      "type":  "berry",
+                      "x":  0.711,
+                      "y":  0.628,
                       "layer":  3
                   },
                   {
                       "id":  "L43_T062",
-                      "type":  "drop",
-                      "x":  0.46,
-                      "y":  0.593,
+                      "type":  "berry",
+                      "x":  0.493,
+                      "y":  0.173,
                       "layer":  3
                   }
               ]

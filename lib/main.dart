@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -24,6 +26,9 @@ import 'presentation/screens/treasure_chests_screen.dart';
 import 'presentation/screens/world_selection_screen.dart';
 import 'presentation/theme/game_theme.dart';
 
+final RouteObserver<PageRoute<dynamic>> appRouteObserver =
+    RouteObserver<PageRoute<dynamic>>();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -42,10 +47,12 @@ class TripleTileApp extends StatefulWidget {
   State<TripleTileApp> createState() => _TripleTileAppState();
 }
 
-class _TripleTileAppState extends State<TripleTileApp> {
+class _TripleTileAppState extends State<TripleTileApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadAudioPrefs();
   }
 
@@ -59,8 +66,24 @@ class _TripleTileAppState extends State<TripleTileApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.audioService.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(widget.audioService.resumeMusicFromBackground());
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        unawaited(widget.audioService.pauseMusicForBackground());
+        break;
+    }
   }
 
   @override
@@ -76,6 +99,7 @@ class _TripleTileAppState extends State<TripleTileApp> {
         locale: const Locale('en'),
         supportedLocales: const [Locale('en')],
         initialRoute: SplashScreen.route,
+        navigatorObservers: [appRouteObserver],
         routes: {
           SplashScreen.route: (_) => const SplashScreen(),
           MainMenuScreen.route: (_) => const MainMenuScreen(),

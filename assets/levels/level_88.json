@@ -2,677 +2,678 @@
     "level":  88,
     "name":  "Dream Level 88",
     "timeBonusSeconds":  51,
+    "layoutPattern":  "Crescent Moon",
     "tiles":  [
                   {
                       "id":  "L88_T000",
-                      "type":  "moon",
-                      "x":  0.133,
-                      "y":  0.111,
+                      "type":  "drop",
+                      "x":  0.629,
+                      "y":  0.212,
                       "layer":  0
                   },
                   {
                       "id":  "L88_T001",
-                      "type":  "heart",
-                      "x":  0.303,
-                      "y":  0.106,
+                      "type":  "drop",
+                      "x":  0.657,
+                      "y":  0.194,
                       "layer":  0
                   },
                   {
                       "id":  "L88_T002",
-                      "type":  "carrot",
-                      "x":  0.503,
-                      "y":  0.134,
+                      "type":  "drop",
+                      "x":  0.777,
+                      "y":  0.213,
                       "layer":  0
                   },
                   {
                       "id":  "L88_T003",
-                      "type":  "berry",
-                      "x":  0.669,
-                      "y":  0.136,
-                      "layer":  0
-                  },
-                  {
-                      "id":  "L88_T004",
-                      "type":  "drop",
-                      "x":  0.844,
-                      "y":  0.125,
-                      "layer":  0
-                  },
-                  {
-                      "id":  "L88_T005",
-                      "type":  "heart",
-                      "x":  0.154,
-                      "y":  0.33,
-                      "layer":  0
-                  },
-                  {
-                      "id":  "L88_T006",
                       "type":  "clover",
-                      "x":  0.336,
-                      "y":  0.318,
-                      "layer":  0
-                  },
-                  {
-                      "id":  "L88_T007",
-                      "type":  "flower",
-                      "x":  0.508,
-                      "y":  0.322,
-                      "layer":  0
-                  },
-                  {
-                      "id":  "L88_T008",
-                      "type":  "star",
-                      "x":  0.668,
-                      "y":  0.337,
-                      "layer":  0
-                  },
-                  {
-                      "id":  "L88_T009",
-                      "type":  "candy",
-                      "x":  0.838,
+                      "x":  0.705,
                       "y":  0.347,
                       "layer":  0
                   },
                   {
+                      "id":  "L88_T004",
+                      "type":  "clover",
+                      "x":  0.87,
+                      "y":  0.395,
+                      "layer":  0
+                  },
+                  {
+                      "id":  "L88_T005",
+                      "type":  "clover",
+                      "x":  0.848,
+                      "y":  0.494,
+                      "layer":  0
+                  },
+                  {
+                      "id":  "L88_T006",
+                      "type":  "apple",
+                      "x":  0.695,
+                      "y":  0.529,
+                      "layer":  0
+                  },
+                  {
+                      "id":  "L88_T007",
+                      "type":  "apple",
+                      "x":  0.682,
+                      "y":  0.611,
+                      "layer":  0
+                  },
+                  {
+                      "id":  "L88_T008",
+                      "type":  "apple",
+                      "x":  0.713,
+                      "y":  0.717,
+                      "layer":  0
+                  },
+                  {
+                      "id":  "L88_T009",
+                      "type":  "banana",
+                      "x":  0.506,
+                      "y":  0.63,
+                      "layer":  0
+                  },
+                  {
                       "id":  "L88_T010",
-                      "type":  "star",
-                      "x":  0.143,
-                      "y":  0.534,
+                      "type":  "banana",
+                      "x":  0.411,
+                      "y":  0.686,
                       "layer":  0
                   },
                   {
                       "id":  "L88_T011",
-                      "type":  "drop",
-                      "x":  0.307,
-                      "y":  0.535,
+                      "type":  "banana",
+                      "x":  0.29,
+                      "y":  0.721,
                       "layer":  0
                   },
                   {
                       "id":  "L88_T012",
-                      "type":  "sun",
-                      "x":  0.487,
-                      "y":  0.544,
+                      "type":  "berry",
+                      "x":  0.364,
+                      "y":  0.583,
                       "layer":  0
                   },
                   {
                       "id":  "L88_T013",
-                      "type":  "moon",
-                      "x":  0.686,
-                      "y":  0.537,
+                      "type":  "berry",
+                      "x":  0.177,
+                      "y":  0.555,
                       "layer":  0
                   },
                   {
                       "id":  "L88_T014",
-                      "type":  "gem",
-                      "x":  0.147,
-                      "y":  0.15,
-                      "layer":  1
+                      "type":  "berry",
+                      "x":  0.07,
+                      "y":  0.49,
+                      "layer":  0
                   },
                   {
                       "id":  "L88_T015",
-                      "type":  "heart",
-                      "x":  0.339,
-                      "y":  0.125,
+                      "type":  "carrot",
+                      "x":  0.632,
+                      "y":  0.222,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T016",
-                      "type":  "moon",
-                      "x":  0.523,
-                      "y":  0.117,
+                      "type":  "carrot",
+                      "x":  0.664,
+                      "y":  0.21,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T017",
-                      "type":  "sun",
-                      "x":  0.68,
-                      "y":  0.124,
+                      "type":  "carrot",
+                      "x":  0.79,
+                      "y":  0.227,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T018",
-                      "type":  "apple",
-                      "x":  0.86,
-                      "y":  0.125,
-                      "layer":  1
-                  },
-                  {
-                      "id":  "L88_T019",
-                      "type":  "sun",
-                      "x":  0.143,
+                      "type":  "star",
+                      "x":  0.717,
                       "y":  0.354,
                       "layer":  1
                   },
                   {
+                      "id":  "L88_T019",
+                      "type":  "star",
+                      "x":  0.87,
+                      "y":  0.408,
+                      "layer":  1
+                  },
+                  {
                       "id":  "L88_T020",
-                      "type":  "leaf",
-                      "x":  0.344,
-                      "y":  0.33,
+                      "type":  "star",
+                      "x":  0.865,
+                      "y":  0.503,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T021",
-                      "type":  "heart",
-                      "x":  0.495,
-                      "y":  0.36,
+                      "type":  "shell",
+                      "x":  0.7,
+                      "y":  0.539,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T022",
-                      "type":  "berry",
-                      "x":  0.702,
-                      "y":  0.335,
+                      "type":  "shell",
+                      "x":  0.699,
+                      "y":  0.619,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T023",
-                      "type":  "gem",
-                      "x":  0.854,
-                      "y":  0.36,
+                      "type":  "shell",
+                      "x":  0.726,
+                      "y":  0.716,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T024",
-                      "type":  "sun",
-                      "x":  0.179,
-                      "y":  0.563,
+                      "type":  "flower",
+                      "x":  0.518,
+                      "y":  0.641,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T025",
-                      "type":  "banana",
-                      "x":  0.349,
-                      "y":  0.574,
+                      "type":  "flower",
+                      "x":  0.423,
+                      "y":  0.692,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T026",
-                      "type":  "carrot",
-                      "x":  0.49,
-                      "y":  0.542,
+                      "type":  "flower",
+                      "x":  0.311,
+                      "y":  0.717,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T027",
-                      "type":  "clover",
-                      "x":  0.704,
-                      "y":  0.576,
+                      "type":  "moon",
+                      "x":  0.38,
+                      "y":  0.579,
                       "layer":  1
                   },
                   {
                       "id":  "L88_T028",
-                      "type":  "shell",
-                      "x":  0.158,
-                      "y":  0.157,
-                      "layer":  2
+                      "type":  "moon",
+                      "x":  0.199,
+                      "y":  0.567,
+                      "layer":  1
                   },
                   {
                       "id":  "L88_T029",
-                      "type":  "candy",
-                      "x":  0.368,
-                      "y":  0.131,
-                      "layer":  2
+                      "type":  "moon",
+                      "x":  0.082,
+                      "y":  0.501,
+                      "layer":  1
                   },
                   {
                       "id":  "L88_T030",
-                      "type":  "shell",
-                      "x":  0.508,
-                      "y":  0.13,
+                      "type":  "gem",
+                      "x":  0.655,
+                      "y":  0.237,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T031",
-                      "type":  "moon",
-                      "x":  0.711,
-                      "y":  0.14,
+                      "type":  "gem",
+                      "x":  0.681,
+                      "y":  0.218,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T032",
-                      "type":  "star",
-                      "x":  0.855,
-                      "y":  0.135,
+                      "type":  "gem",
+                      "x":  0.812,
+                      "y":  0.236,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T033",
-                      "type":  "shell",
-                      "x":  0.182,
-                      "y":  0.363,
+                      "type":  "leaf",
+                      "x":  0.727,
+                      "y":  0.352,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T034",
-                      "type":  "berry",
-                      "x":  0.36,
-                      "y":  0.353,
+                      "type":  "leaf",
+                      "x":  0.87,
+                      "y":  0.414,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T035",
-                      "type":  "berry",
-                      "x":  0.524,
-                      "y":  0.34,
+                      "type":  "leaf",
+                      "x":  0.87,
+                      "y":  0.507,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T036",
-                      "type":  "heart",
-                      "x":  0.7,
-                      "y":  0.357,
+                      "type":  "candy",
+                      "x":  0.713,
+                      "y":  0.535,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T037",
-                      "type":  "moon",
-                      "x":  0.86,
-                      "y":  0.348,
+                      "type":  "candy",
+                      "x":  0.706,
+                      "y":  0.631,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T038",
-                      "type":  "drop",
-                      "x":  0.152,
-                      "y":  0.56,
+                      "type":  "candy",
+                      "x":  0.735,
+                      "y":  0.725,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T039",
-                      "type":  "candy",
-                      "x":  0.342,
-                      "y":  0.589,
+                      "type":  "heart",
+                      "x":  0.527,
+                      "y":  0.65,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T040",
-                      "type":  "shell",
-                      "x":  0.505,
-                      "y":  0.583,
+                      "type":  "heart",
+                      "x":  0.443,
+                      "y":  0.695,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T041",
-                      "type":  "banana",
-                      "x":  0.693,
-                      "y":  0.573,
+                      "type":  "heart",
+                      "x":  0.32,
+                      "y":  0.727,
                       "layer":  2
                   },
                   {
                       "id":  "L88_T042",
-                      "type":  "heart",
-                      "x":  0.173,
-                      "y":  0.16,
-                      "layer":  3
+                      "type":  "sun",
+                      "x":  0.4,
+                      "y":  0.594,
+                      "layer":  2
                   },
                   {
                       "id":  "L88_T043",
-                      "type":  "drop",
-                      "x":  0.352,
-                      "y":  0.163,
-                      "layer":  3
+                      "type":  "sun",
+                      "x":  0.205,
+                      "y":  0.567,
+                      "layer":  2
                   },
                   {
                       "id":  "L88_T044",
-                      "type":  "candy",
-                      "x":  0.523,
-                      "y":  0.151,
-                      "layer":  3
+                      "type":  "sun",
+                      "x":  0.098,
+                      "y":  0.506,
+                      "layer":  2
                   },
                   {
                       "id":  "L88_T045",
-                      "type":  "leaf",
-                      "x":  0.694,
-                      "y":  0.17,
+                      "type":  "drop",
+                      "x":  0.664,
+                      "y":  0.24,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T046",
-                      "type":  "gem",
-                      "x":  0.86,
-                      "y":  0.173,
+                      "type":  "drop",
+                      "x":  0.693,
+                      "y":  0.224,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T047",
-                      "type":  "shell",
-                      "x":  0.19,
-                      "y":  0.37,
+                      "type":  "drop",
+                      "x":  0.818,
+                      "y":  0.24,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T048",
-                      "type":  "sun",
-                      "x":  0.353,
-                      "y":  0.379,
+                      "type":  "clover",
+                      "x":  0.75,
+                      "y":  0.365,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T049",
-                      "type":  "star",
-                      "x":  0.55,
-                      "y":  0.372,
+                      "type":  "clover",
+                      "x":  0.87,
+                      "y":  0.425,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T050",
-                      "type":  "gem",
-                      "x":  0.713,
-                      "y":  0.376,
+                      "type":  "clover",
+                      "x":  0.87,
+                      "y":  0.511,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T051",
-                      "type":  "clover",
-                      "x":  0.86,
-                      "y":  0.369,
+                      "type":  "apple",
+                      "x":  0.727,
+                      "y":  0.544,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T052",
-                      "type":  "drop",
-                      "x":  0.168,
-                      "y":  0.591,
+                      "type":  "apple",
+                      "x":  0.719,
+                      "y":  0.641,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T053",
-                      "type":  "carrot",
-                      "x":  0.357,
-                      "y":  0.584,
+                      "type":  "apple",
+                      "x":  0.758,
+                      "y":  0.739,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T054",
-                      "type":  "clover",
-                      "x":  0.551,
-                      "y":  0.587,
+                      "type":  "banana",
+                      "x":  0.533,
+                      "y":  0.657,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T055",
-                      "type":  "sun",
-                      "x":  0.732,
-                      "y":  0.599,
+                      "type":  "banana",
+                      "x":  0.448,
+                      "y":  0.71,
                       "layer":  3
                   },
                   {
                       "id":  "L88_T056",
-                      "type":  "moon",
-                      "x":  0.197,
-                      "y":  0.183,
-                      "layer":  4
+                      "type":  "banana",
+                      "x":  0.326,
+                      "y":  0.732,
+                      "layer":  3
                   },
                   {
                       "id":  "L88_T057",
-                      "type":  "drop",
-                      "x":  0.352,
-                      "y":  0.162,
-                      "layer":  4
+                      "type":  "berry",
+                      "x":  0.407,
+                      "y":  0.602,
+                      "layer":  3
                   },
                   {
                       "id":  "L88_T058",
-                      "type":  "apple",
-                      "x":  0.56,
-                      "y":  0.157,
-                      "layer":  4
+                      "type":  "berry",
+                      "x":  0.214,
+                      "y":  0.577,
+                      "layer":  3
                   },
                   {
                       "id":  "L88_T059",
-                      "type":  "gem",
-                      "x":  0.708,
-                      "y":  0.167,
-                      "layer":  4
+                      "type":  "berry",
+                      "x":  0.118,
+                      "y":  0.515,
+                      "layer":  3
                   },
                   {
                       "id":  "L88_T060",
-                      "type":  "banana",
-                      "x":  0.86,
-                      "y":  0.186,
+                      "type":  "carrot",
+                      "x":  0.67,
+                      "y":  0.238,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T061",
-                      "type":  "candy",
-                      "x":  0.195,
-                      "y":  0.376,
+                      "type":  "carrot",
+                      "x":  0.727,
+                      "y":  0.238,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T062",
-                      "type":  "clover",
-                      "x":  0.362,
-                      "y":  0.386,
+                      "type":  "carrot",
+                      "x":  0.868,
+                      "y":  0.284,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T063",
-                      "type":  "leaf",
-                      "x":  0.554,
-                      "y":  0.383,
+                      "type":  "star",
+                      "x":  0.773,
+                      "y":  0.425,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T064",
-                      "type":  "apple",
-                      "x":  0.741,
-                      "y":  0.388,
+                      "type":  "star",
+                      "x":  0.87,
+                      "y":  0.517,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T065",
-                      "type":  "drop",
-                      "x":  0.86,
-                      "y":  0.372,
+                      "type":  "star",
+                      "x":  0.834,
+                      "y":  0.642,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T066",
-                      "type":  "candy",
-                      "x":  0.193,
-                      "y":  0.605,
+                      "type":  "shell",
+                      "x":  0.647,
+                      "y":  0.632,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T067",
-                      "type":  "carrot",
-                      "x":  0.37,
-                      "y":  0.591,
+                      "type":  "shell",
+                      "x":  0.564,
+                      "y":  0.714,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T068",
                       "type":  "shell",
-                      "x":  0.556,
-                      "y":  0.609,
+                      "x":  0.513,
+                      "y":  0.768,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T069",
-                      "type":  "star",
-                      "x":  0.721,
-                      "y":  0.594,
+                      "type":  "flower",
+                      "x":  0.366,
+                      "y":  0.623,
                       "layer":  4
                   },
                   {
                       "id":  "L88_T070",
-                      "type":  "banana",
-                      "x":  0.196,
-                      "y":  0.191,
-                      "layer":  5
+                      "type":  "flower",
+                      "x":  0.249,
+                      "y":  0.608,
+                      "layer":  4
                   },
                   {
                       "id":  "L88_T071",
-                      "type":  "carrot",
-                      "x":  0.402,
-                      "y":  0.184,
-                      "layer":  5
+                      "type":  "flower",
+                      "x":  0.118,
+                      "y":  0.525,
+                      "layer":  4
                   },
                   {
                       "id":  "L88_T072",
-                      "type":  "apple",
-                      "x":  0.556,
-                      "y":  0.168,
+                      "type":  "gem",
+                      "x":  0.692,
+                      "y":  0.259,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T073",
-                      "type":  "leaf",
-                      "x":  0.729,
-                      "y":  0.18,
+                      "type":  "gem",
+                      "x":  0.735,
+                      "y":  0.248,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T074",
-                      "type":  "flower",
-                      "x":  0.86,
-                      "y":  0.171,
+                      "type":  "gem",
+                      "x":  0.87,
+                      "y":  0.303,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T075",
                       "type":  "leaf",
-                      "x":  0.221,
-                      "y":  0.38,
+                      "x":  0.778,
+                      "y":  0.43,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T076",
-                      "type":  "star",
-                      "x":  0.389,
-                      "y":  0.387,
+                      "type":  "leaf",
+                      "x":  0.87,
+                      "y":  0.526,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T077",
-                      "type":  "flower",
-                      "x":  0.565,
-                      "y":  0.396,
+                      "type":  "leaf",
+                      "x":  0.846,
+                      "y":  0.655,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T078",
-                      "type":  "leaf",
-                      "x":  0.724,
-                      "y":  0.404,
+                      "type":  "candy",
+                      "x":  0.661,
+                      "y":  0.633,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T079",
-                      "type":  "banana",
-                      "x":  0.86,
-                      "y":  0.393,
+                      "type":  "candy",
+                      "x":  0.583,
+                      "y":  0.716,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T080",
-                      "type":  "flower",
-                      "x":  0.192,
-                      "y":  0.62,
+                      "type":  "candy",
+                      "x":  0.532,
+                      "y":  0.77,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T081",
-                      "type":  "drop",
-                      "x":  0.391,
-                      "y":  0.594,
+                      "type":  "heart",
+                      "x":  0.378,
+                      "y":  0.633,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T082",
-                      "type":  "carrot",
-                      "x":  0.569,
+                      "type":  "heart",
+                      "x":  0.254,
                       "y":  0.614,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T083",
-                      "type":  "drop",
-                      "x":  0.738,
-                      "y":  0.614,
+                      "type":  "heart",
+                      "x":  0.133,
+                      "y":  0.532,
                       "layer":  5
                   },
                   {
                       "id":  "L88_T084",
-                      "type":  "clover",
-                      "x":  0.221,
-                      "y":  0.197,
+                      "type":  "drop",
+                      "x":  0.693,
+                      "y":  0.253,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T085",
-                      "type":  "apple",
-                      "x":  0.404,
-                      "y":  0.206,
+                      "type":  "drop",
+                      "x":  0.746,
+                      "y":  0.259,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T086",
-                      "type":  "apple",
-                      "x":  0.583,
-                      "y":  0.199,
+                      "type":  "drop",
+                      "x":  0.87,
+                      "y":  0.308,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T087",
-                      "type":  "berry",
-                      "x":  0.737,
-                      "y":  0.18,
+                      "type":  "clover",
+                      "x":  0.792,
+                      "y":  0.435,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T088",
-                      "type":  "gem",
-                      "x":  0.86,
-                      "y":  0.204,
+                      "type":  "clover",
+                      "x":  0.87,
+                      "y":  0.527,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T089",
-                      "type":  "berry",
-                      "x":  0.243,
-                      "y":  0.389,
+                      "type":  "clover",
+                      "x":  0.857,
+                      "y":  0.661,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T090",
-                      "type":  "clover",
-                      "x":  0.386,
-                      "y":  0.391,
+                      "type":  "apple",
+                      "x":  0.675,
+                      "y":  0.638,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T091",
-                      "type":  "clover",
-                      "x":  0.578,
-                      "y":  0.41,
+                      "type":  "apple",
+                      "x":  0.594,
+                      "y":  0.73,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T092",
-                      "type":  "banana",
-                      "x":  0.767,
-                      "y":  0.416,
+                      "type":  "apple",
+                      "x":  0.535,
+                      "y":  0.789,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T093",
-                      "type":  "clover",
-                      "x":  0.86,
-                      "y":  0.389,
+                      "type":  "banana",
+                      "x":  0.401,
+                      "y":  0.643,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T094",
-                      "type":  "flower",
-                      "x":  0.208,
-                      "y":  0.633,
+                      "type":  "banana",
+                      "x":  0.264,
+                      "y":  0.613,
                       "layer":  6
                   },
                   {
                       "id":  "L88_T095",
-                      "type":  "flower",
-                      "x":  0.381,
-                      "y":  0.632,
+                      "type":  "banana",
+                      "x":  0.141,
+                      "y":  0.535,
                       "layer":  6
                   }
               ]
