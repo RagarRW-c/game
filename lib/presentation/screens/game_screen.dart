@@ -15,9 +15,11 @@ import '../../domain/tile.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
+import '../tile_feedback.dart';
 import '../widgets/achievement_popup.dart';
 import '../widgets/game_over_dialog.dart';
 import '../widgets/game_tile.dart';
+import '../widgets/game_tray.dart';
 import '../widgets/game_surfaces.dart';
 import '../widgets/game_ui.dart';
 import 'final_code_screen.dart';
@@ -57,6 +59,8 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   int _extraShuffleBoosters = 0;
   int _extraUndoBoosters = 0;
   bool _vibrationEnabled = true;
+  TrayFeedback? _trayFeedback;
+  int _feedbackSerial = 0;
   bool _gameOverDialogShowing = false;
   bool _winDialogShowing = false;
   bool _tutorialQueued = false;
@@ -171,7 +175,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
 
   void _haptic(Future<void> Function() feedback) {
     if (!_vibrationEnabled) return;
-    unawaited(feedback());
+    safelyPlayFeedback(feedback);
   }
 
   void _showNotEnoughCoins() {
@@ -183,6 +187,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
 
   void _resetAnimationState() {
     _hintedTileIds.clear();
+    _trayFeedback = null;
   }
 
   void _resetBoosterUses() {
@@ -259,6 +264,25 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     return '$_boosterCoinCost';
   }
 
+  void _showMoveFeedback(
+      List<String> before, Iterable<String> collected, Set<String> matchedIds) {
+    final engine = _engine;
+    if (!mounted || engine == null) return;
+    setState(() {
+      _trayFeedback = TrayFeedback(
+          serial: ++_feedbackSerial,
+          matched: matchedIds.isNotEmpty,
+          before: before,
+          collected: collected,
+          matchedIds: matchedIds);
+    });
+    dispatchTileFeedback(
+        audio: _scope.audioService,
+        matched: matchedIds.isNotEmpty,
+        vibrationEnabled: _vibrationEnabled,
+        terminal: engine.result != GameResult.playing);
+  }
+
   Future<void> _onTileTap(
     LevelDefinition level,
     Tile tile,
@@ -285,9 +309,6 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     })) {
       return;
     }
-    _playSfx(_scope.audioService.playTap, 'tap');
-    _haptic(HapticFeedback.lightImpact);
-
     if (!moved) {
       if (engine.result == GameResult.lost) {
         await _handleGameOver(level: level);
@@ -299,13 +320,12 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
       beforeTrayIds,
       collectedId: canonicalTile.id,
     );
+    _showMoveFeedback(beforeTrayIds, [canonicalTile.id], matchedIds);
     if (matchedIds.isNotEmpty) {
       await _recordMatchedTiles(
         matchedIds.length,
         tileTypes: _tileTypesForIds(matchedIds),
       );
-      _playSfx(_scope.audioService.playMatch, 'match');
-      _haptic(HapticFeedback.mediumImpact);
     }
     if (engine.result == GameResult.won) await _handleWin();
     if (!mounted) return;
@@ -351,8 +371,6 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     })) {
       return;
     }
-    _playSfx(_scope.audioService.playBooster, 'booster');
-
     if (!collected) {
       if (engine.result == GameResult.lost) await _handleGameOver(level: level);
       return;
@@ -361,12 +379,13 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     final removedIds =
         _matchedIdsAfterMove(beforeTrayIds, preferredIds: hintIds.toSet());
     if (removedIds.isNotEmpty) {
+      _showMoveFeedback(beforeTrayIds, hintIds, removedIds);
       await _recordMatchedTiles(
         removedIds.length,
         tileTypes: _tileTypesForIds(removedIds),
       );
-      _playSfx(_scope.audioService.playMatch, 'match');
-      _haptic(HapticFeedback.mediumImpact);
+    } else {
+      _playSfx(_scope.audioService.playBooster, 'booster');
     }
     unawaited(_recordBoosterUsed(BoosterKind.hint));
     if (engine.result == GameResult.won) await _handleWin();
@@ -429,6 +448,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         engine.result = GameResult.playing;
       }
       shuffled = engine.shuffleBoard();
+      if (shuffled) _trayFeedback = null;
       if (shuffled && usedFreeShuffle) _shuffleUsesRemaining--;
       if (shuffled) _shuffleUsedThisLevel++;
     })) {
@@ -969,8 +989,9 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                               ? () => unawaited(_useUndo(engine))
                               : null,
                         ),
-                        _Tray(
+                        GameTray(
                           trayTiles: trayTiles,
+                          feedback: _trayFeedback,
                           catalog: visualCatalog,
                           worldTheme: worldTheme,
                         ),
@@ -1402,69 +1423,6 @@ class _BoosterBar extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _Tray extends StatelessWidget {
-  const _Tray({
-    required this.trayTiles,
-    required this.catalog,
-    required this.worldTheme,
-  });
-
-  final List<Tile?> trayTiles;
-  final Map<String, TileArt> catalog;
-  final WorldVisualTheme worldTheme;
-
-  @override
-  Widget build(BuildContext context) {
-    final slots = List<Tile?>.from(trayTiles);
-    final slotWidgets = <Widget>[];
-
-    for (var index = 0; index < GameEngine.trayLimit; index++) {
-      final tile = index < slots.length ? slots[index] : null;
-
-      slotWidgets.add(
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: GameSpacing.xs),
-            child: AnimatedSwitcher(
-                duration: GameDurations.normal,
-                switchInCurve: Curves.easeOutBack,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  return FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(scale: animation, child: child),
-                  );
-                },
-                child: tile == null
-                    ? const EmptyTraySlot(key: ValueKey('empty_slot'))
-                    : PoppingGameTile(
-                        key: ValueKey('tray_${tile.id}'),
-                        tile: tile,
-                        enabled: true,
-                        highlighted: false,
-                        catalog: catalog,
-                        trayTile: true,
-                      )),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      height: 94,
-      margin: const EdgeInsets.fromLTRB(
-        GameSpacing.lg,
-        GameSpacing.sm,
-        GameSpacing.lg,
-        GameSpacing.lg,
-      ),
-      padding: const EdgeInsets.all(GameSpacing.md),
-      decoration: traySurfaceDecoration(worldTheme),
-      child: Row(children: slotWidgets),
     );
   }
 }

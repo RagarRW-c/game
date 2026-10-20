@@ -14,7 +14,9 @@ import '../../domain/tile.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
+import '../tile_feedback.dart';
 import '../widgets/game_tile.dart';
+import '../widgets/game_tray.dart';
 import '../widgets/game_surfaces.dart';
 import '../widgets/game_ui.dart';
 import 'main_menu_screen.dart';
@@ -54,6 +56,8 @@ class _EndlessScreenState extends State<EndlessScreen> {
   int _extraShuffleBoosters = 0;
   int _extraUndoBoosters = 0;
   bool _vibrationEnabled = true;
+  TrayFeedback? _trayFeedback;
+  int _feedbackSerial = 0;
   bool _boosterUsedThisBoard = false;
   bool _gameOverShowing = false;
   bool _loading = true;
@@ -78,6 +82,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
     _selectedTheme = _themeFromCosmetics(cosmetics);
     setState(() {
       _round = 1;
+      _trayFeedback = null;
       _score = 0;
       _bestScore = bestScore;
       _boardsCleared = 0;
@@ -193,7 +198,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
 
   void _haptic(Future<void> Function() feedback) {
     if (!_vibrationEnabled) return;
-    unawaited(feedback());
+    safelyPlayFeedback(feedback);
   }
 
   void _addScore(int amount) {
@@ -210,6 +215,26 @@ class _EndlessScreenState extends State<EndlessScreen> {
       await _scope.progressRepository.grantEndlessSilverChest();
       _nextChestReward += 5000;
     }
+  }
+
+  void _showMoveFeedback(
+      List<String> before, Iterable<String> collected, Set<String> matchedIds) {
+    final engine = _engine;
+    if (!mounted || engine == null) return;
+    setState(() {
+      _trayFeedback = TrayFeedback(
+          serial: ++_feedbackSerial,
+          matched: matchedIds.isNotEmpty,
+          before: before,
+          collected: collected,
+          matchedIds: matchedIds);
+    });
+    dispatchTileFeedback(
+        audio: _scope.audioService,
+        matched: matchedIds.isNotEmpty,
+        vibrationEnabled: _vibrationEnabled,
+        // Board completion has no separate result haptic in Endless.
+        terminal: engine.result == GameResult.lost);
   }
 
   Future<void> _onTileTap(
@@ -232,22 +257,18 @@ class _EndlessScreenState extends State<EndlessScreen> {
       moved = engine.tapTile(canonicalTile.id, boardSize, tileSize);
       if (moved) _addScore(5);
     });
-    _playSfx(_scope.audioService.playTap, 'tap');
-    _haptic(HapticFeedback.lightImpact);
-
     if (!moved) {
       if (engine.result == GameResult.lost) await _handleGameOver();
       return;
     }
 
     final matchedIds = _matchedIdsAfterMove(beforeTrayIds, [canonicalTile.id]);
+    _showMoveFeedback(beforeTrayIds, [canonicalTile.id], matchedIds);
     if (matchedIds.isNotEmpty) {
       setState(() {
         _tilesMatched += matchedIds.length;
         _addScore(50);
       });
-      _playSfx(_scope.audioService.playMatch, 'match');
-      _haptic(HapticFeedback.mediumImpact);
     }
     await _handleScoreRewards();
     if (!mounted) return;
@@ -327,13 +348,14 @@ class _EndlessScreenState extends State<EndlessScreen> {
       hintIds,
     );
     if (removedIds.isNotEmpty) {
+      _showMoveFeedback(beforeTrayIds, hintIds, removedIds);
       setState(() {
         _tilesMatched += removedIds.length;
         _addScore(50);
       });
-      _playSfx(_scope.audioService.playMatch, 'match');
+    } else {
+      _playSfx(_scope.audioService.playBooster, 'booster');
     }
-    _playSfx(_scope.audioService.playBooster, 'booster');
     unawaited(_scope.progressRepository.recordBoosterUsed(BoosterKind.hint));
     await _handleScoreRewards();
     if (!mounted) return;
@@ -359,6 +381,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
     setState(() {
       _hintedTileIds.clear();
       shuffled = engine.shuffleBoard();
+      if (shuffled) _trayFeedback = null;
       if (shuffled && usedFreeShuffle) _shuffleUsesRemaining--;
       if (shuffled) _boosterUsedThisBoard = true;
     });
@@ -382,6 +405,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
     setState(() {
       undone = engine.undo();
       if (undone) {
+        _trayFeedback = null;
         _hintedTileIds.clear();
         if (usedFreeUndo) _undoUsesRemaining--;
         _boosterUsedThisBoard = true;
@@ -396,6 +420,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
     if (_gameOverShowing) return;
     _gameOverShowing = true;
     _playSfx(_scope.audioService.playGameOver, 'game_over');
+    _haptic(HapticFeedback.heavyImpact);
     await _scope.progressRepository.recordEndlessRun(
       score: _score,
       boardsCleared: _boardsCleared,
@@ -619,8 +644,9 @@ class _EndlessScreenState extends State<EndlessScreen> {
                       _extraShuffleBoosters,
                     ),
                   ),
-                  _EndlessTray(
+                  GameTray(
                     trayTiles: _traySnapshot(engine),
+                    feedback: _trayFeedback,
                     catalog: visualCatalog,
                     worldTheme: worldTheme,
                   ),
@@ -839,53 +865,6 @@ class _EndlessBoosterBar extends StatelessWidget {
               accent: worldTheme.boosterAccents[2],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EndlessTray extends StatelessWidget {
-  const _EndlessTray({
-    required this.trayTiles,
-    required this.catalog,
-    required this.worldTheme,
-  });
-
-  final List<Tile?> trayTiles;
-  final Map<String, TileArt> catalog;
-  final WorldVisualTheme worldTheme;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 94,
-      margin: const EdgeInsets.fromLTRB(
-        GameSpacing.lg,
-        GameSpacing.sm,
-        GameSpacing.lg,
-        GameSpacing.lg,
-      ),
-      padding: const EdgeInsets.all(GameSpacing.md),
-      decoration: traySurfaceDecoration(worldTheme),
-      child: Row(
-        children: [
-          for (var index = 0; index < GameEngine.trayLimit; index++)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: GameSpacing.xs),
-                child: trayTiles[index] == null
-                    ? const EmptyTraySlot()
-                    : PoppingGameTile(
-                        key: ValueKey('endless_tray_${trayTiles[index]!.id}'),
-                        tile: trayTiles[index]!,
-                        enabled: true,
-                        highlighted: false,
-                        catalog: catalog,
-                        trayTile: true,
-                      ),
-              ),
-            ),
         ],
       ),
     );

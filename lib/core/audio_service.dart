@@ -285,6 +285,9 @@ class GameAudioService {
 
   double _volumeForCue(String cue) {
     if (cue.startsWith('tap')) return 0.58;
+    if (cue == 'match') return 0.78;
+    if (cue == 'level_complete') return 0.90;
+    if (cue == 'game_over') return 0.70;
     return 1;
   }
 

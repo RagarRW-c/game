@@ -34,8 +34,19 @@ class _GameTileWidgetState extends State<GameTileWidget> {
   bool _pressed = false;
 
   void _setPressed(bool value) {
-    if (!widget.enabled || widget.onTap == null) return;
+    if (value && (!widget.enabled || widget.blocked || widget.onTap == null)) {
+      return;
+    }
+    if (!mounted || _pressed == value) return;
     setState(() => _pressed = value);
+  }
+
+  @override
+  void didUpdateWidget(GameTileWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.enabled || widget.blocked || widget.onTap == null) {
+      _pressed = false;
+    }
   }
 
   @override
@@ -87,7 +98,8 @@ class _GameTileWidgetState extends State<GameTileWidget> {
               : GameDurations.quick,
           curve: Curves.easeOutBack,
           builder: (context, scale, child) {
-            return Transform.scale(scale: scale, child: child);
+            return Transform.scale(
+                scale: scale, transformHitTests: false, child: child);
           },
           child: Container(
             foregroundDecoration: BoxDecoration(
@@ -104,7 +116,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                         Colors.white.withValues(
                           alpha: widget.trayTile
                               ? 0.42 + (topLift * 0.10)
-                              : 0.12 + (topLift * 0.04),
+                              : (_pressed ? 0.30 : 0.12) + (topLift * 0.04),
                         ),
                         Colors.white.withValues(alpha: 0.02),
                         Colors.black.withValues(alpha: 0.04),
