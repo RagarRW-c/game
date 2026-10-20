@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../main.dart';
+import '../models/adventure_progress.dart';
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
+import '../widgets/adventure_world_destination_card.dart';
 import '../widgets/game_ui.dart';
-import '../widgets/game_decoration.dart';
-import '../widgets/world_atmosphere.dart';
 import 'map_screen.dart';
 
 class GameWorld {
@@ -135,7 +135,6 @@ const gameWorlds = <GameWorld>[
 
 class WorldSelectionScreen extends StatefulWidget {
   const WorldSelectionScreen({super.key});
-
   static const route = '/worlds';
 
   @override
@@ -143,194 +142,120 @@ class WorldSelectionScreen extends StatefulWidget {
 }
 
 class _WorldSelectionScreenState extends State<WorldSelectionScreen> {
-  late Future<int> _highestFuture;
+  late Future<AdventureProgress> _progressFuture;
+  final _scrollController = ScrollController();
+  bool _loaded = false;
+  bool _openingWorld = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _highestFuture =
-        AppScope.of(context).progressRepository.highestUnlockedLevel();
-  }
-
-  int _completedInWorld(GameWorld world, int highest) {
-    final completedThrough = highest - 1;
-    if (completedThrough < world.startLevel) return 0;
-    return (completedThrough - world.startLevel + 1).clamp(0, 10);
+    if (!_loaded) {
+      _loaded = true;
+      _progressFuture =
+          AdventureProgress.load(AppScope.of(context).progressRepository);
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: GameBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              GameHeader(
-                title: 'Select World',
-                onBack: () => Navigator.of(context).maybePop(),
-              ),
-              Expanded(
-                child: FutureBuilder<int>(
-                  future: _highestFuture,
-                  builder: (context, snapshot) {
-                    final highest = snapshot.data ?? 1;
-                    return ListView.separated(
-                      padding: const EdgeInsets.all(GameSpacing.lg),
-                      itemBuilder: (context, index) {
-                        final world = gameWorlds[index];
-                        final unlocked = highest > world.unlockAfterLevel;
-                        return _WorldCard(
-                          world: world,
-                          unlocked: unlocked,
-                          completed: _completedInWorld(world, highest),
-                          onTap: unlocked
-                              ? () async {
-                                  await Navigator.pushNamed(
-                                    context,
-                                    MapScreen.route,
-                                    arguments: world,
-                                  );
-                                  if (!mounted) return;
-                                  setState(() {
-                                    _highestFuture = AppScope.of(context)
-                                        .progressRepository
-                                        .highestUnlockedLevel();
-                                  });
-                                }
-                              : null,
-                        );
-                      },
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: GameSpacing.md),
-                      itemCount: gameWorlds.length,
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
-}
 
-class _WorldCard extends StatelessWidget {
-  const _WorldCard({
-    required this.world,
-    required this.unlocked,
-    required this.completed,
-    required this.onTap,
-  });
-
-  final GameWorld world;
-  final bool unlocked;
-  final int completed;
-  final VoidCallback? onTap;
+  Future<void> _openWorld(GameWorld world) async {
+    if (_openingWorld) return;
+    _openingWorld = true;
+    try {
+      await Navigator.pushNamed(context, MapScreen.route, arguments: world);
+      if (!mounted) return;
+      setState(() {
+        _progressFuture =
+            AdventureProgress.load(AppScope.of(context).progressRepository);
+      });
+    } finally {
+      _openingWorld = false;
+    }
+  }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = world.visualTheme;
-    return GameEntrance(
-      child: Semantics(
-        button: true,
-        enabled: unlocked,
-        child: InkWell(
-          borderRadius: GameRadius.extraLargeRadius,
-          onTap: onTap,
-          child: GameCard(
-            padding: EdgeInsets.zero,
-            gradient: unlocked ? theme.hudGradient : GameGradients.darkBadge,
-            borderColor:
-                unlocked ? theme.secondaryAccent : const Color(0xFF99A6B9),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
-              child: Stack(children: [
-                if (unlocked)
-                  Positioned.fill(child: WorldAtmosphere(theme: theme)),
+  Widget build(BuildContext context) => Scaffold(
+        body: GameBackground(
+          child: SafeArea(
+            child: Column(
+              children: [
                 Padding(
-                  padding: const EdgeInsets.all(GameSpacing.lg),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Container(
-                            width: 68,
-                            height: 68,
-                            decoration: BoxDecoration(
-                              gradient: unlocked
-                                  ? theme.actionGradient
-                                  : GameGradients.disabled,
-                              borderRadius: BorderRadius.circular(24),
-                              border:
-                                  Border.all(color: Colors.white70, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.2),
-                                    offset: const Offset(0, 4)),
-                                ...GameShadows.light(),
-                              ],
-                            ),
-                            child: Icon(
-                              unlocked ? world.icon : Icons.lock_rounded,
-                              color: Colors.white,
-                              size: 38,
-                            ),
-                          ),
-                          const SizedBox(width: GameSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  world.name,
-                                  style: GameTextStyles.title
-                                      .copyWith(fontSize: 22),
-                                ),
-                                const SizedBox(height: GameSpacing.xs),
-                                Text(world.subtitle,
-                                    style: GameTextStyles.body.copyWith(
-                                        color: Colors.white70, fontSize: 14)),
-                              ],
-                            ),
-                          ),
-                        ]),
-                        const SizedBox(height: 18),
-                        Row(children: [
-                          Expanded(
-                              child: Text(
-                            unlocked
-                                ? 'Adventure progress'
-                                : 'Complete Level ${world.unlockAfterLevel} to unlock',
-                            style: GameTextStyles.caption
-                                .copyWith(color: Colors.white),
-                          )),
-                          const SizedBox(width: 8),
-                          Text('$completed/10',
-                              style: GameTextStyles.button.copyWith(
-                                  color: unlocked
-                                      ? theme.secondaryAccent
-                                      : Colors.white70)),
-                        ]),
-                        const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            minHeight: 10,
-                            value: completed / 10,
-                            backgroundColor: const Color(0x550A1737),
-                            color: unlocked
-                                ? theme.secondaryAccent
-                                : Colors.white38,
-                          ),
-                        ),
-                      ]),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Row(children: [
+                    Tooltip(
+                      message: 'Back',
+                      child: GameRoundIconButton(
+                        key: const ValueKey('worlds_back'),
+                        icon: Icons.arrow_back_rounded,
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                        child: Text('Worlds',
+                            style:
+                                GameTextStyles.title.copyWith(fontSize: 24))),
+                  ]),
                 ),
-              ]),
+                Expanded(
+                  child: FutureBuilder<AdventureProgress>(
+                    future: _progressFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(
+                            child: TextButton(
+                          onPressed: () => setState(() {
+                            _progressFuture = AdventureProgress.load(
+                                AppScope.of(context).progressRepository);
+                          }),
+                          child: const Text('Retry loading worlds'),
+                        ));
+                      }
+                      final progress = snapshot.data;
+                      if (progress == null) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      return ListView.separated(
+                        key: const PageStorageKey('adventure_worlds'),
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                        itemCount: gameWorlds.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 22),
+                        itemBuilder: (context, index) {
+                          final world = gameWorlds[index];
+                          final unlocked = progress.highestUnlockedLevel >
+                              world.unlockAfterLevel;
+                          return Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 560),
+                              child: AdventureWorldDestinationCard(
+                                key: ValueKey('world_${world.startLevel}'),
+                                world: world,
+                                unlocked: unlocked,
+                                current: progress.highestUnlockedLevel >=
+                                        world.startLevel &&
+                                    progress.highestUnlockedLevel <=
+                                        world.endLevel,
+                                completed: progress.completedIn(
+                                    world.startLevel, world.endLevel),
+                                onTap:
+                                    unlocked ? () => _openWorld(world) : null,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }

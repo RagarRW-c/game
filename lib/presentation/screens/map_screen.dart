@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../domain/level.dart';
 import '../../main.dart';
+import '../models/adventure_progress.dart';
 import '../theme/game_theme.dart';
-import '../theme/world_theme.dart';
+import '../widgets/adventure_map_path.dart';
+import '../widgets/game_decoration.dart';
 import '../widgets/game_ui.dart';
 import 'booster_shop_screen.dart';
 import 'game_screen.dart';
@@ -21,372 +23,267 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  late Future<_MapProgress> _progressFuture;
+  late Future<AdventureProgress> _progressFuture;
+  final _scrollController = ScrollController();
+  final _nodeKeys = List.generate(10, (_) => GlobalKey());
+  AdventureProgress? _progress;
+  bool _loaded = false;
+  bool _positioned = false;
+  bool _openingLevel = false;
+  bool _openingUtility = false;
   bool _dailySpinAvailable = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _progressFuture = _loadMapProgress();
-    _loadDailySpin();
+    if (!_loaded) {
+      _loaded = true;
+      _progressFuture = _loadMapProgress();
+      _loadDailySpin();
+    }
   }
 
-  Future<_MapProgress> _loadMapProgress() async {
-    final repository = AppScope.of(context).progressRepository;
-    final highest = await repository.highestUnlockedLevel();
-    final stars = await repository.bestStarsByLevel(
-        widget.world.startLevel, widget.world.endLevel);
-    return _MapProgress(highestUnlockedLevel: highest, starsByLevel: stars);
+  @override
+  void didUpdateWidget(MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.world != widget.world) {
+      _positioned = false;
+      _progressFuture = _loadMapProgress();
+    }
   }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<AdventureProgress> _loadMapProgress() =>
+      AdventureProgress.load(AppScope.of(context).progressRepository);
 
   Future<void> _loadDailySpin() async {
     final available = await AppScope.of(context)
         .progressRepository
         .dailySpinAvailable(DateTime.now());
-    if (!mounted) return;
-    setState(() => _dailySpinAvailable = available);
+    if (mounted) setState(() => _dailySpinAvailable = available);
+  }
+
+  void _findCurrent({bool animate = true}) {
+    final progress = _progress;
+    if (progress == null) return;
+    final index =
+        (progress.highestUnlockedLevel - widget.world.startLevel).clamp(0, 9);
+    final target = _nodeKeys[index].currentContext;
+    if (target == null) return;
+    Scrollable.ensureVisible(target,
+        alignment: .35,
+        duration: animate && !MediaQuery.disableAnimationsOf(context)
+            ? const Duration(milliseconds: 420)
+            : Duration.zero,
+        curve: Curves.easeOutCubic);
+  }
+
+  Future<void> _openUtility(String route) async {
+    if (_openingUtility || _openingLevel) return;
+    _openingUtility = true;
+    try {
+      await Navigator.pushNamed(context, route);
+      if (mounted) await _loadDailySpin();
+    } finally {
+      _openingUtility = false;
+    }
   }
 
   Future<void> _openLevelPreview(int level) async {
-    final started = await showDialog<bool>(
-      context: context,
-      builder: (_) => _LevelPreviewDialog(
-        levelFuture: AppScope.of(context).levelRepository.loadLevel(level),
-        world: widget.world,
-      ),
-    );
-    if (!mounted || started != true) return;
-    await Navigator.pushNamed(
-      context,
-      GameScreen.route,
-      arguments: level,
-    );
-    if (mounted) {
+    if (_openingLevel ||
+        _openingUtility ||
+        !(_progress?.isUnlocked(level) ?? false)) return;
+    _openingLevel = true;
+    try {
+      // Keep the existing preview -> Start -> named game route contract.
+      final levelFuture = AppScope.of(context).levelRepository.loadLevel(level);
+      final started = await showDialog<bool>(
+        context: context,
+        builder: (_) => _LevelPreviewDialog(
+          levelFuture: levelFuture,
+          world: widget.world,
+        ),
+      );
+      if (!mounted || started != true) return;
+      await Navigator.pushNamed(context, GameScreen.route, arguments: level);
+      if (!mounted) return;
+      // Start I/O outside setState. Returning this Future from an arrow
+      // callback throws before Flutter can schedule the progress rebuild.
+      final progressFuture = _loadMapProgress();
       setState(() {
-        _progressFuture = _loadMapProgress();
+        _progressFuture = progressFuture;
       });
+    } finally {
+      _openingLevel = false;
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: GameBackground(
-        worldTheme: widget.world.visualTheme,
-        child: SafeArea(
-          child: Column(
-            children: [
-              GameHeader(
-                title: widget.world.name,
-                worldTheme: widget.world.visualTheme,
-                onBack: () => Navigator.of(context).maybePop(),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  GameSpacing.lg,
-                  0,
-                  GameSpacing.lg,
-                  GameSpacing.md,
-                ),
-                child: _WorldMapBanner(world: widget.world),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: GameSpacing.lg),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: GameButton(
-                        label: _dailySpinAvailable
-                            ? 'Daily Spin'
-                            : 'Next Spin Tomorrow',
-                        icon: Icons.casino_rounded,
-                        onPressed: _dailySpinAvailable
-                            ? () async {
-                                await Navigator.pushNamed(
-                                  context,
-                                  LuckyWheelScreen.route,
-                                );
-                                if (mounted) await _loadDailySpin();
-                              }
-                            : null,
-                        variant: GameButtonVariant.gold,
+  Widget build(BuildContext context) => Scaffold(
+        body: GameBackground(
+          worldTheme: widget.world.visualTheme,
+          child: SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Row(children: [
+                    Tooltip(
+                      message: 'Back to worlds',
+                      child: GameRoundIconButton(
+                        key: const ValueKey('map_back'),
+                        icon: Icons.arrow_back_rounded,
+                        onPressed: () => Navigator.of(context).maybePop(),
                       ),
                     ),
-                    const SizedBox(width: GameSpacing.md),
                     Expanded(
-                      child: GameButton(
-                        label: 'Shop',
-                        icon: Icons.storefront_rounded,
-                        onPressed: () => Navigator.pushNamed(
-                          context,
-                          BoosterShopScreen.route,
-                        ),
-                        variant: GameButtonVariant.primary,
+                      child: Text('Map',
+                          textAlign: TextAlign.center,
+                          style: GameTextStyles.title.copyWith(fontSize: 20)),
+                    ),
+                    Tooltip(
+                      message: 'Find latest level in this world',
+                      child: GameRoundIconButton(
+                        key: const ValueKey('find_current_level'),
+                        icon: Icons.my_location_rounded,
+                        onPressed: () => _findCurrent(),
                       ),
                     ),
-                  ],
+                  ]),
                 ),
-              ),
-              Expanded(
-                child: FutureBuilder<_MapProgress>(
-                  future: _progressFuture,
-                  builder: (context, snapshot) {
-                    final progress = snapshot.data ?? const _MapProgress();
-                    final highest = progress.highestUnlockedLevel;
-                    return LayoutBuilder(builder: (context, constraints) {
-                      final textScale =
-                          MediaQuery.textScalerOf(context).scale(16) / 16;
-                      return GridView.builder(
-                        padding: const EdgeInsets.all(GameSpacing.lg),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount:
-                              constraints.maxWidth < 360 || textScale > 1.3
-                                  ? 1
-                                  : 2,
-                          mainAxisExtent:
-                              272 + 80 * (textScale - 1).clamp(0, 2).toDouble(),
-                          mainAxisSpacing: GameSpacing.lg,
-                          crossAxisSpacing: GameSpacing.lg,
-                        ),
-                        itemCount: 10,
-                        itemBuilder: (context, index) {
-                          final level = widget.world.startLevel + index;
-                          final unlocked = level <= highest;
-                          return _LevelCard(
-                            theme: widget.world.visualTheme,
-                            level: level,
-                            unlocked: unlocked,
-                            stars: progress.starsByLevel[level] ?? 0,
-                            bossInfo: _BossMapInfo.forLevel(level),
-                            status: level < highest
-                                ? 'Cleared'
-                                : unlocked
-                                    ? 'Ready'
-                                    : 'Locked',
-                            onTap: unlocked
-                                ? () => _openLevelPreview(level)
-                                : null,
-                          );
-                        },
+                Expanded(
+                  child: FutureBuilder<AdventureProgress>(
+                    future: _progressFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(
+                            child: TextButton(
+                          onPressed: () => setState(() {
+                            _progressFuture = _loadMapProgress();
+                          }),
+                          child: const Text('Retry loading your journey'),
+                        ));
+                      }
+                      final progress = snapshot.data;
+                      if (progress == null) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      _progress = progress;
+                      if (!_positioned) {
+                        _positioned = true;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _findCurrent(animate: false);
+                        });
+                      }
+                      return CustomScrollView(
+                        key: PageStorageKey(
+                            'adventure_${widget.world.startLevel}'),
+                        controller: _scrollController,
+                        slivers: [
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(widget.world.name,
+                                      textAlign: TextAlign.center,
+                                      style: GameTextStyles.title
+                                          .copyWith(fontSize: 30)),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                      '${widget.world.subtitle} • '
+                                      '${progress.completedIn(widget.world.startLevel, widget.world.endLevel)}/10 cleared',
+                                      textAlign: TextAlign.center,
+                                      style: GameTextStyles.body
+                                          .copyWith(color: Colors.white)),
+                                  const SizedBox(height: 18),
+                                  LayoutBuilder(
+                                      builder: (context, constraints) {
+                                    final stacked =
+                                        constraints.maxWidth < 360 ||
+                                            MediaQuery.textScalerOf(context)
+                                                    .scale(16) >
+                                                21;
+                                    final spin = GameButton(
+                                      label: _dailySpinAvailable
+                                          ? 'Daily Spin'
+                                          : 'Next Spin Tomorrow',
+                                      icon: Icons.casino_rounded,
+                                      wrapLabel: true,
+                                      onPressed: _dailySpinAvailable
+                                          ? () => _openUtility(
+                                              LuckyWheelScreen.route)
+                                          : null,
+                                      variant: GameButtonVariant.gold,
+                                    );
+                                    final shop = GameButton(
+                                      label: 'Shop',
+                                      icon: Icons.storefront_rounded,
+                                      wrapLabel: true,
+                                      onPressed: () =>
+                                          _openUtility(BoosterShopScreen.route),
+                                    );
+                                    return stacked
+                                        ? Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
+                                                spin,
+                                                const SizedBox(height: 10),
+                                                shop
+                                              ])
+                                        : Row(children: [
+                                            Expanded(child: spin),
+                                            const SizedBox(width: 12),
+                                            Expanded(child: shop)
+                                          ]);
+                                  }),
+                                ],
+                              ),
+                            ),
+                          ),
+                          SliverToBoxAdapter(
+                            child: AdventureMapPath(
+                              startLevel: widget.world.startLevel,
+                              theme: widget.world.visualTheme,
+                              progress: progress,
+                              nodeKeys: _nodeKeys,
+                              onLevelTap: _openLevelPreview,
+                            ),
+                          ),
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+                              child: GameButton(
+                                label: 'Explore worlds',
+                                icon: Icons.public_rounded,
+                                wrapLabel: true,
+                                onPressed: () =>
+                                    Navigator.of(context).maybePop(),
+                                variant: GameButtonVariant.secondary,
+                              ),
+                            ),
+                          ),
+                        ],
                       );
-                    });
-                  },
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }
 
-class _MapProgress {
-  const _MapProgress({
-    this.highestUnlockedLevel = 1,
-    this.starsByLevel = const <int, int>{},
-  });
-
-  final int highestUnlockedLevel;
-  final Map<int, int> starsByLevel;
-}
-
-class _WorldMapBanner extends StatelessWidget {
-  const _WorldMapBanner({required this.world});
-
-  final GameWorld world;
-
-  @override
-  Widget build(BuildContext context) {
-    return GameCard(
-      padding: const EdgeInsets.all(GameSpacing.lg),
-      gradient: world.visualTheme.hudGradient,
-      shadow: GameShadows.glow(world.visualTheme.primaryAccent),
-      child: Column(
-        children: [
-          Row(children: [
-            Container(
-              width: 58,
-              height: 58,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 3),
-                boxShadow: GameShadows.light(),
-              ),
-              child: Icon(world.icon, color: Colors.white, size: 34),
-            ),
-            const SizedBox(width: GameSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    world.name,
-                    style: GameTextStyles.h2.copyWith(
-                      color: Colors.white,
-                      fontSize: 24,
-                    ),
-                  ),
-                  const SizedBox(height: GameSpacing.xs),
-                  Text(
-                    'Levels ${world.startLevel}-${world.endLevel}',
-                    style: GameTextStyles.body.copyWith(color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-          ]),
-          const SizedBox(height: 12),
-          GameButton(
-            label: 'Worlds',
-            icon: Icons.public_rounded,
-            onPressed: () => Navigator.of(context).maybePop(),
-            variant: GameButtonVariant.secondary,
-            height: 48,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LevelCard extends StatelessWidget {
-  const _LevelCard({
-    required this.level,
-    required this.unlocked,
-    required this.stars,
-    required this.bossInfo,
-    required this.status,
-    required this.onTap,
-    required this.theme,
-  });
-
-  final int level;
-  final bool unlocked;
-  final int stars;
-  final _BossMapInfo? bossInfo;
-  final String status;
-  final VoidCallback? onTap;
-  final WorldVisualTheme theme;
-
-  @override
-  Widget build(BuildContext context) {
-    final isBoss = bossInfo != null;
-    return AnimatedOpacity(
-      duration: GameDurations.normal,
-      opacity: unlocked ? 1 : 0.78,
-      child: InkWell(
-        borderRadius: GameRadius.extraLargeRadius,
-        onTap: onTap,
-        child: GameCard(
-          padding: EdgeInsets.all(isBoss ? GameSpacing.md : GameSpacing.lg),
-          gradient: !unlocked
-              ? GameGradients.panel
-              : isBoss
-                  ? const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFFFF7D8), Color(0xFFFFDE9C)])
-                  : theme.boardGradient,
-          borderColor: isBoss
-              ? GameColors.accentGold
-              : status == 'Ready'
-                  ? theme.secondaryAccent
-                  : Colors.white,
-          shadow: isBoss
-              ? GameShadows.glow(GameColors.accentGold)
-              : GameShadows.medium(),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (isBoss) ...[
-                      GameBadge(
-                        icon: Icons.workspace_premium_rounded,
-                        gradient: GameGradients.badge,
-                        child: Text('Boss',
-                            style: GameTextStyles.caption.copyWith(
-                                color: const Color(0xFF573510), fontSize: 11)),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: unlocked
-                            ? theme.actionGradient
-                            : GameGradients.disabled,
-                        border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: GameShadows.light(),
-                      ),
-                      child: Icon(
-                        unlocked
-                            ? isBoss
-                                ? bossInfo!.icon
-                                : Icons.star_rounded
-                            : Icons.lock_rounded,
-                        color: unlocked
-                            ? isBoss
-                                ? const Color(0xFFFFE09A)
-                                : Colors.white
-                            : Colors.white70,
-                        size: isBoss ? 44 : 38,
-                      ),
-                    ),
-                    const SizedBox(height: GameSpacing.sm),
-                    Text(
-                      'Level $level',
-                      textAlign: TextAlign.center,
-                      style: GameTextStyles.h2.copyWith(
-                        fontSize: isBoss ? 22 : 23,
-                      ),
-                    ),
-                    if (isBoss) ...[
-                      const SizedBox(height: GameSpacing.xs),
-                      Text(
-                        bossInfo!.title,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GameTextStyles.caption.copyWith(
-                          color: GameColors.accentGoldDark,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: GameSpacing.xs),
-                    _StarRow(stars: stars),
-                    const SizedBox(height: GameSpacing.xs),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: (status == 'Ready'
-                                ? theme.primaryAccent
-                                : GameColors.mutedInk)
-                            .withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Text(status,
-                          style: GameTextStyles.caption
-                              .copyWith(color: GameColors.ink)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LevelPreviewDialog extends StatelessWidget {
+class _LevelPreviewDialog extends StatefulWidget {
   const _LevelPreviewDialog({
     required this.levelFuture,
     required this.world,
@@ -396,19 +293,68 @@ class _LevelPreviewDialog extends StatelessWidget {
   final GameWorld world;
 
   @override
+  State<_LevelPreviewDialog> createState() => _LevelPreviewDialogState();
+}
+
+class _LevelPreviewDialogState extends State<_LevelPreviewDialog> {
+  bool _closing = false;
+
+  void _finish(bool start) {
+    if (_closing) return;
+    _closing = true;
+    Navigator.of(context).pop(start);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<LevelDefinition>(
-      future: levelFuture,
+      future: widget.levelFuture,
       builder: (context, snapshot) {
         final level = snapshot.data;
-        return GameDialogFrame(
-          title: level == null ? 'Level Preview' : 'Level ${level.level}',
-          child: level == null
-              ? const Padding(
-                  padding: EdgeInsets.all(GameSpacing.lg),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              : _LevelPreviewContent(level: level, world: world),
+        return Dialog(
+          key: const ValueKey('level_preview'),
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: GameEntrance(
+              child: GameCard(
+                padding: const EdgeInsets.all(20),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                          level == null
+                              ? 'Level Preview'
+                              : 'Level ${level.level}',
+                          textAlign: TextAlign.center,
+                          style: GameTextStyles.h2),
+                      const SizedBox(height: 16),
+                      if (snapshot.hasError) ...[
+                        const Text(
+                            'This level could not be loaded. Please try again.'),
+                        TextButton(
+                            onPressed: () => _finish(false),
+                            child: const Text('Back')),
+                      ] else if (level == null)
+                        const Padding(
+                          padding: EdgeInsets.all(GameSpacing.lg),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else
+                        _LevelPreviewContent(
+                          level: level,
+                          world: widget.world,
+                          onStart: () => _finish(true),
+                          onBack: () => _finish(false),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         );
       },
     );
@@ -419,10 +365,14 @@ class _LevelPreviewContent extends StatelessWidget {
   const _LevelPreviewContent({
     required this.level,
     required this.world,
+    required this.onStart,
+    required this.onBack,
   });
 
   final LevelDefinition level;
   final GameWorld world;
+  final VoidCallback onStart;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -449,6 +399,9 @@ class _LevelPreviewContent extends StatelessWidget {
         ),
         const SizedBox(height: GameSpacing.lg),
         Text(world.name, textAlign: TextAlign.center, style: GameTextStyles.h2),
+        if (bossInfo != null)
+          Text(bossInfo.title,
+              textAlign: TextAlign.center, style: GameTextStyles.body),
         const SizedBox(height: GameSpacing.sm),
         _PreviewRow(
           icon: Icons.speed_rounded,
@@ -479,16 +432,20 @@ class _LevelPreviewContent extends StatelessWidget {
           ),
         const SizedBox(height: GameSpacing.xl),
         GameButton(
+          key: const ValueKey('preview_start'),
           label: 'Start',
+          wrapLabel: true,
           icon: Icons.play_arrow_rounded,
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: onStart,
           variant: GameButtonVariant.success,
         ),
         const SizedBox(height: GameSpacing.md),
         GameButton(
+          key: const ValueKey('preview_back'),
           label: 'Back',
+          wrapLabel: true,
           icon: Icons.arrow_back_rounded,
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: onBack,
           variant: GameButtonVariant.secondary,
         ),
       ],
@@ -518,14 +475,15 @@ class _PreviewRow extends StatelessWidget {
           children: [
             Icon(icon, color: GameColors.primaryBlue),
             const SizedBox(width: GameSpacing.md),
-            Expanded(child: Text(label, style: GameTextStyles.body)),
-            Flexible(
-              child: Text(
-                value,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-                style: GameTextStyles.button.copyWith(color: GameColors.ink),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: GameTextStyles.body),
+                  Text(value,
+                      style: GameTextStyles.button
+                          .copyWith(color: GameColors.ink)),
+                ],
               ),
             ),
           ],
@@ -619,26 +577,5 @@ class _BossMapInfo {
       default:
         return null;
     }
-  }
-}
-
-class _StarRow extends StatelessWidget {
-  const _StarRow({required this.stars});
-
-  final int stars;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (var index = 1; index <= 3; index++)
-          Icon(
-            index <= stars ? Icons.star_rounded : Icons.star_border_rounded,
-            color: index <= stars ? GameColors.accentGold : GameColors.mutedInk,
-            size: 20,
-          ),
-      ],
-    );
   }
 }
