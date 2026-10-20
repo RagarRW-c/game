@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/level.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
+import '../theme/world_theme.dart';
 import '../widgets/game_ui.dart';
 import 'booster_shop_screen.dart';
 import 'game_screen.dart';
@@ -77,6 +78,7 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               GameHeader(
                 title: widget.world.name,
+                worldTheme: widget.world.visualTheme,
                 onBack: () => Navigator.of(context).maybePop(),
               ),
               Padding(
@@ -131,33 +133,43 @@ class _MapScreenState extends State<MapScreen> {
                   builder: (context, snapshot) {
                     final progress = snapshot.data ?? const _MapProgress();
                     final highest = progress.highestUnlockedLevel;
-                    return GridView.builder(
-                      padding: const EdgeInsets.all(GameSpacing.lg),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: GameSpacing.lg,
-                        crossAxisSpacing: GameSpacing.lg,
-                      ),
-                      itemCount: 10,
-                      itemBuilder: (context, index) {
-                        final level = widget.world.startLevel + index;
-                        final unlocked = level <= highest;
-                        return _LevelCard(
-                          level: level,
-                          unlocked: unlocked,
-                          stars: progress.starsByLevel[level] ?? 0,
-                          bossInfo: _BossMapInfo.forLevel(level),
-                          status: level < highest
-                              ? 'Cleared'
-                              : unlocked
-                                  ? 'Ready'
-                                  : 'Locked',
-                          onTap:
-                              unlocked ? () => _openLevelPreview(level) : null,
-                        );
-                      },
-                    );
+                    return LayoutBuilder(builder: (context, constraints) {
+                      final textScale =
+                          MediaQuery.textScalerOf(context).scale(16) / 16;
+                      return GridView.builder(
+                        padding: const EdgeInsets.all(GameSpacing.lg),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount:
+                              constraints.maxWidth < 360 || textScale > 1.3
+                                  ? 1
+                                  : 2,
+                          mainAxisExtent:
+                              272 + 80 * (textScale - 1).clamp(0, 2).toDouble(),
+                          mainAxisSpacing: GameSpacing.lg,
+                          crossAxisSpacing: GameSpacing.lg,
+                        ),
+                        itemCount: 10,
+                        itemBuilder: (context, index) {
+                          final level = widget.world.startLevel + index;
+                          final unlocked = level <= highest;
+                          return _LevelCard(
+                            theme: widget.world.visualTheme,
+                            level: level,
+                            unlocked: unlocked,
+                            stars: progress.starsByLevel[level] ?? 0,
+                            bossInfo: _BossMapInfo.forLevel(level),
+                            status: level < highest
+                                ? 'Cleared'
+                                : unlocked
+                                    ? 'Ready'
+                                    : 'Locked',
+                            onTap: unlocked
+                                ? () => _openLevelPreview(level)
+                                : null,
+                          );
+                        },
+                      );
+                    });
                   },
                 ),
               ),
@@ -188,50 +200,50 @@ class _WorldMapBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return GameCard(
       padding: const EdgeInsets.all(GameSpacing.lg),
-      gradient: world.gradient,
+      gradient: world.visualTheme.hudGradient,
       shadow: GameShadows.glow(world.visualTheme.primaryAccent),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: Colors.white24,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
-              boxShadow: GameShadows.light(),
+          Row(children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+                boxShadow: GameShadows.light(),
+              ),
+              child: Icon(world.icon, color: Colors.white, size: 34),
             ),
-            child: Icon(world.icon, color: Colors.white, size: 34),
-          ),
-          const SizedBox(width: GameSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  world.name,
-                  style: GameTextStyles.h2.copyWith(
-                    color: Colors.white,
-                    fontSize: 24,
+            const SizedBox(width: GameSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    world.name,
+                    style: GameTextStyles.h2.copyWith(
+                      color: Colors.white,
+                      fontSize: 24,
+                    ),
                   ),
-                ),
-                const SizedBox(height: GameSpacing.xs),
-                Text(
-                  'Levels ${world.startLevel}-${world.endLevel}',
-                  style: GameTextStyles.body.copyWith(color: Colors.white),
-                ),
-              ],
+                  const SizedBox(height: GameSpacing.xs),
+                  Text(
+                    'Levels ${world.startLevel}-${world.endLevel}',
+                    style: GameTextStyles.body.copyWith(color: Colors.white),
+                  ),
+                ],
+              ),
             ),
-          ),
-          SizedBox(
-            width: 112,
-            child: GameButton(
-              label: 'Worlds',
-              icon: Icons.public_rounded,
-              onPressed: () => Navigator.of(context).maybePop(),
-              variant: GameButtonVariant.secondary,
-              height: 46,
-            ),
+          ]),
+          const SizedBox(height: 12),
+          GameButton(
+            label: 'Worlds',
+            icon: Icons.public_rounded,
+            onPressed: () => Navigator.of(context).maybePop(),
+            variant: GameButtonVariant.secondary,
+            height: 48,
           ),
         ],
       ),
@@ -247,6 +259,7 @@ class _LevelCard extends StatelessWidget {
     required this.bossInfo,
     required this.status,
     required this.onTap,
+    required this.theme,
   });
 
   final int level;
@@ -255,57 +268,75 @@ class _LevelCard extends StatelessWidget {
   final _BossMapInfo? bossInfo;
   final String status;
   final VoidCallback? onTap;
+  final WorldVisualTheme theme;
 
   @override
   Widget build(BuildContext context) {
     final isBoss = bossInfo != null;
     return AnimatedOpacity(
       duration: GameDurations.normal,
-      opacity: unlocked ? 1 : 0.58,
+      opacity: unlocked ? 1 : 0.78,
       child: InkWell(
         borderRadius: GameRadius.extraLargeRadius,
         onTap: onTap,
         child: GameCard(
           padding: EdgeInsets.all(isBoss ? GameSpacing.md : GameSpacing.lg),
-          borderColor: isBoss ? GameColors.accentGold : Colors.white,
+          gradient: !unlocked
+              ? GameGradients.panel
+              : isBoss
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFFFFF7D8), Color(0xFFFFDE9C)])
+                  : theme.boardGradient,
+          borderColor: isBoss
+              ? GameColors.accentGold
+              : status == 'Ready'
+                  ? theme.secondaryAccent
+                  : Colors.white,
           shadow: isBoss
               ? GameShadows.glow(GameColors.accentGold)
               : GameShadows.medium(),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              if (isBoss)
-                Positioned(
-                  right: -4,
-                  top: -4,
-                  child: GameBadge(
-                    icon: Icons.workspace_premium_rounded,
-                    gradient: GameGradients.badge,
-                    child: Text(
-                      'Boss',
-                      style: GameTextStyles.caption.copyWith(
-                        color: Colors.white,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ),
               Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      unlocked
-                          ? isBoss
-                              ? bossInfo!.icon
-                              : Icons.star_rounded
-                          : Icons.lock_rounded,
-                      color: unlocked
-                          ? isBoss
-                              ? GameColors.accentGoldDark
-                              : GameColors.accentGold
-                          : GameColors.mutedInk,
-                      size: isBoss ? 54 : 46,
+                    if (isBoss) ...[
+                      GameBadge(
+                        icon: Icons.workspace_premium_rounded,
+                        gradient: GameGradients.badge,
+                        child: Text('Boss',
+                            style: GameTextStyles.caption.copyWith(
+                                color: const Color(0xFF573510), fontSize: 11)),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: unlocked
+                            ? theme.actionGradient
+                            : GameGradients.disabled,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: GameShadows.light(),
+                      ),
+                      child: Icon(
+                        unlocked
+                            ? isBoss
+                                ? bossInfo!.icon
+                                : Icons.star_rounded
+                            : Icons.lock_rounded,
+                        color: unlocked
+                            ? isBoss
+                                ? const Color(0xFFFFE09A)
+                                : Colors.white
+                            : Colors.white70,
+                        size: isBoss ? 44 : 38,
+                      ),
                     ),
                     const SizedBox(height: GameSpacing.sm),
                     Text(
@@ -330,7 +361,20 @@ class _LevelCard extends StatelessWidget {
                     const SizedBox(height: GameSpacing.xs),
                     _StarRow(stars: stars),
                     const SizedBox(height: GameSpacing.xs),
-                    Text(status, style: GameTextStyles.body),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: (status == 'Ready'
+                                ? theme.primaryAccent
+                                : GameColors.mutedInk)
+                            .withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Text(status,
+                          style: GameTextStyles.caption
+                              .copyWith(color: GameColors.ink)),
+                    ),
                   ],
                 ),
               ),

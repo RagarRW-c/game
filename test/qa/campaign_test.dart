@@ -277,7 +277,7 @@ void main() {
     final boss = source
         .split('class _BossLevelInfo {')
         .last
-        .split('class _BossCompleteDialog')
+        .split('class _GameOverDialog')
         .first;
     final ids = RegExp(r'case (\d+):')
         .allMatches(boss)

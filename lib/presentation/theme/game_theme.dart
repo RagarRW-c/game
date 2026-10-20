@@ -111,10 +111,10 @@ class GameGradients {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [
-      Color(0xFF1129A8),
-      Color(0xFF3356D8),
-      Color(0xFF6E6CE8),
-      Color(0xFFFFB66E),
+      Color(0xFF122447),
+      Color(0xFF274A80),
+      Color(0xFF6D72AC),
+      Color(0xFFE7BBA2),
     ],
     stops: [0, 0.42, 0.76, 1],
   );
@@ -150,13 +150,15 @@ class GameGradients {
   );
 
   static const darkBadge = LinearGradient(
-    colors: [Color(0xFF101D63), Color(0xFF223481)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF29436A), Color(0xFF132843)],
   );
 
   static const panel = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [Colors.white, GameColors.panelBlue],
+    colors: [Color(0xFFFFFEF8), Color(0xFFF4EDE3)],
   );
 
   static const tray = LinearGradient(
@@ -194,9 +196,13 @@ class GameTextStyles {
   static const h1 = TextStyle(
     color: Colors.white,
     fontSize: 40,
-    height: 0.95,
+    height: 1.04,
+    letterSpacing: -1.2,
     fontWeight: FontWeight.w900,
-    shadows: [Shadow(color: Color(0x66061145), blurRadius: 10)],
+    shadows: [
+      Shadow(color: Color(0x66312957), offset: Offset(0, 4)),
+      Shadow(color: Color(0x44312957), blurRadius: 14, offset: Offset(0, 6)),
+    ],
   );
 
   static const h2 = TextStyle(

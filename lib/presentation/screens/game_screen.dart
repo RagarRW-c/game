@@ -17,6 +17,7 @@ import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
 import '../widgets/achievement_popup.dart';
 import '../widgets/game_tile.dart';
+import '../widgets/game_surfaces.dart';
 import '../widgets/game_ui.dart';
 import 'final_code_screen.dart';
 import 'settings_screen.dart';
@@ -575,12 +576,17 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
       hintUsed: hintUsed,
       shuffleUsed: shuffleUsed,
     );
+    // Read the actual awarded XP for presentation; reward policy stays in the
+    // repository and the existing boss grant below.
+    final xpBefore = (await scope.progressRepository.playerProfile()).totalXp;
     await scope.progressRepository.unlockNextLevel(widget.level);
     await scope.progressRepository
         .recordLevelCompleted(widget.level, starsEarned);
     if (bossInfo != null) {
       await scope.progressRepository.addXp(_bossXpReward);
     }
+    final xpEarned =
+        (await scope.progressRepository.playerProfile()).totalXp - xpBefore;
     final coinsEarned =
         _levelCompleteCoinReward + (bossInfo == null ? 0 : _bossCoinReward);
     final updatedCoins = await scope.progressRepository.addCoins(coinsEarned);
@@ -612,42 +618,6 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
 
     if (bossInfo != null) {
       _playSfx(scope.audioService.playWorldUnlocked, 'world_unlock');
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => _BossCompleteDialog(
-          bossInfo: bossInfo,
-          coinsEarned: _bossCoinReward,
-          xpEarned: _bossXpReward,
-          chestLabel: chestGrant.slotsFull
-              ? 'Chest slots full'
-              : chestGrant.chest?.title ?? 'Gold Chest',
-          onContinue: () => _navigator.pop(),
-        ),
-      );
-      if (!mounted) return;
-      if (widget.level == LevelRepository.levelCount) {
-        _winDialogShowing = false;
-        await _navigator.pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => const FinalCodeScreen(),
-          ),
-        );
-        return;
-      }
-      _winDialogShowing = false;
-      if (_navigator.canPop()) _navigator.pop();
-      return;
-    }
-
-    if (widget.level == LevelRepository.levelCount) {
-      _winDialogShowing = false;
-      await _navigator.pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => const FinalCodeScreen(),
-        ),
-      );
-      return;
     }
     await showDialog<void>(
       context: context,
@@ -661,6 +631,14 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         shuffleUsed: shuffleUsed,
         starsEarned: starsEarned,
         coinsEarned: coinsEarned,
+        xpEarned: xpEarned,
+        chestLabel:
+            chestGrant.slotsFull ? 'Chest slots full' : chestGrant.chest?.title,
+        isBossLevel: bossInfo != null,
+        bossTitle: bossInfo?.bossTitle,
+        emblemIcon: bossInfo?.icon,
+        milestoneTitle: bossInfo?.completeTitle,
+        milestoneMessage: bossInfo?.subtitle,
         onRestart: () {
           if (!mounted) return;
           _navigator.pop();
@@ -679,6 +657,12 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
           if (!mounted) return;
           _navigator.pop();
           if (!mounted) return;
+          if (widget.level == LevelRepository.levelCount) {
+            await _navigator.pushReplacement(MaterialPageRoute<void>(
+              builder: (_) => const FinalCodeScreen(),
+            ));
+            return;
+          }
           await _navigator.pushReplacementNamed(
             GameScreen.route,
             arguments: widget.level + 1,
@@ -832,6 +816,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                       children: [
                         GameHeader(
                           title: _gameHeaderTitle(level),
+                          worldTheme: worldTheme,
                           onBack: () => Navigator.of(context).maybePop(),
                           trailing: GameRoundIconButton(
                             icon: Icons.pause_rounded,
@@ -855,7 +840,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                             children: [
                               GameBadge(
                                 icon: Icons.monetization_on_rounded,
-                                gradient: GameGradients.badge,
+                                gradient: worldTheme.hudGradient,
                                 child: Text(
                                   '$_coins',
                                   style: const TextStyle(
@@ -867,6 +852,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                               ),
                               GameBadge(
                                 icon: Icons.track_changes_rounded,
+                                gradient: worldTheme.hudGradient,
                                 child: Text(
                                   '$boardCount left',
                                   style: const TextStyle(
@@ -910,48 +896,13 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                                 width: boardSize.width + 4,
                                 height: boardSize.height + 4,
                                 margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                                decoration: BoxDecoration(
-                                  gradient: worldTheme.boardGradient,
-                                  borderRadius: GameRadius.extraLargeRadius,
-                                  border: Border.all(
-                                    color: worldTheme.secondaryAccent
-                                        .withValues(alpha: 0.72),
-                                    width: 2,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: GameColors.boardShadow
-                                          .withValues(alpha: 0.28),
-                                      blurRadius: 28,
-                                      offset: const Offset(0, 14),
-                                    ),
-                                    BoxShadow(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.18),
-                                      blurRadius: 12,
-                                      offset: const Offset(-3, -3),
-                                    ),
-                                  ],
-                                ),
+                                decoration: boardSurfaceDecoration(worldTheme),
                                 child: Stack(
                                   clipBehavior: Clip.none,
                                   children: [
                                     Positioned.fill(
-                                      child: DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          borderRadius:
-                                              GameRadius.extraLargeRadius,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: GameColors.boardInnerShadow
-                                                  .withValues(alpha: 0.16),
-                                              blurRadius: 28,
-                                              spreadRadius: -14,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                        child: GameBoardBackdrop(
+                                            theme: worldTheme)),
                                     for (final tile in renderedBoardTiles)
                                       Positioned(
                                         key: ValueKey(tile.id),
@@ -1186,136 +1137,6 @@ class _BossLevelInfo {
       default:
         return null;
     }
-  }
-}
-
-class _BossCompleteDialog extends StatelessWidget {
-  const _BossCompleteDialog({
-    required this.bossInfo,
-    required this.coinsEarned,
-    required this.xpEarned,
-    required this.chestLabel,
-    required this.onContinue,
-  });
-
-  final _BossLevelInfo bossInfo;
-  final int coinsEarned;
-  final int xpEarned;
-  final String chestLabel;
-  final VoidCallback onContinue;
-
-  @override
-  Widget build(BuildContext context) {
-    return GameDialogFrame(
-      title: bossInfo.completeTitle,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              gradient: GameGradients.badge,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 4),
-              boxShadow: GameShadows.glow(GameColors.accentGold),
-            ),
-            child: Icon(
-              bossInfo.icon,
-              color: Colors.white,
-              size: 54,
-            ),
-          ),
-          const SizedBox(height: GameSpacing.md),
-          Text(
-            bossInfo.bossTitle,
-            textAlign: TextAlign.center,
-            style: GameTextStyles.h2.copyWith(fontSize: 28),
-          ),
-          const SizedBox(height: GameSpacing.xs),
-          Text(
-            bossInfo.subtitle,
-            textAlign: TextAlign.center,
-            style: GameTextStyles.body,
-          ),
-          const SizedBox(height: GameSpacing.lg),
-          GameCard(
-            padding: const EdgeInsets.all(GameSpacing.md),
-            shadow: GameShadows.light(),
-            borderColor: GameColors.borderBlue,
-            child: Column(
-              children: [
-                _BossRewardRow(
-                  icon: Icons.monetization_on_rounded,
-                  label: 'Boss coins',
-                  value: '+$coinsEarned',
-                ),
-                const SizedBox(height: GameSpacing.sm),
-                _BossRewardRow(
-                  icon: Icons.bolt_rounded,
-                  label: 'Boss XP',
-                  value: '+$xpEarned',
-                ),
-                const SizedBox(height: GameSpacing.sm),
-                _BossRewardRow(
-                  icon: Icons.inventory_2_rounded,
-                  label: 'Chest',
-                  value: chestLabel,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: GameSpacing.xl),
-          GameButton(
-            label: bossInfo.level == LevelRepository.levelCount
-                ? 'Final Reward'
-                : 'Back to Map',
-            icon: bossInfo.level == LevelRepository.levelCount
-                ? Icons.pin_rounded
-                : Icons.map_rounded,
-            onPressed: onContinue,
-            variant: GameButtonVariant.success,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BossRewardRow extends StatelessWidget {
-  const _BossRewardRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            gradient: GameGradients.badge,
-            borderRadius: GameRadius.mediumRadius,
-            boxShadow: GameShadows.light(GameColors.accentGold),
-          ),
-          child: Icon(icon, color: Colors.white, size: 22),
-        ),
-        const SizedBox(width: GameSpacing.md),
-        Expanded(child: Text(label, style: GameTextStyles.body)),
-        Text(
-          value,
-          textAlign: TextAlign.right,
-          style: GameTextStyles.button.copyWith(color: GameColors.ink),
-        ),
-      ],
-    );
   }
 }
 
@@ -1595,7 +1416,7 @@ class _BoosterBar extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: _BoosterButton(
+            child: GameBoosterButton(
               onPressed: onUndo,
               icon: const Icon(Icons.arrow_back_rounded),
               label: 'Undo',
@@ -1605,7 +1426,7 @@ class _BoosterBar extends StatelessWidget {
           ),
           const SizedBox(width: GameSpacing.sm),
           Expanded(
-            child: _BoosterButton(
+            child: GameBoosterButton(
               onPressed: onHint,
               icon: const Icon(Icons.pets_rounded),
               label: 'Hint',
@@ -1615,7 +1436,7 @@ class _BoosterBar extends StatelessWidget {
           ),
           const SizedBox(width: GameSpacing.sm),
           Expanded(
-            child: _BoosterButton(
+            child: GameBoosterButton(
               onPressed: onShuffle,
               icon: const Icon(Icons.air_rounded),
               label: 'Shuffle',
@@ -1624,90 +1445,6 @@ class _BoosterBar extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _BoosterButton extends StatelessWidget {
-  const _BoosterButton({
-    required this.onPressed,
-    required this.icon,
-    required this.label,
-    required this.badge,
-    this.accent = GameColors.accentGold,
-  });
-
-  final VoidCallback? onPressed;
-  final Widget icon;
-  final String label;
-  final String badge;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    return AnimatedOpacity(
-      duration: GameDurations.quick,
-      opacity: enabled ? 1 : 0.46,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: enabled ? onPressed : null,
-          borderRadius: GameRadius.largeRadius,
-          child: Ink(
-            height: 64,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: enabled
-                    ? [accent, Color.lerp(accent, Colors.black, 0.18)!]
-                    : const [GameColors.disabledTop, GameColors.disabledBottom],
-              ),
-              borderRadius: GameRadius.largeRadius,
-              border: Border.all(color: Colors.white70, width: 2),
-              boxShadow: GameShadows.medium(),
-            ),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Center(
-                  child: IconTheme(
-                    data: const IconThemeData(color: Colors.white, size: 28),
-                    child: icon,
-                  ),
-                ),
-                Positioned(
-                  left: GameSpacing.sm,
-                  right: GameSpacing.sm,
-                  bottom: -7,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: GameSpacing.xs),
-                    decoration: BoxDecoration(
-                      color: GameColors.primaryBlueDark,
-                      borderRadius: GameRadius.smallRadius,
-                      border: Border.all(color: Colors.white54),
-                      boxShadow: GameShadows.light(),
-                    ),
-                    child: Text(
-                      '$label $badge',
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1770,22 +1507,7 @@ class _Tray extends StatelessWidget {
         GameSpacing.lg,
       ),
       padding: const EdgeInsets.all(GameSpacing.md),
-      decoration: BoxDecoration(
-        gradient: worldTheme.trayGradient,
-        borderRadius: GameRadius.extraLargeRadius,
-        border: Border.all(
-          color: worldTheme.secondaryAccent.withValues(alpha: 0.78),
-          width: 3,
-        ),
-        boxShadow: [
-          ...GameShadows.medium(),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.22),
-            blurRadius: 8,
-            offset: const Offset(-2, -2),
-          ),
-        ],
-      ),
+      decoration: traySurfaceDecoration(worldTheme),
       child: Row(children: slotWidgets),
     );
   }

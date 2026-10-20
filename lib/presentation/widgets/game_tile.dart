@@ -53,7 +53,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
         ? 10.0 + (topLift * 9.0)
         : widget.blocked
             ? 3.0
-            : 5.0 + topLift * 2.0;
+            : 6.0 + topLift * 2.0;
     final yOffset = widget.trayTile
         ? 6.0 + (topLift * 4.0)
         : widget.blocked
@@ -68,7 +68,9 @@ class _GameTileWidgetState extends State<GameTileWidget> {
       onTapCancel: () => _setPressed(false),
       onTapUp: (_) => _setPressed(false),
       child: AnimatedOpacity(
-        duration: GameDurations.quick,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : GameDurations.quick,
         curve: Curves.easeInOut,
         opacity: widget.blocked
             ? 0.86
@@ -80,7 +82,9 @@ class _GameTileWidgetState extends State<GameTileWidget> {
             begin: 1,
             end: _pressed ? 0.93 : 1,
           ),
-          duration: GameDurations.quick,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : GameDurations.quick,
           curve: Curves.easeOutBack,
           builder: (context, scale, child) {
             return Transform.scale(scale: scale, child: child);
@@ -88,7 +92,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
           child: Container(
             foregroundDecoration: BoxDecoration(
               color: widget.blocked
-                  ? GameColors.tileBlockedOverlay.withValues(alpha: 0.14)
+                  ? GameColors.tileBlockedOverlay.withValues(alpha: 0.20)
                   : null,
               borderRadius: radius,
               gradient: widget.blocked
@@ -100,19 +104,28 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                         Colors.white.withValues(
                           alpha: widget.trayTile
                               ? 0.42 + (topLift * 0.10)
-                              : 0.22 + (topLift * 0.06),
+                              : 0.12 + (topLift * 0.04),
                         ),
-                        Colors.white.withValues(alpha: 0.06),
+                        Colors.white.withValues(alpha: 0.02),
                         Colors.black.withValues(alpha: 0.04),
                       ],
                       stops: const [0, 0.55, 1],
                     ),
             ),
             decoration: BoxDecoration(
-              color: Color.lerp(
-                art.color,
-                GameColors.tileBlocked,
-                widget.blocked ? 0.24 : 0,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color.lerp(
+                      art.color,
+                      widget.blocked ? GameColors.tileBlocked : Colors.white,
+                      widget.blocked ? 0.32 : 0.18)!,
+                  Color.lerp(
+                      art.color,
+                      widget.blocked ? GameColors.tileBlocked : art.color,
+                      widget.blocked ? 0.32 : 0)!,
+                ],
               ),
               borderRadius: radius,
               border: Border.all(
@@ -127,7 +140,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                   BoxShadow(
                     color: Color.lerp(art.color, Colors.black, 0.42)!,
                     blurRadius: 0,
-                    offset: Offset(0, widget.blocked ? 2 : 3),
+                    offset: Offset(0, widget.blocked ? 2 : 4),
                   ),
                 BoxShadow(
                   color: widget.highlighted
@@ -154,10 +167,11 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                   left: 10,
                   right: 10,
                   top: 7,
-                  height: widget.trayTile ? 8 : 10,
+                  height: widget.trayTile ? 4 : 5,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.28),
+                      color: Colors.white
+                          .withValues(alpha: widget.blocked ? 0.10 : 0.32),
                       borderRadius: GameRadius.extraLargeRadius,
                     ),
                   ),
@@ -208,7 +222,9 @@ class PoppingGameTile extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       key: ValueKey('pop_${tile.id}'),
       tween: Tween<double>(begin: 0.86, end: 1),
-      duration: GameDurations.normal,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : GameDurations.normal,
       curve: Curves.easeOutBack,
       builder: (context, value, child) {
         return Transform.scale(scale: value, child: child);
@@ -234,14 +250,14 @@ class EmptyTraySlot extends StatelessWidget {
         gradient: GameGradients.traySlot,
         borderRadius: GameRadius.mediumRadius,
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.16),
+          color: Colors.white.withValues(alpha: 0.24),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 3,
+            offset: const Offset(0, -2),
           ),
           BoxShadow(
             color: Colors.white.withValues(alpha: 0.08),

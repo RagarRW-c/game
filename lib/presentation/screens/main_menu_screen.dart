@@ -7,6 +7,7 @@ import '../../data/progress_repository.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/achievement_popup.dart';
+import '../widgets/game_decoration.dart';
 import '../widgets/game_ui.dart';
 import '../widgets/primary_button.dart';
 import 'achievements_screen.dart';
@@ -179,202 +180,211 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(vertical: GameSpacing.lg),
-              child: Padding(
-                padding: const EdgeInsets.all(GameSpacing.xl),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 92,
-                      height: 92,
-                      decoration: BoxDecoration(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Padding(
+                  padding: const EdgeInsets.all(GameSpacing.xl),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const GameEntrance(child: AdventureEmblem()),
+                      const SizedBox(height: GameSpacing.sm),
+                      const Text(
+                        'Triple Tile\nAdventure',
+                        textAlign: TextAlign.center,
+                        style: GameTextStyles.h1,
+                      ),
+                      const SizedBox(height: GameSpacing.sm),
+                      Text('A little match. A grand adventure.',
+                          textAlign: TextAlign.center,
+                          style: GameTextStyles.body
+                              .copyWith(color: Colors.white)),
+                      const SizedBox(height: GameSpacing.md),
+                      GameBadge(
+                        icon: Icons.monetization_on_rounded,
                         gradient: GameGradients.badge,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 4),
-                        boxShadow: GameShadows.glow(GameColors.accentGold),
-                      ),
-                      child: const Icon(
-                        Icons.star_rounded,
-                        color: Colors.white,
-                        size: 58,
-                      ),
-                    ),
-                    const SizedBox(height: GameSpacing.lg),
-                    const Text(
-                      'Triple Tile\nAdventure',
-                      textAlign: TextAlign.center,
-                      style: GameTextStyles.h1,
-                    ),
-                    const SizedBox(height: GameSpacing.md),
-                    GameBadge(
-                      icon: Icons.monetization_on_rounded,
-                      gradient: GameGradients.badge,
-                      child: Text(
-                        '$_coins',
-                        style: GameTextStyles.button.copyWith(
-                          color: Colors.white,
+                        child: Text(
+                          '$_coins',
+                          style: GameTextStyles.button.copyWith(
+                            color: GameColors.ink,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: GameSpacing.xxl),
-                    if (_dailyRewardAvailable) ...[
-                      PrimaryButton(
-                        label: 'Claim Daily Reward',
-                        icon: Icons.card_giftcard_rounded,
-                        onPressed: _claimDailyReward,
+                      const SizedBox(height: GameSpacing.xxl),
+                      GameButton(
+                        label: 'Adventure',
+                        icon: Icons.play_arrow_rounded,
+                        height: 66,
+                        variant: GameButtonVariant.success,
+                        onPressed: () => Navigator.pushNamed(
+                            context, WorldSelectionScreen.route),
                       ),
                       const SizedBox(height: GameSpacing.md),
-                    ],
-                    PrimaryButton(
-                      label: _dailySpinAvailable
-                          ? 'Daily Spin'
-                          : 'Next Spin Tomorrow',
-                      icon: Icons.casino_rounded,
-                      onPressed: _dailySpinAvailable
-                          ? () async {
-                              await Navigator.pushNamed(
-                                context,
-                                LuckyWheelScreen.route,
-                              );
-                              if (mounted) await _loadRewards();
-                            }
-                          : null,
-                    ),
-                    const SizedBox(height: GameSpacing.md),
-                    PrimaryButton(
-                      label: 'Adventure',
-                      icon: Icons.map_rounded,
-                      onPressed: () => Navigator.pushNamed(
-                          context, WorldSelectionScreen.route),
-                    ),
-                    const SizedBox(height: GameSpacing.md),
-                    PrimaryButton(
-                      label: 'Endless Mode',
-                      icon: Icons.all_inclusive_rounded,
-                      onPressed: () async {
-                        await Navigator.pushNamed(context, EndlessScreen.route);
-                        if (mounted) await _loadRewards();
-                      },
-                    ),
-                    const SizedBox(height: GameSpacing.md),
-                    if (_finalRewardUnlocked) ...[
+                      GameButton(
+                        label: 'Endless Mode',
+                        icon: Icons.all_inclusive_rounded,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFFAC8CEC), Color(0xFF7352B8)],
+                        ),
+                        onPressed: () async {
+                          await Navigator.pushNamed(
+                              context, EndlessScreen.route);
+                          if (mounted) await _loadRewards();
+                        },
+                      ),
+                      const SizedBox(height: GameSpacing.xl),
+                      const _MenuSectionTitle('A little something every day'),
+                      const SizedBox(height: GameSpacing.md),
+                      if (_dailyRewardAvailable) ...[
+                        PrimaryButton(
+                          label: 'Claim Daily Reward',
+                          icon: Icons.card_giftcard_rounded,
+                          onPressed: _claimDailyReward,
+                        ),
+                        const SizedBox(height: GameSpacing.md),
+                      ],
                       PrimaryButton(
-                        label: 'Final Reward',
-                        icon: Icons.emoji_events_rounded,
+                        label: _dailySpinAvailable
+                            ? 'Daily Spin'
+                            : 'Next Spin Tomorrow',
+                        icon: Icons.casino_rounded,
+                        onPressed: _dailySpinAvailable
+                            ? () async {
+                                await Navigator.pushNamed(
+                                  context,
+                                  LuckyWheelScreen.route,
+                                );
+                                if (mounted) await _loadRewards();
+                              }
+                            : null,
+                      ),
+                      const SizedBox(height: GameSpacing.md),
+                      if (_finalRewardUnlocked) ...[
+                        PrimaryButton(
+                          label: 'Final Reward',
+                          icon: Icons.emoji_events_rounded,
+                          onPressed: () => Navigator.pushNamed(
+                            context,
+                            FinalCodeScreen.route,
+                          ),
+                        ),
+                        const SizedBox(height: GameSpacing.md),
+                      ],
+                      const SizedBox(height: GameSpacing.sm),
+                      const _MenuSectionTitle('Your adventure kit'),
+                      const SizedBox(height: GameSpacing.md),
+                      GameButton(
+                        label: 'Booster Shop',
+                        variant: GameButtonVariant.gold,
+                        icon: Icons.storefront_rounded,
+                        onPressed: () async {
+                          await Navigator.pushNamed(
+                            context,
+                            BoosterShopScreen.route,
+                          );
+                          if (mounted) await _loadRewards();
+                        },
+                      ),
+                      const SizedBox(height: GameSpacing.md),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GameButton(
+                              label: 'Profile',
+                              icon: Icons.person_rounded,
+                              onPressed: () => Navigator.pushNamed(
+                                context,
+                                PlayerProfileScreen.route,
+                              ),
+                              variant: GameButtonVariant.primary,
+                            ),
+                          ),
+                          const SizedBox(width: GameSpacing.md),
+                          Expanded(
+                            child: GameButton(
+                              label: 'Chests',
+                              icon: Icons.inventory_2_rounded,
+                              onPressed: () => Navigator.pushNamed(
+                                context,
+                                TreasureChestsScreen.route,
+                              ),
+                              variant: GameButtonVariant.gold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: GameSpacing.md),
+                      PrimaryButton(
+                        label: 'Daily Challenges',
+                        icon: Icons.task_alt_rounded,
+                        onPressed: () async {
+                          await Navigator.pushNamed(
+                            context,
+                            DailyChallengesScreen.route,
+                          );
+                          if (mounted) await _loadRewards();
+                        },
+                      ),
+                      const SizedBox(height: GameSpacing.md),
+                      PrimaryButton(
+                        label: 'Collection Book',
+                        icon: Icons.collections_bookmark_rounded,
                         onPressed: () => Navigator.pushNamed(
                           context,
-                          FinalCodeScreen.route,
+                          CollectionBookScreen.route,
                         ),
                       ),
                       const SizedBox(height: GameSpacing.md),
-                    ],
-                    PrimaryButton(
-                      label: 'Booster Shop',
-                      icon: Icons.storefront_rounded,
-                      onPressed: () async {
-                        await Navigator.pushNamed(
-                          context,
-                          BoosterShopScreen.route,
-                        );
-                        if (mounted) await _loadRewards();
-                      },
-                    ),
-                    const SizedBox(height: GameSpacing.md),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GameButton(
-                            label: 'Profile',
-                            icon: Icons.person_rounded,
-                            onPressed: () => Navigator.pushNamed(
-                              context,
-                              PlayerProfileScreen.route,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GameButton(
+                              label: 'Achievements',
+                              icon: Icons.emoji_events_rounded,
+                              onPressed: () async {
+                                await Navigator.pushNamed(
+                                  context,
+                                  AchievementsScreen.route,
+                                );
+                                if (mounted) await _loadRewards();
+                              },
+                              variant: GameButtonVariant.gold,
                             ),
-                            variant: GameButtonVariant.primary,
                           ),
-                        ),
-                        const SizedBox(width: GameSpacing.md),
-                        Expanded(
-                          child: GameButton(
-                            label: 'Chests',
-                            icon: Icons.inventory_2_rounded,
-                            onPressed: () => Navigator.pushNamed(
-                              context,
-                              TreasureChestsScreen.route,
-                            ),
-                            variant: GameButtonVariant.gold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: GameSpacing.md),
-                    PrimaryButton(
-                      label: 'Daily Challenges',
-                      icon: Icons.task_alt_rounded,
-                      onPressed: () async {
-                        await Navigator.pushNamed(
-                          context,
-                          DailyChallengesScreen.route,
-                        );
-                        if (mounted) await _loadRewards();
-                      },
-                    ),
-                    const SizedBox(height: GameSpacing.md),
-                    PrimaryButton(
-                      label: 'Collection Book',
-                      icon: Icons.collections_bookmark_rounded,
-                      onPressed: () => Navigator.pushNamed(
-                        context,
-                        CollectionBookScreen.route,
-                      ),
-                    ),
-                    const SizedBox(height: GameSpacing.md),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GameButton(
-                            label: 'Achievements',
-                            icon: Icons.emoji_events_rounded,
-                            onPressed: () async {
-                              await Navigator.pushNamed(
+                          const SizedBox(width: GameSpacing.md),
+                          Expanded(
+                            child: GameButton(
+                              label: 'Statistics',
+                              icon: Icons.bar_chart_rounded,
+                              onPressed: () => Navigator.pushNamed(
                                 context,
-                                AchievementsScreen.route,
-                              );
-                              if (mounted) await _loadRewards();
-                            },
-                            variant: GameButtonVariant.gold,
-                          ),
-                        ),
-                        const SizedBox(width: GameSpacing.md),
-                        Expanded(
-                          child: GameButton(
-                            label: 'Statistics',
-                            icon: Icons.bar_chart_rounded,
-                            onPressed: () => Navigator.pushNamed(
-                              context,
-                              StatisticsScreen.route,
+                                StatisticsScreen.route,
+                              ),
+                              variant: GameButtonVariant.secondary,
                             ),
-                            variant: GameButtonVariant.secondary,
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: GameSpacing.md),
+                      GameButton(
+                        label: 'Settings',
+                        variant: GameButtonVariant.secondary,
+                        icon: Icons.settings_rounded,
+                        onPressed: () =>
+                            _openProgressScreen(SettingsScreen.route),
+                      ),
+                      if (AppFlavorConfig.qaToolsEnabled) ...[
+                        const SizedBox(height: GameSpacing.md),
+                        PrimaryButton(
+                          label: 'DEV QA Tools',
+                          icon: Icons.science_rounded,
+                          onPressed: () => _openProgressScreen(QaScreen.route),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: GameSpacing.md),
-                    PrimaryButton(
-                      label: 'Settings',
-                      icon: Icons.settings_rounded,
-                      onPressed: () =>
-                          _openProgressScreen(SettingsScreen.route),
-                    ),
-                    if (AppFlavorConfig.qaToolsEnabled) ...[
-                      const SizedBox(height: GameSpacing.md),
-                      PrimaryButton(
-                        label: 'DEV QA Tools',
-                        icon: Icons.science_rounded,
-                        onPressed: () => _openProgressScreen(QaScreen.route),
-                      ),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -383,6 +393,25 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
       ),
     );
   }
+}
+
+class _MenuSectionTitle extends StatelessWidget {
+  const _MenuSectionTitle(this.title);
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        const Expanded(child: Divider(color: Colors.white30)),
+        const SizedBox(width: 10),
+        Flexible(
+            flex: 4,
+            child: Text(title,
+                textAlign: TextAlign.center,
+                style: GameTextStyles.caption
+                    .copyWith(color: Colors.white, letterSpacing: 0.4))),
+        const SizedBox(width: 10),
+        const Expanded(child: Divider(color: Colors.white30)),
+      ]);
 }
 
 class _DailyLoginStreakDialog extends StatelessWidget {

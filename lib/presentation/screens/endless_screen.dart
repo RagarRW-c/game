@@ -15,6 +15,7 @@ import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
 import '../widgets/game_tile.dart';
+import '../widgets/game_surfaces.dart';
 import '../widgets/game_ui.dart';
 import 'main_menu_screen.dart';
 
@@ -524,6 +525,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
                 children: [
                   GameHeader(
                     title: 'Endless Mode',
+                    worldTheme: worldTheme,
                     onBack: () => Navigator.of(context).maybePop(),
                   ),
                   _ScorePanel(
@@ -544,19 +546,12 @@ class _EndlessScreenState extends State<EndlessScreen> {
                           width: boardSize.width + 4,
                           height: boardSize.height + 4,
                           margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                          decoration: BoxDecoration(
-                            gradient: worldTheme.boardGradient,
-                            borderRadius: GameRadius.extraLargeRadius,
-                            border: Border.all(
-                              color: worldTheme.secondaryAccent
-                                  .withValues(alpha: 0.72),
-                              width: 2,
-                            ),
-                            boxShadow: GameShadows.medium(),
-                          ),
+                          decoration: boardSurfaceDecoration(worldTheme),
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
+                              Positioned.fill(
+                                  child: GameBoardBackdrop(theme: worldTheme)),
                               for (final tile in renderedBoardTiles)
                                 Positioned(
                                   key: ValueKey(tile.id),
@@ -816,7 +811,7 @@ class _EndlessBoosterBar extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: _EndlessBoosterButton(
+            child: GameBoosterButton(
               onPressed: onUndo,
               icon: const Icon(Icons.arrow_back_rounded),
               label: 'Undo',
@@ -826,7 +821,7 @@ class _EndlessBoosterBar extends StatelessWidget {
           ),
           const SizedBox(width: GameSpacing.sm),
           Expanded(
-            child: _EndlessBoosterButton(
+            child: GameBoosterButton(
               onPressed: onHint,
               icon: const Icon(Icons.pets_rounded),
               label: 'Hint',
@@ -836,7 +831,7 @@ class _EndlessBoosterBar extends StatelessWidget {
           ),
           const SizedBox(width: GameSpacing.sm),
           Expanded(
-            child: _EndlessBoosterButton(
+            child: GameBoosterButton(
               onPressed: onShuffle,
               icon: const Icon(Icons.air_rounded),
               label: 'Shuffle',
@@ -845,90 +840,6 @@ class _EndlessBoosterBar extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _EndlessBoosterButton extends StatelessWidget {
-  const _EndlessBoosterButton({
-    required this.onPressed,
-    required this.icon,
-    required this.label,
-    required this.badge,
-    this.accent = GameColors.accentGold,
-  });
-
-  final VoidCallback? onPressed;
-  final Widget icon;
-  final String label;
-  final String badge;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    return AnimatedOpacity(
-      duration: GameDurations.quick,
-      opacity: enabled ? 1 : 0.46,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: enabled ? onPressed : null,
-          borderRadius: GameRadius.largeRadius,
-          child: Ink(
-            height: 64,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: enabled
-                    ? [accent, Color.lerp(accent, Colors.black, 0.18)!]
-                    : const [GameColors.disabledTop, GameColors.disabledBottom],
-              ),
-              borderRadius: GameRadius.largeRadius,
-              border: Border.all(color: Colors.white70, width: 2),
-              boxShadow: GameShadows.medium(),
-            ),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Center(
-                  child: IconTheme(
-                    data: const IconThemeData(color: Colors.white, size: 28),
-                    child: icon,
-                  ),
-                ),
-                Positioned(
-                  left: GameSpacing.sm,
-                  right: GameSpacing.sm,
-                  bottom: -7,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: GameSpacing.xs),
-                    decoration: BoxDecoration(
-                      color: GameColors.primaryBlueDark,
-                      borderRadius: GameRadius.smallRadius,
-                      border: Border.all(color: Colors.white54),
-                      boxShadow: GameShadows.light(),
-                    ),
-                    child: Text(
-                      '$label $badge',
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -956,15 +867,7 @@ class _EndlessTray extends StatelessWidget {
         GameSpacing.lg,
       ),
       padding: const EdgeInsets.all(GameSpacing.md),
-      decoration: BoxDecoration(
-        gradient: worldTheme.trayGradient,
-        borderRadius: GameRadius.extraLargeRadius,
-        border: Border.all(
-          color: worldTheme.secondaryAccent.withValues(alpha: 0.78),
-          width: 3,
-        ),
-        boxShadow: GameShadows.medium(),
-      ),
+      decoration: traySurfaceDecoration(worldTheme),
       child: Row(
         children: [
           for (var index = 0; index < GameEngine.trayLimit; index++)

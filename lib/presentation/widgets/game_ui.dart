@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
+import 'world_atmosphere.dart';
 
 class GameBackground extends StatelessWidget {
   const GameBackground({super.key, required this.child, this.worldTheme});
@@ -18,74 +19,18 @@ class GameBackground extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Positioned(
-            left: -42,
-            top: 118,
-            width: 180,
-            height: 180,
-            child: GameSoftGlow(
-              color: theme?.primaryAccent ?? GameColors.primaryBlueLight,
-            ),
-          ),
-          Positioned(
-            right: -54,
-            top: 242,
-            width: 210,
-            height: 210,
-            child: GameSoftGlow(
-              color: theme?.secondaryAccent ?? GameColors.secondaryPurple,
-            ),
-          ),
-          Positioned(
-            left: GameSpacing.xxl,
-            right: GameSpacing.xxl,
-            bottom: 96,
-            height: 120,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: GameRadius.extraLargeRadius,
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.white.withValues(alpha: 0.0),
-                    Colors.white.withValues(alpha: 0.14),
-                    Colors.white.withValues(alpha: 0.0),
-                  ],
-                ),
+          Positioned.fill(child: WorldAtmosphere(theme: theme)),
+          if (theme != null)
+            Positioned(
+              right: 8,
+              bottom: 40,
+              child: IgnorePointer(
+                child: ExcludeSemantics(
+                    child: Icon(theme.decorationIcons.first,
+                        color: Colors.white.withValues(alpha: 0.07),
+                        size: 108)),
               ),
             ),
-          ),
-          ...List<Widget>.generate(18, (index) {
-            final left = (index * 47 % 360).toDouble();
-            final top = 28 + (index * 83 % 660).toDouble();
-            final size = 2.5 + (index % 3);
-            final icon = theme == null
-                ? null
-                : theme.decorationIcons[index % theme.decorationIcons.length];
-            return Positioned(
-              left: left,
-              top: top,
-              width: icon == null ? size : 16,
-              height: icon == null ? size : 16,
-              child: icon == null
-                  ? DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.56),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.white.withValues(alpha: 0.35),
-                            blurRadius: 8,
-                          ),
-                        ],
-                      ),
-                    )
-                  : Icon(
-                      icon,
-                      color: Colors.white.withValues(alpha: 0.22),
-                      size: 16,
-                    ),
-            );
-          }),
           child,
         ],
       ),
@@ -141,7 +86,19 @@ class GameCard extends StatelessWidget {
         gradient: gradient,
         borderRadius: GameRadius.extraLargeRadius,
         border: Border.all(color: borderColor, width: 3),
-        boxShadow: shadow ?? GameShadows.heavy(),
+        boxShadow: shadow ??
+            [
+              const BoxShadow(color: Color(0x44352A57), offset: Offset(0, 5)),
+              ...GameShadows.medium(const Color(0xFF28355A)),
+            ],
+      ),
+      foregroundDecoration: BoxDecoration(
+        borderRadius: GameRadius.extraLargeRadius,
+        gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white.withValues(alpha: 0.12), Colors.transparent],
+            stops: const [0, 0.24]),
       ),
       child: child,
     );
@@ -159,6 +116,8 @@ class GameButton extends StatefulWidget {
     this.variant = GameButtonVariant.primary,
     this.height = 58,
     this.expand = true,
+    this.gradient,
+    this.foregroundColor,
   });
 
   final String label;
@@ -167,6 +126,8 @@ class GameButton extends StatefulWidget {
   final GameButtonVariant variant;
   final double height;
   final bool expand;
+  final Gradient? gradient;
+  final Color? foregroundColor;
 
   @override
   State<GameButton> createState() => _GameButtonState();
@@ -181,6 +142,7 @@ class _GameButtonState extends State<GameButton> {
   }
 
   Gradient get _gradient {
+    if (widget.gradient != null) return widget.gradient!;
     switch (widget.variant) {
       case GameButtonVariant.success:
         return GameGradients.successButton;
@@ -199,16 +161,25 @@ class _GameButtonState extends State<GameButton> {
     }
   }
 
-  Color get _foreground => widget.variant == GameButtonVariant.secondary
-      ? GameColors.primaryBlueDark
-      : Colors.white;
+  Color get _foreground =>
+      widget.foregroundColor ??
+      (widget.variant == GameButtonVariant.secondary
+          ? GameColors.primaryBlueDark
+          : widget.variant == GameButtonVariant.gold
+              ? const Color(0xFF573510)
+              : Colors.white);
 
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null;
+    final radius =
+        BorderRadius.circular((widget.height * 0.48).clamp(18, 28).toDouble());
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : GameDurations.quick;
     final content = AnimatedOpacity(
-      duration: GameDurations.quick,
-      opacity: enabled ? 1 : 0.48,
+      duration: duration,
+      opacity: enabled ? 1 : 0.72,
       child: GestureDetector(
         onTap: enabled ? widget.onPressed : null,
         onTapDown: (_) => _setPressed(true),
@@ -216,7 +187,7 @@ class _GameButtonState extends State<GameButton> {
         onTapUp: (_) => _setPressed(false),
         child: TweenAnimationBuilder<double>(
           tween: Tween<double>(begin: 1, end: _pressed ? 0.96 : 1),
-          duration: GameDurations.quick,
+          duration: duration,
           curve: Curves.easeOutBack,
           builder: (context, scale, child) =>
               Transform.scale(scale: scale, child: child),
@@ -224,16 +195,48 @@ class _GameButtonState extends State<GameButton> {
             height: widget.height,
             decoration: BoxDecoration(
               gradient: enabled ? _gradient : GameGradients.disabled,
-              borderRadius: GameRadius.largeRadius,
-              border: Border.all(color: Colors.white70, width: 2),
-              boxShadow: GameShadows.medium(),
+              borderRadius: radius,
+              border: Border.all(
+                  color: Colors.white.withValues(alpha: enabled ? 0.85 : 0.4),
+                  width: 2),
+              boxShadow: [
+                BoxShadow(
+                    color: Color.lerp(
+                        _gradient.colors.last, const Color(0xFF172A50), 0.55)!,
+                    offset: Offset(0, _pressed ? 2 : 5)),
+                BoxShadow(
+                    color:
+                        Colors.black.withValues(alpha: _pressed ? 0.12 : 0.22),
+                    blurRadius: 12,
+                    offset: const Offset(0, 7)),
+              ],
+            ),
+            foregroundDecoration: BoxDecoration(
+              borderRadius: radius,
+              gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.34),
+                    Colors.white.withValues(alpha: 0.08),
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.05)
+                  ],
+                  stops: const [
+                    0,
+                    0.48,
+                    0.5,
+                    1
+                  ]),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
               children: [
                 if (widget.icon != null) ...[
-                  Icon(widget.icon, color: _foreground),
+                  Icon(widget.icon, color: _foreground, shadows: const [
+                    Shadow(color: Colors.black12, offset: Offset(0, 2))
+                  ]),
                   const SizedBox(width: GameSpacing.sm),
                 ],
                 Flexible(
@@ -251,9 +254,10 @@ class _GameButtonState extends State<GameButton> {
       ),
     );
 
-    return widget.expand
+    final button = widget.expand
         ? SizedBox(width: double.infinity, child: content)
         : content;
+    return Semantics(button: true, enabled: enabled, child: button);
   }
 }
 
@@ -278,20 +282,32 @@ class GameBadge extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         gradient: gradient,
-        borderRadius: GameRadius.largeRadius,
-        border: Border.all(color: Colors.white24, width: 1.5),
-        boxShadow: GameShadows.medium(),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, color: GameColors.accentGold, size: 20),
-            const SizedBox(width: GameSpacing.sm),
-          ],
-          child,
+        borderRadius: BorderRadius.circular(28),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.32), width: 1.5),
+        boxShadow: [
+          const BoxShadow(color: Color(0x33202A4B), offset: Offset(0, 3)),
+          ...GameShadows.light(),
         ],
       ),
+      child: LayoutBuilder(
+          builder: (context, constraints) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon != null) ...[
+                    DecoratedBox(
+                      decoration: const BoxDecoration(
+                          shape: BoxShape.circle, color: Color(0x22FFFFFF)),
+                      child: Icon(icon, color: GameColors.accentGold, size: 20),
+                    ),
+                    const SizedBox(width: GameSpacing.sm),
+                  ],
+                  if (constraints.hasBoundedWidth)
+                    Flexible(child: child)
+                  else
+                    child,
+                ],
+              )),
     );
   }
 }
@@ -302,11 +318,13 @@ class GameHeader extends StatelessWidget {
     required this.title,
     required this.onBack,
     this.trailing,
+    this.worldTheme,
   });
 
   final String title;
   final VoidCallback? onBack;
   final Widget? trailing;
+  final WorldVisualTheme? worldTheme;
 
   @override
   Widget build(BuildContext context) {
@@ -322,6 +340,7 @@ class GameHeader extends StatelessWidget {
           GameRoundIconButton(
             icon: Icons.arrow_back_rounded,
             onPressed: onBack,
+            backgroundColor: worldTheme?.hudGradient.colors.first,
           ),
           const SizedBox(width: GameSpacing.md),
           Expanded(
@@ -361,14 +380,14 @@ class GameRoundIconButton extends StatelessWidget {
     return Material(
       color: backgroundColor ?? Colors.white.withValues(alpha: 0.14),
       shape: RoundedRectangleBorder(
-        borderRadius: GameRadius.mediumRadius,
+        borderRadius: BorderRadius.circular(24),
         side: BorderSide(color: Colors.white.withValues(alpha: 0.58), width: 2),
       ),
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.28),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: GameRadius.mediumRadius,
+        borderRadius: BorderRadius.circular(24),
         child: SizedBox(
           width: 48,
           height: 48,

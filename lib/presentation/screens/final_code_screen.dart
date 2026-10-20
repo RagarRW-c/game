@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import '../../data/progress_repository.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
+import '../theme/world_theme.dart';
 import '../widgets/game_ui.dart';
+import '../widgets/game_decoration.dart';
 
 class FinalCodeScreen extends StatefulWidget {
   const FinalCodeScreen({super.key});
@@ -41,6 +43,7 @@ class _FinalCodeScreenState extends State<FinalCodeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: GameBackground(
+        worldTheme: WorldThemes.crystal,
         child: SafeArea(
           child: FutureBuilder<FinalRewardSummary?>(
             future: _summaryFuture,
@@ -80,7 +83,9 @@ class _FinalRewardContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.88, end: 1),
-      duration: GameDurations.normal,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : GameDurations.normal,
       curve: Curves.easeOutBack,
       builder: (context, scale, child) {
         return Opacity(
@@ -94,21 +99,23 @@ class _FinalRewardContent extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 104,
-                height: 104,
-                decoration: BoxDecoration(
-                  gradient: GameGradients.badge,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 4),
-                  boxShadow: GameShadows.glow(GameColors.accentGold),
-                ),
-                child: const Icon(
-                  Icons.emoji_events_rounded,
-                  color: Colors.white,
-                  size: 62,
-                ),
-              ),
+              GameCelebrationHalo(
+                  color: GameColors.accentGold,
+                  child: Container(
+                    width: 104,
+                    height: 104,
+                    decoration: BoxDecoration(
+                      gradient: GameGradients.badge,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
+                      boxShadow: GameShadows.glow(GameColors.accentGold),
+                    ),
+                    child: const Icon(
+                      Icons.emoji_events_rounded,
+                      color: Colors.white,
+                      size: 62,
+                    ),
+                  )),
               const SizedBox(height: GameSpacing.lg),
               const Text(
                 'Congratulations!',
@@ -123,6 +130,7 @@ class _FinalRewardContent extends StatelessWidget {
               ),
               const SizedBox(height: GameSpacing.xl),
               GameCard(
+                borderColor: const Color(0xFFFFDB81),
                 child: Column(
                   children: [
                     const Text('Your reward code', style: GameTextStyles.body),
@@ -132,8 +140,8 @@ class _FinalRewardContent extends StatelessWidget {
                       child: Text(
                         summary.code,
                         style: GameTextStyles.h2.copyWith(
-                          letterSpacing: 10,
-                          color: Colors.white,
+                          letterSpacing: 4,
+                          color: GameColors.ink,
                         ),
                       ),
                     ),

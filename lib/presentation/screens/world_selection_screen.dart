@@ -4,6 +4,8 @@ import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
 import '../widgets/game_ui.dart';
+import '../widgets/game_decoration.dart';
+import '../widgets/world_atmosphere.dart';
 import 'map_screen.dart';
 
 class GameWorld {
@@ -228,67 +230,104 @@ class _WorldCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      duration: GameDurations.normal,
-      opacity: unlocked ? 1 : 0.55,
-      child: InkWell(
-        borderRadius: GameRadius.extraLargeRadius,
-        onTap: onTap,
-        child: GameCard(
-          padding: const EdgeInsets.all(GameSpacing.lg),
-          gradient:
-              unlocked ? world.visualTheme.boardGradient : GameGradients.panel,
-          shadow: GameShadows.medium(),
-          child: Row(
-            children: [
-              Container(
-                width: 68,
-                height: 68,
-                decoration: BoxDecoration(
-                  gradient: unlocked ? world.gradient : GameGradients.disabled,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3),
-                  boxShadow: GameShadows.light(),
+    final theme = world.visualTheme;
+    return GameEntrance(
+      child: Semantics(
+        button: true,
+        enabled: unlocked,
+        child: InkWell(
+          borderRadius: GameRadius.extraLargeRadius,
+          onTap: onTap,
+          child: GameCard(
+            padding: EdgeInsets.zero,
+            gradient: unlocked ? theme.hudGradient : GameGradients.darkBadge,
+            borderColor:
+                unlocked ? theme.secondaryAccent : const Color(0xFF99A6B9),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: Stack(children: [
+                if (unlocked)
+                  Positioned.fill(child: WorldAtmosphere(theme: theme)),
+                Padding(
+                  padding: const EdgeInsets.all(GameSpacing.lg),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              gradient: unlocked
+                                  ? theme.actionGradient
+                                  : GameGradients.disabled,
+                              borderRadius: BorderRadius.circular(24),
+                              border:
+                                  Border.all(color: Colors.white70, width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.2),
+                                    offset: const Offset(0, 4)),
+                                ...GameShadows.light(),
+                              ],
+                            ),
+                            child: Icon(
+                              unlocked ? world.icon : Icons.lock_rounded,
+                              color: Colors.white,
+                              size: 38,
+                            ),
+                          ),
+                          const SizedBox(width: GameSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  world.name,
+                                  style: GameTextStyles.title
+                                      .copyWith(fontSize: 22),
+                                ),
+                                const SizedBox(height: GameSpacing.xs),
+                                Text(world.subtitle,
+                                    style: GameTextStyles.body.copyWith(
+                                        color: Colors.white70, fontSize: 14)),
+                              ],
+                            ),
+                          ),
+                        ]),
+                        const SizedBox(height: 18),
+                        Row(children: [
+                          Expanded(
+                              child: Text(
+                            unlocked
+                                ? 'Adventure progress'
+                                : 'Complete Level ${world.unlockAfterLevel} to unlock',
+                            style: GameTextStyles.caption
+                                .copyWith(color: Colors.white),
+                          )),
+                          const SizedBox(width: 8),
+                          Text('$completed/10',
+                              style: GameTextStyles.button.copyWith(
+                                  color: unlocked
+                                      ? theme.secondaryAccent
+                                      : Colors.white70)),
+                        ]),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            minHeight: 10,
+                            value: completed / 10,
+                            backgroundColor: const Color(0x550A1737),
+                            color: unlocked
+                                ? theme.secondaryAccent
+                                : Colors.white38,
+                          ),
+                        ),
+                      ]),
                 ),
-                child: Icon(
-                  unlocked ? world.icon : Icons.lock_rounded,
-                  color: Colors.white,
-                  size: 38,
-                ),
-              ),
-              const SizedBox(width: GameSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      world.name,
-                      style: GameTextStyles.h2.copyWith(fontSize: 24),
-                    ),
-                    const SizedBox(height: GameSpacing.xs),
-                    Text(world.subtitle, style: GameTextStyles.body),
-                    const SizedBox(height: GameSpacing.sm),
-                    ClipRRect(
-                      borderRadius: GameRadius.smallRadius,
-                      child: LinearProgressIndicator(
-                        minHeight: 8,
-                        value: completed / 10,
-                        backgroundColor: GameColors.borderBlue,
-                        color: world.visualTheme.primaryAccent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: GameSpacing.md),
-              GameBadge(
-                icon: Icons.check_circle_rounded,
-                child: Text(
-                  '$completed/10',
-                  style: GameTextStyles.caption.copyWith(color: Colors.white),
-                ),
-              ),
-            ],
+              ]),
+            ),
           ),
         ),
       ),

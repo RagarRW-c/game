@@ -23,6 +23,29 @@ class WorldVisualTheme {
   final LinearGradient trayGradient;
   final List<Color> boosterAccents;
   final List<IconData> decorationIcons;
+
+  String get worldName {
+    final name = tileTheme.name;
+    return '${name[0].toUpperCase()}${name.substring(1)} World';
+  }
+
+  LinearGradient get hudGradient => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color.lerp(primaryAccent, const Color(0xFF102337), 0.72)!,
+          Color.lerp(primaryAccent, const Color(0xFF102337), 0.90)!,
+        ],
+      );
+
+  LinearGradient get actionGradient => LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color.lerp(primaryAccent, Colors.white, 0.12)!,
+          Color.lerp(primaryAccent, const Color(0xFF102337), 0.40)!,
+        ],
+      );
 }
 
 class WorldThemes {
@@ -33,7 +56,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF1F9D65), Color(0xFF70DFA8), Color(0xFFFFD98A)],
+      colors: [Color(0xFF075C46), Color(0xFF35BA78), Color(0xFFC7ECA0)],
       stops: [0, 0.62, 1],
     ),
     primaryAccent: Color(0xFF43C844),
@@ -41,7 +64,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xCCF3FFE8), Color(0x9966DFA5)],
+      colors: [Color(0xFFF5FFEC), Color(0xFFBBE5BD)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -61,7 +84,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF0B4AA2), Color(0xFF16B7D9), Color(0xFFBFF8FF)],
+      colors: [Color(0xFF073B67), Color(0xFF087FAD), Color(0xFF78D9DD)],
       stops: [0, 0.64, 1],
     ),
     primaryAccent: Color(0xFF1BC7E8),
@@ -69,7 +92,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xCCF0FDFF), Color(0x9952D6F5)],
+      colors: [Color(0xFFF0FDFF), Color(0xFFB1DEEB)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -89,7 +112,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFFFF6FAE), Color(0xFFFFB45C), Color(0xFFFFF0B8)],
+      colors: [Color(0xFF642860), Color(0xFFD55490), Color(0xFFFFC3A0)],
       stops: [0, 0.58, 1],
     ),
     primaryAccent: Color(0xFFFF72B6),
@@ -97,7 +120,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFFFFF7FC), Color(0xBBFFD166)],
+      colors: [Color(0xFFFFF7FC), Color(0xFFF2C8DD)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -117,7 +140,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF090E3F), Color(0xFF392285), Color(0xFF7B61FF)],
+      colors: [Color(0xFF080D2B), Color(0xFF27205D), Color(0xFF62519B)],
       stops: [0, 0.62, 1],
     ),
     primaryAccent: Color(0xFF8F7CFF),
@@ -125,7 +148,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xAAFFFFFF), Color(0x667B61FF)],
+      colors: [Color(0xFFEEECFF), Color(0xFFB9B4DC)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -145,7 +168,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFFB85C38), Color(0xFFE9A852), Color(0xFFFFE0A3)],
+      colors: [Color(0xFF6B342B), Color(0xFFBF7549), Color(0xFFF1D294)],
       stops: [0, 0.6, 1],
     ),
     primaryAccent: Color(0xFFE9A852),
@@ -153,7 +176,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFFFFF0C8), Color(0xCCD08C60)],
+      colors: [Color(0xFFFFF0D6), Color(0xFFE7C299)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -173,7 +196,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF2D7CFF), Color(0xFF90E0EF), Color(0xFFEFFFFF)],
+      colors: [Color(0xFF144C83), Color(0xFF62BAD7), Color(0xFFD4F0F5)],
       stops: [0, 0.62, 1],
     ),
     primaryAccent: Color(0xFF48CAE4),
@@ -181,7 +204,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFFEFFFFF), Color(0xAAA7D8FF)],
+      colors: [Color(0xFFF0FDFF), Color(0xFFC1DDEB)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -201,7 +224,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF124734), Color(0xFF2F9E44), Color(0xFFA7F3D0)],
+      colors: [Color(0xFF082F2B), Color(0xFF1E6C4E), Color(0xFF8BC89B)],
       stops: [0, 0.6, 1],
     ),
     primaryAccent: Color(0xFF52B788),
@@ -209,7 +232,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFFE8FFE8), Color(0xAA52B788)],
+      colors: [Color(0xFFF0FADE), Color(0xFFA7CEAE)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -229,7 +252,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF2B1111), Color(0xFFB42318), Color(0xFFFF9F43)],
+      colors: [Color(0xFF21121E), Color(0xFF7C252D), Color(0xFFEE8D52)],
       stops: [0, 0.58, 1],
     ),
     primaryAccent: Color(0xFFFF5C33),
@@ -237,7 +260,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFFFFE8D6), Color(0xAAF77F00)],
+      colors: [Color(0xFFFFF0E4), Color(0xFFE7BAA2)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -257,7 +280,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF6D5DD3), Color(0xFFFFAFCC), Color(0xFFFFF1F8)],
+      colors: [Color(0xFF373064), Color(0xFF9F79BA), Color(0xFFF0C7D9)],
       stops: [0, 0.6, 1],
     ),
     primaryAccent: Color(0xFFB388FF),
@@ -265,7 +288,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFFFFF7FC), Color(0xAABDE0FE)],
+      colors: [Color(0xFFFFF7FC), Color(0xFFD6CAE8)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -285,7 +308,7 @@ class WorldThemes {
     background: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF173B70), Color(0xFF4ECDC4), Color(0xFFE0FFFF)],
+      colors: [Color(0xFF132A53), Color(0xFF247F91), Color(0xFFB4DFDB)],
       stops: [0, 0.6, 1],
     ),
     primaryAccent: Color(0xFF4ECDC4),
@@ -293,7 +316,7 @@ class WorldThemes {
     boardGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFFEFFFFF), Color(0xAA80FFDB)],
+      colors: [Color(0xFFF0FFFD), Color(0xFFB4DBDB)],
     ),
     trayGradient: LinearGradient(
       begin: Alignment.topCenter,
