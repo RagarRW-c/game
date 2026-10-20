@@ -118,6 +118,8 @@ class GameButton extends StatefulWidget {
     this.expand = true,
     this.gradient,
     this.foregroundColor,
+    this.wrapLabel = false,
+    this.sculpted = false,
   });
 
   final String label;
@@ -128,6 +130,14 @@ class GameButton extends StatefulWidget {
   final bool expand;
   final Gradient? gradient;
   final Color? foregroundColor;
+
+  /// Wrap the scaled label and treat [height] as a minimum instead of fixing
+  /// the height. Opt in where actions must remain fully readable in narrow UI.
+  final bool wrapLabel;
+
+  /// A raised, softly lit finish for prominent game actions. Opt-in so other
+  /// screens retain their existing button presentation.
+  final bool sculpted;
 
   @override
   State<GameButton> createState() => _GameButtonState();
@@ -192,18 +202,31 @@ class _GameButtonState extends State<GameButton> {
           builder: (context, scale, child) =>
               Transform.scale(scale: scale, child: child),
           child: Container(
-            height: widget.height,
+            height: widget.wrapLabel ? null : widget.height,
+            constraints: widget.wrapLabel
+                ? BoxConstraints(minHeight: widget.height)
+                : null,
+            padding: widget.wrapLabel
+                ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+                : null,
             decoration: BoxDecoration(
               gradient: enabled ? _gradient : GameGradients.disabled,
               borderRadius: radius,
               border: Border.all(
-                  color: Colors.white.withValues(alpha: enabled ? 0.85 : 0.4),
+                  color: Colors.white.withValues(
+                      alpha: enabled ? (widget.sculpted ? 0.65 : 0.85) : 0.4),
                   width: 2),
               boxShadow: [
                 BoxShadow(
                     color: Color.lerp(
                         _gradient.colors.last, const Color(0xFF172A50), 0.55)!,
-                    offset: Offset(0, _pressed ? 2 : 5)),
+                    offset: Offset(
+                        0,
+                        _pressed
+                            ? 2
+                            : widget.sculpted
+                                ? 6
+                                : 5)),
                 BoxShadow(
                     color:
                         Colors.black.withValues(alpha: _pressed ? 0.12 : 0.22),
@@ -213,38 +236,68 @@ class _GameButtonState extends State<GameButton> {
             ),
             foregroundDecoration: BoxDecoration(
               borderRadius: radius,
-              gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.34),
-                    Colors.white.withValues(alpha: 0.08),
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.05)
-                  ],
-                  stops: const [
-                    0,
-                    0.48,
-                    0.5,
-                    1
-                  ]),
+              gradient: widget.sculpted
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0x77FFFFFF),
+                        Color(0x08FFFFFF),
+                        Colors.transparent,
+                        Color(0x18002320),
+                      ],
+                      stops: [0, 0.18, 0.65, 1],
+                    )
+                  : LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                          Colors.white.withValues(alpha: 0.34),
+                          Colors.white.withValues(alpha: 0.08),
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.05)
+                        ],
+                      stops: const [
+                          0,
+                          0.48,
+                          0.5,
+                          1
+                        ]),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
               children: [
                 if (widget.icon != null) ...[
-                  Icon(widget.icon, color: _foreground, shadows: const [
-                    Shadow(color: Colors.black12, offset: Offset(0, 2))
-                  ]),
+                  if (widget.sculpted)
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.16),
+                        border: Border.all(color: Colors.white38),
+                      ),
+                      child: Icon(widget.icon, color: _foreground, size: 23),
+                    )
+                  else
+                    Icon(widget.icon, color: _foreground, shadows: const [
+                      Shadow(color: Colors.black12, offset: Offset(0, 2))
+                    ]),
                   const SizedBox(width: GameSpacing.sm),
                 ],
                 Flexible(
                   child: Text(
                     widget.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GameTextStyles.button.copyWith(color: _foreground),
+                    maxLines: widget.wrapLabel ? null : 1,
+                    overflow: widget.wrapLabel
+                        ? TextOverflow.visible
+                        : TextOverflow.ellipsis,
+                    textAlign: widget.wrapLabel ? TextAlign.center : null,
+                    style: GameTextStyles.button.copyWith(
+                      color: _foreground,
+                      fontSize: widget.sculpted ? 19 : null,
+                    ),
                   ),
                 ),
               ],

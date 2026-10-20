@@ -16,6 +16,7 @@ import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
 import '../widgets/achievement_popup.dart';
+import '../widgets/game_over_dialog.dart';
 import '../widgets/game_tile.dart';
 import '../widgets/game_surfaces.dart';
 import '../widgets/game_ui.dart';
@@ -1155,56 +1156,11 @@ class _GameOverDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GameDialogFrame(
-      title: 'Game Over',
-      onClose: onBackToMap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 82,
-            height: 82,
-            decoration: BoxDecoration(
-              gradient: GameGradients.dangerButton,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 4),
-              boxShadow: GameShadows.glow(GameColors.dangerRed),
-            ),
-            child: const Icon(
-              Icons.inventory_2_rounded,
-              color: Colors.white,
-              size: 42,
-            ),
-          ),
-          const SizedBox(height: GameSpacing.lg),
-          const Text(
-            'Tray is full',
-            textAlign: TextAlign.center,
-            style: GameTextStyles.h2,
-          ),
-          const SizedBox(height: GameSpacing.xl),
-          GameButton(
-            label: 'Restart',
-            icon: Icons.refresh_rounded,
-            onPressed: onRestart,
-            variant: GameButtonVariant.success,
-          ),
-          const SizedBox(height: GameSpacing.md),
-          GameButton(
-            label: 'Use Shuffle',
-            icon: Icons.air_rounded,
-            onPressed: canUseShuffle ? onUseShuffle : null,
-            variant: GameButtonVariant.gold,
-          ),
-          const SizedBox(height: GameSpacing.md),
-          GameButton(
-            label: 'Back to Map',
-            icon: Icons.map_rounded,
-            onPressed: onBackToMap,
-            variant: GameButtonVariant.secondary,
-          ),
-        ],
-      ),
+    return GameOverDialog(
+      canUseShuffle: canUseShuffle,
+      onBackToMap: onBackToMap,
+      onUseShuffle: onUseShuffle,
+      onRestart: onRestart,
     );
   }
 }
