@@ -3,8 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../data/progress_repository.dart';
-import '../theme/game_theme.dart';
-import 'game_ui.dart';
+import 'achievement_reward_dialog.dart';
 
 Future<void> showPendingAchievementPopups(
   BuildContext context,
@@ -60,56 +59,9 @@ class _AchievementUnlockedDialogState
 
   @override
   Widget build(BuildContext context) {
-    final definition = widget.popup.definition;
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.86, end: 1),
-      duration: GameDurations.normal,
-      curve: Curves.easeOutBack,
-      builder: (context, scale, child) {
-        return Opacity(
-          opacity: scale.clamp(0.0, 1.0).toDouble(),
-          child: Transform.scale(scale: scale, child: child),
-        );
-      },
-      child: GameDialogFrame(
-        title: 'Achievement Unlocked!',
-        onClose: _close,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 82,
-              height: 82,
-              decoration: BoxDecoration(
-                gradient: GameGradients.badge,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 4),
-                boxShadow: GameShadows.glow(GameColors.accentGold),
-              ),
-              child: const Icon(
-                Icons.emoji_events_rounded,
-                color: Colors.white,
-                size: 46,
-              ),
-            ),
-            const SizedBox(height: GameSpacing.lg),
-            Text(
-              definition.name,
-              textAlign: TextAlign.center,
-              style: GameTextStyles.h2,
-            ),
-            const SizedBox(height: GameSpacing.md),
-            GameBadge(
-              icon: Icons.monetization_on_rounded,
-              gradient: GameGradients.badge,
-              child: Text(
-                '+${definition.reward} coins',
-                style: GameTextStyles.button.copyWith(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return AchievementRewardDialog(
+      definition: widget.popup.definition,
+      onClose: _close,
     );
   }
 }
