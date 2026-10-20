@@ -13,6 +13,7 @@ class GameTileWidget extends StatefulWidget {
     this.blocked = false,
     this.depth = 1,
     this.trayTile = false,
+    this.preserveBoardAppearance = false,
     this.catalog = tileCatalog,
     this.onTap,
   });
@@ -23,6 +24,9 @@ class GameTileWidget extends StatefulWidget {
   final bool blocked;
   final double depth;
   final bool trayTile;
+
+  /// Flight copies keep board styling while belonging to the tray presentation.
+  final bool preserveBoardAppearance;
   final Map<String, TileArt> catalog;
   final VoidCallback? onTap;
 
@@ -51,27 +55,28 @@ class _GameTileWidgetState extends State<GameTileWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final trayAppearance = widget.trayTile && !widget.preserveBoardAppearance;
     final art = widget.catalog[widget.tile.type] ??
         const TileArt(Icons.help_rounded, GameColors.tileFallback);
     final topLift =
         widget.blocked ? 0.0 : widget.depth.clamp(0.0, 1.0).toDouble();
-    final shadowOpacity = widget.trayTile
+    final shadowOpacity = trayAppearance
         ? 0.22 + (topLift * 0.18)
         : widget.blocked
             ? 0.18
             : 0.24 + (topLift * 0.06);
-    final blur = widget.trayTile
+    final blur = trayAppearance
         ? 10.0 + (topLift * 9.0)
         : widget.blocked
             ? 3.0
             : 6.0 + topLift * 2.0;
-    final yOffset = widget.trayTile
+    final yOffset = trayAppearance
         ? 6.0 + (topLift * 4.0)
         : widget.blocked
             ? 2.0
             : 3.0 + topLift;
     final radius =
-        widget.trayTile ? GameRadius.mediumRadius : GameRadius.largeRadius;
+        trayAppearance ? GameRadius.mediumRadius : GameRadius.largeRadius;
 
     return GestureDetector(
       onTap: widget.enabled ? widget.onTap : null,
@@ -114,7 +119,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                       end: Alignment.bottomRight,
                       colors: [
                         Colors.white.withValues(
-                          alpha: widget.trayTile
+                          alpha: trayAppearance
                               ? 0.42 + (topLift * 0.10)
                               : (_pressed ? 0.30 : 0.12) + (topLift * 0.04),
                         ),
@@ -148,7 +153,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                 width: widget.highlighted ? 4 : 3,
               ),
               boxShadow: [
-                if (!widget.trayTile)
+                if (!trayAppearance)
                   BoxShadow(
                     color: Color.lerp(art.color, Colors.black, 0.42)!,
                     blurRadius: 0,
@@ -165,9 +170,9 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                 if (!widget.blocked)
                   BoxShadow(
                     color: Colors.white
-                        .withValues(alpha: widget.trayTile ? 0.34 : 0.18),
-                    blurRadius: widget.trayTile ? 6 : 2,
-                    offset: widget.trayTile
+                        .withValues(alpha: trayAppearance ? 0.34 : 0.18),
+                    blurRadius: trayAppearance ? 6 : 2,
+                    offset: trayAppearance
                         ? const Offset(-2, -2)
                         : const Offset(-1, -1),
                   ),
@@ -179,7 +184,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                   left: 10,
                   right: 10,
                   top: 7,
-                  height: widget.trayTile ? 4 : 5,
+                  height: trayAppearance ? 4 : 5,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white
@@ -192,7 +197,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                   child: Icon(
                     art.icon,
                     color: Colors.white,
-                    size: widget.trayTile ? 30 : 36,
+                    size: trayAppearance ? 30 : 36,
                     shadows: widget.blocked
                         ? null
                         : const [

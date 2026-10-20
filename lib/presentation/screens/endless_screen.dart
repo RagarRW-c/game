@@ -17,6 +17,7 @@ import '../theme/world_theme.dart';
 import '../tile_feedback.dart';
 import '../widgets/game_tile.dart';
 import '../widgets/game_tray.dart';
+import '../widgets/tile_effects.dart';
 import '../widgets/game_surfaces.dart';
 import '../widgets/game_ui.dart';
 import 'main_menu_screen.dart';
@@ -57,10 +58,17 @@ class _EndlessScreenState extends State<EndlessScreen> {
   int _extraUndoBoosters = 0;
   bool _vibrationEnabled = true;
   TrayFeedback? _trayFeedback;
+  final _tileEffects = TileEffectsController();
   int _feedbackSerial = 0;
   bool _boosterUsedThisBoard = false;
   bool _gameOverShowing = false;
   bool _loading = true;
+
+  @override
+  void dispose() {
+    _tileEffects.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -83,6 +91,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
     setState(() {
       _round = 1;
       _trayFeedback = null;
+      _tileEffects.clear();
       _score = 0;
       _bestScore = bestScore;
       _boardsCleared = 0;
@@ -218,7 +227,8 @@ class _EndlessScreenState extends State<EndlessScreen> {
   }
 
   void _showMoveFeedback(
-      List<String> before, Iterable<String> collected, Set<String> matchedIds) {
+      List<String> before, Iterable<String> collected, Set<String> matchedIds,
+      {TileFlightSource? source}) {
     final engine = _engine;
     if (!mounted || engine == null) return;
     setState(() {
@@ -229,6 +239,13 @@ class _EndlessScreenState extends State<EndlessScreen> {
           collected: collected,
           matchedIds: matchedIds);
     });
+    _tileEffects.accepted(
+        source: source,
+        slot: before.length,
+        tray: engine.tray,
+        matchedIds: matchedIds,
+        matchedSlots: _trayFeedback!.slots,
+        placement: trayPlacementForRound(_round));
     dispatchTileFeedback(
         audio: _scope.audioService,
         matched: matchedIds.isNotEmpty,
@@ -237,11 +254,9 @@ class _EndlessScreenState extends State<EndlessScreen> {
         terminal: engine.result == GameResult.lost);
   }
 
-  Future<void> _onTileTap(
-    Tile tile,
-    Size boardSize,
-    Size tileSize,
-  ) async {
+  Future<void> _onTileTap(Tile tile, Size boardSize, Size tileSize,
+      {TileFlightSource? source}) async {
+    if (!mounted) return;
     final engine = _engine;
     if (engine == null || engine.result != GameResult.playing) return;
     final canonicalTile = engine.tileById(tile.id);
@@ -263,7 +278,8 @@ class _EndlessScreenState extends State<EndlessScreen> {
     }
 
     final matchedIds = _matchedIdsAfterMove(beforeTrayIds, [canonicalTile.id]);
-    _showMoveFeedback(beforeTrayIds, [canonicalTile.id], matchedIds);
+    _showMoveFeedback(beforeTrayIds, [canonicalTile.id], matchedIds,
+        source: source);
     if (matchedIds.isNotEmpty) {
       setState(() {
         _tilesMatched += matchedIds.length;
@@ -296,6 +312,8 @@ class _EndlessScreenState extends State<EndlessScreen> {
   }
 
   Future<void> _handleBoardCleared() async {
+    // Cancel outgoing visuals before changing the round's tray placement.
+    _tileEffects.clear();
     setState(() {
       _addScore(500);
       if (!_boosterUsedThisBoard) _addScore(250);
@@ -331,6 +349,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
     )) {
       return;
     }
+    if (!mounted) return;
     final beforeTrayIds = List<String>.from(engine.tray);
     late final bool collected;
     setState(() {
@@ -377,11 +396,15 @@ class _EndlessScreenState extends State<EndlessScreen> {
     )) {
       return;
     }
+    if (!mounted) return;
     late final bool shuffled;
     setState(() {
       _hintedTileIds.clear();
       shuffled = engine.shuffleBoard();
-      if (shuffled) _trayFeedback = null;
+      if (shuffled) {
+        _trayFeedback = null;
+        _tileEffects.clear();
+      }
       if (shuffled && usedFreeShuffle) _shuffleUsesRemaining--;
       if (shuffled) _boosterUsedThisBoard = true;
     });
@@ -401,11 +424,13 @@ class _EndlessScreenState extends State<EndlessScreen> {
     )) {
       return;
     }
+    if (!mounted) return;
     late final bool undone;
     setState(() {
       undone = engine.undo();
       if (undone) {
         _trayFeedback = null;
+        _tileEffects.clear();
         _hintedTileIds.clear();
         if (usedFreeUndo) _undoUsesRemaining--;
         _boosterUsedThisBoard = true;
@@ -544,115 +569,133 @@ class _EndlessScreenState extends State<EndlessScreen> {
               : renderedBoardTiles.map((tile) => tile.layer).reduce(max);
           return GameBackground(
             worldTheme: worldTheme,
-            child: SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  GameHeader(
-                    title: 'Endless Mode',
-                    worldTheme: worldTheme,
-                    onBack: () => Navigator.of(context).maybePop(),
-                  ),
-                  _ScorePanel(
-                    score: _score,
-                    bestScore: max(_bestScore, _score),
-                    round: _round,
-                    boardsCleared: _boardsCleared,
-                    multiplier: _multiplier,
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Container(
-                          // Keep the 2px border outside the logical canvas.
-                          // Otherwise Container reduces the Stack by 4px while
-                          // tile origins still use the full engine boardSize.
-                          width: boardSize.width + 4,
-                          height: boardSize.height + 4,
-                          margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                          decoration: boardSurfaceDecoration(worldTheme),
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Positioned.fill(
-                                  child: GameBoardBackdrop(theme: worldTheme)),
-                              for (final tile in renderedBoardTiles)
-                                Positioned(
-                                  key: ValueKey(tile.id),
-                                  left: tile.x * boardSize.width,
-                                  top: tile.y * boardSize.height,
-                                  width: tileSize.width,
-                                  height: tileSize.height,
-                                  child: Builder(
-                                    builder: (context) {
-                                      final covered =
-                                          coveredById[tile.id] ?? true;
-                                      final depth = maxLayer == 0
-                                          ? 1.0
-                                          : tile.layer / maxLayer;
-                                      return IgnorePointer(
-                                        ignoring: covered,
-                                        child: GameTileWidget(
-                                          tile: tile,
-                                          enabled: !covered,
-                                          blocked: covered,
-                                          depth: depth,
-                                          highlighted:
-                                              _hintedTileIds.contains(tile.id),
-                                          catalog: visualCatalog,
-                                          onTap: covered
-                                              ? null
-                                              : () => _onTileTap(
-                                                    tile,
-                                                    boardSize,
-                                                    tileSize,
-                                                  ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                            ],
+            child: GameTileEffects(
+                controller: _tileEffects,
+                round: _round,
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      GameHeader(
+                        title: 'Endless Mode',
+                        worldTheme: worldTheme,
+                        onBack: () => Navigator.of(context).maybePop(),
+                      ),
+                      _ScorePanel(
+                        score: _score,
+                        bestScore: max(_bestScore, _score),
+                        round: _round,
+                        boardsCleared: _boardsCleared,
+                        multiplier: _multiplier,
+                      ),
+                      if (trayPlacementForRound(_round) == TrayPlacement.top)
+                        GameTray(
+                            trayTiles: _traySnapshot(engine),
+                            feedback: _trayFeedback,
+                            effects: _tileEffects,
+                            catalog: visualCatalog,
+                            worldTheme: worldTheme),
+                      Expanded(
+                        child: Center(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Container(
+                              // Keep the 2px border outside the logical canvas.
+                              // Otherwise Container reduces the Stack by 4px while
+                              // tile origins still use the full engine boardSize.
+                              width: boardSize.width + 4,
+                              height: boardSize.height + 4,
+                              margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                              decoration: boardSurfaceDecoration(worldTheme),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Positioned.fill(
+                                      child:
+                                          GameBoardBackdrop(theme: worldTheme)),
+                                  for (final tile in renderedBoardTiles)
+                                    Positioned(
+                                      key: ValueKey(tile.id),
+                                      left: tile.x * boardSize.width,
+                                      top: tile.y * boardSize.height,
+                                      width: tileSize.width,
+                                      height: tileSize.height,
+                                      child: Builder(
+                                        builder: (context) {
+                                          final covered =
+                                              coveredById[tile.id] ?? true;
+                                          final depth = maxLayer == 0
+                                              ? 1.0
+                                              : tile.layer / maxLayer;
+                                          return IgnorePointer(
+                                            ignoring: covered,
+                                            child: GameTileWidget(
+                                              tile: tile,
+                                              enabled: !covered,
+                                              blocked: covered,
+                                              depth: depth,
+                                              highlighted: _hintedTileIds
+                                                  .contains(tile.id),
+                                              catalog: visualCatalog,
+                                              onTap: covered
+                                                  ? null
+                                                  : () => _onTileTap(
+                                                        tile,
+                                                        boardSize,
+                                                        tileSize,
+                                                        source: _tileEffects
+                                                            .capture(
+                                                                context,
+                                                                tile,
+                                                                visualCatalog,
+                                                                depth),
+                                                      ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  _EndlessBoosterBar(
-                    worldTheme: worldTheme,
-                    onShuffle: _canUseBooster(
-                            _shuffleUsesRemaining, _extraShuffleBoosters)
-                        ? () => unawaited(_useShuffle(engine))
-                        : null,
-                    onHint:
-                        _canUseBooster(_hintUsesRemaining, _extraHintBoosters)
+                      _EndlessBoosterBar(
+                        worldTheme: worldTheme,
+                        onShuffle: _canUseBooster(
+                                _shuffleUsesRemaining, _extraShuffleBoosters)
+                            ? () => unawaited(_useShuffle(engine))
+                            : null,
+                        onHint: _canUseBooster(
+                                _hintUsesRemaining, _extraHintBoosters)
                             ? () =>
                                 unawaited(_useHint(engine, boardSize, tileSize))
                             : null,
-                    onUndo: engine.canUndo &&
-                            _canUseBooster(
-                                _undoUsesRemaining, _extraUndoBoosters)
-                        ? () => unawaited(_useUndo(engine))
-                        : null,
-                    undoLabel: _boosterCostLabel(
-                        _undoUsesRemaining, _extraUndoBoosters),
-                    hintLabel: _boosterCostLabel(
-                        _hintUsesRemaining, _extraHintBoosters),
-                    shuffleLabel: _boosterCostLabel(
-                      _shuffleUsesRemaining,
-                      _extraShuffleBoosters,
-                    ),
+                        onUndo: engine.canUndo &&
+                                _canUseBooster(
+                                    _undoUsesRemaining, _extraUndoBoosters)
+                            ? () => unawaited(_useUndo(engine))
+                            : null,
+                        undoLabel: _boosterCostLabel(
+                            _undoUsesRemaining, _extraUndoBoosters),
+                        hintLabel: _boosterCostLabel(
+                            _hintUsesRemaining, _extraHintBoosters),
+                        shuffleLabel: _boosterCostLabel(
+                          _shuffleUsesRemaining,
+                          _extraShuffleBoosters,
+                        ),
+                      ),
+                      if (trayPlacementForRound(_round) == TrayPlacement.bottom)
+                        GameTray(
+                          effects: _tileEffects,
+                          trayTiles: _traySnapshot(engine),
+                          feedback: _trayFeedback,
+                          catalog: visualCatalog,
+                          worldTheme: worldTheme,
+                        ),
+                    ],
                   ),
-                  GameTray(
-                    trayTiles: _traySnapshot(engine),
-                    feedback: _trayFeedback,
-                    catalog: visualCatalog,
-                    worldTheme: worldTheme,
-                  ),
-                ],
-              ),
-            ),
+                )),
           );
         },
       ),

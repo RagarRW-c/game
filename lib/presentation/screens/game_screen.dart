@@ -20,6 +20,7 @@ import '../widgets/achievement_popup.dart';
 import '../widgets/game_over_dialog.dart';
 import '../widgets/game_tile.dart';
 import '../widgets/game_tray.dart';
+import '../widgets/tile_effects.dart';
 import '../widgets/game_surfaces.dart';
 import '../widgets/game_ui.dart';
 import 'final_code_screen.dart';
@@ -60,6 +61,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   int _extraUndoBoosters = 0;
   bool _vibrationEnabled = true;
   TrayFeedback? _trayFeedback;
+  final _tileEffects = TileEffectsController();
   int _feedbackSerial = 0;
   bool _gameOverDialogShowing = false;
   bool _winDialogShowing = false;
@@ -93,6 +95,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
 
   @override
   void dispose() {
+    _tileEffects.dispose();
     final route = _route;
     if (route != null) appRouteObserver.unsubscribe(this);
     unawaited(_scope.audioService.stopGameplayMusic());
@@ -186,6 +189,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   }
 
   void _resetAnimationState() {
+    _tileEffects.clear();
     _hintedTileIds.clear();
     _trayFeedback = null;
   }
@@ -265,7 +269,8 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   }
 
   void _showMoveFeedback(
-      List<String> before, Iterable<String> collected, Set<String> matchedIds) {
+      List<String> before, Iterable<String> collected, Set<String> matchedIds,
+      {TileFlightSource? source}) {
     final engine = _engine;
     if (!mounted || engine == null) return;
     setState(() {
@@ -276,6 +281,13 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
           collected: collected,
           matchedIds: matchedIds);
     });
+    _tileEffects.accepted(
+        source: source,
+        slot: before.length,
+        tray: engine.tray,
+        matchedIds: matchedIds,
+        matchedSlots: _trayFeedback!.slots,
+        placement: trayPlacementForRound(widget.level));
     dispatchTileFeedback(
         audio: _scope.audioService,
         matched: matchedIds.isNotEmpty,
@@ -284,11 +296,9 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   }
 
   Future<void> _onTileTap(
-    LevelDefinition level,
-    Tile tile,
-    Size boardSize,
-    Size tileSize,
-  ) async {
+      LevelDefinition level, Tile tile, Size boardSize, Size tileSize,
+      {TileFlightSource? source}) async {
+    if (!mounted) return;
     final engine = _engine;
     if (engine == null || engine.result != GameResult.playing) {
       return;
@@ -320,7 +330,8 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
       beforeTrayIds,
       collectedId: canonicalTile.id,
     );
-    _showMoveFeedback(beforeTrayIds, [canonicalTile.id], matchedIds);
+    _showMoveFeedback(beforeTrayIds, [canonicalTile.id], matchedIds,
+        source: source);
     if (matchedIds.isNotEmpty) {
       await _recordMatchedTiles(
         matchedIds.length,
@@ -448,7 +459,10 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         engine.result = GameResult.playing;
       }
       shuffled = engine.shuffleBoard();
-      if (shuffled) _trayFeedback = null;
+      if (shuffled) {
+        _trayFeedback = null;
+        _tileEffects.clear();
+      }
       if (shuffled && usedFreeShuffle) _shuffleUsesRemaining--;
       if (shuffled) _shuffleUsedThisLevel++;
     })) {
@@ -831,173 +845,196 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                     : renderedBoardTiles.map((tile) => tile.layer).reduce(max);
                 return GameBackground(
                   worldTheme: worldTheme,
-                  child: SafeArea(
-                    bottom: false,
-                    child: Column(
-                      children: [
-                        GameHeader(
-                          title: _gameHeaderTitle(level),
-                          worldTheme: worldTheme,
-                          onBack: () => Navigator.of(context).maybePop(),
-                          trailing: GameRoundIconButton(
-                            icon: Icons.pause_rounded,
-                            onPressed: () => _showPauseMenu(level),
-                          ),
-                        ),
-                        // The header Row measures non-flex actions at their
-                        // full width. Give statistics their own bounded Wrap
-                        // so long counters cannot crowd out the title/actions.
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            GameSpacing.lg,
-                            0,
-                            GameSpacing.lg,
-                            GameSpacing.sm,
-                          ),
-                          child: Wrap(
-                            spacing: GameSpacing.sm,
-                            runSpacing: GameSpacing.sm,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              GameBadge(
-                                icon: Icons.monetization_on_rounded,
-                                gradient: worldTheme.hudGradient,
-                                child: Text(
-                                  '$_coins',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
+                  child: GameTileEffects(
+                      controller: _tileEffects,
+                      round: widget.level,
+                      child: SafeArea(
+                        child: Column(
+                          children: [
+                            GameHeader(
+                              title: _gameHeaderTitle(level),
+                              worldTheme: worldTheme,
+                              onBack: () => Navigator.of(context).maybePop(),
+                              trailing: GameRoundIconButton(
+                                icon: Icons.pause_rounded,
+                                onPressed: () => _showPauseMenu(level),
                               ),
-                              GameBadge(
-                                icon: Icons.track_changes_rounded,
-                                gradient: worldTheme.hudGradient,
-                                child: Text(
-                                  '$boardCount left',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
+                            ),
+                            // The header Row measures non-flex actions at their
+                            // full width. Give statistics their own bounded Wrap
+                            // so long counters cannot crowd out the title/actions.
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                GameSpacing.lg,
+                                0,
+                                GameSpacing.lg,
+                                GameSpacing.sm,
+                              ),
+                              child: Wrap(
+                                spacing: GameSpacing.sm,
+                                runSpacing: GameSpacing.sm,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  GameBadge(
+                                    icon: Icons.monetization_on_rounded,
+                                    gradient: worldTheme.hudGradient,
+                                    child: Text(
+                                      '$_coins',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                  GameBadge(
+                                    icon: Icons.track_changes_rounded,
+                                    gradient: worldTheme.hudGradient,
+                                    child: Text(
+                                      '$boardCount left',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (level.objective != null) ...[
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  GameSpacing.lg,
+                                  0,
+                                  GameSpacing.lg,
+                                  GameSpacing.sm,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: _ObjectiveBadge(
+                                    objective: level.objective!,
+                                    progress: engine.objectiveProgress,
+                                    catalog: visualCatalog,
+                                    theme: visualTheme,
                                   ),
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                        if (level.objective != null) ...[
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              GameSpacing.lg,
-                              0,
-                              GameSpacing.lg,
-                              GameSpacing.sm,
-                            ),
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: _ObjectiveBadge(
-                                objective: level.objective!,
-                                progress: engine.objectiveProgress,
-                                catalog: visualCatalog,
-                                theme: visualTheme,
-                              ),
-                            ),
-                          ),
-                        ],
-                        Expanded(
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Container(
-                                // Container reserves its border as padding.
-                                // Frame it OUTSIDE the logical canvas so the
-                                // Stack and engine use the same dimensions.
-                                // FittedBox scales canvas + frame together.
-                                width: boardSize.width + 4,
-                                height: boardSize.height + 4,
-                                margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                                decoration: boardSurfaceDecoration(worldTheme),
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Positioned.fill(
-                                        child: GameBoardBackdrop(
-                                            theme: worldTheme)),
-                                    for (final tile in renderedBoardTiles)
-                                      Positioned(
-                                        key: ValueKey(tile.id),
-                                        left: tile.x * boardSize.width,
-                                        top: tile.y * boardSize.height,
-                                        width: tileSize.width,
-                                        height: tileSize.height,
-                                        child: Builder(
-                                          builder: (context) {
-                                            final covered =
-                                                coveredById[tile.id] ?? true;
-                                            final depth = maxLayer == 0
-                                                ? 1.0
-                                                : tile.layer / maxLayer;
-                                            return IgnorePointer(
-                                              ignoring: covered,
-                                              child: GameTileWidget(
-                                                tile: tile,
-                                                enabled: !covered,
-                                                blocked: covered,
-                                                depth: depth,
-                                                highlighted: hintedTileIds
-                                                    .contains(tile.id),
-                                                catalog: visualCatalog,
-                                                onTap: covered
-                                                    ? null
-                                                    : () => _onTileTap(
-                                                          level,
-                                                          tile,
-                                                          boardSize,
-                                                          tileSize,
-                                                        ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                  ],
+                            if (trayPlacementForRound(widget.level) ==
+                                TrayPlacement.top)
+                              GameTray(
+                                  trayTiles: trayTiles,
+                                  feedback: _trayFeedback,
+                                  effects: _tileEffects,
+                                  catalog: visualCatalog,
+                                  worldTheme: worldTheme),
+                            Expanded(
+                              child: Center(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Container(
+                                    // Container reserves its border as padding.
+                                    // Frame it OUTSIDE the logical canvas so the
+                                    // Stack and engine use the same dimensions.
+                                    // FittedBox scales canvas + frame together.
+                                    width: boardSize.width + 4,
+                                    height: boardSize.height + 4,
+                                    margin:
+                                        const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                                    decoration:
+                                        boardSurfaceDecoration(worldTheme),
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Positioned.fill(
+                                            child: GameBoardBackdrop(
+                                                theme: worldTheme)),
+                                        for (final tile in renderedBoardTiles)
+                                          Positioned(
+                                            key: ValueKey(tile.id),
+                                            left: tile.x * boardSize.width,
+                                            top: tile.y * boardSize.height,
+                                            width: tileSize.width,
+                                            height: tileSize.height,
+                                            child: Builder(
+                                              builder: (context) {
+                                                final covered =
+                                                    coveredById[tile.id] ??
+                                                        true;
+                                                final depth = maxLayer == 0
+                                                    ? 1.0
+                                                    : tile.layer / maxLayer;
+                                                return IgnorePointer(
+                                                  ignoring: covered,
+                                                  child: GameTileWidget(
+                                                    tile: tile,
+                                                    enabled: !covered,
+                                                    blocked: covered,
+                                                    depth: depth,
+                                                    highlighted: hintedTileIds
+                                                        .contains(tile.id),
+                                                    catalog: visualCatalog,
+                                                    onTap: covered
+                                                        ? null
+                                                        : () => _onTileTap(
+                                                              level,
+                                                              tile,
+                                                              boardSize,
+                                                              tileSize,
+                                                              source: _tileEffects
+                                                                  .capture(
+                                                                      context,
+                                                                      tile,
+                                                                      visualCatalog,
+                                                                      depth),
+                                                            ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                            _BoosterBar(
+                              worldTheme: worldTheme,
+                              onShuffle: _canUseBooster(_shuffleUsesRemaining,
+                                      _extraShuffleBoosters)
+                                  ? () => unawaited(_useShuffle(engine))
+                                  : null,
+                              onHint: _canUseBooster(
+                                      _hintUsesRemaining, _extraHintBoosters)
+                                  ? () =>
+                                      _useCatPowerUp(level, boardSize, tileSize)
+                                  : null,
+                              undoLabel: _boosterCostLabel(
+                                  _undoUsesRemaining, _extraUndoBoosters),
+                              hintLabel: _boosterCostLabel(
+                                  _hintUsesRemaining, _extraHintBoosters),
+                              shuffleLabel: _boosterCostLabel(
+                                  _shuffleUsesRemaining, _extraShuffleBoosters),
+                              onUndo: engine.canUndo &&
+                                      _canUseBooster(_undoUsesRemaining,
+                                          _extraUndoBoosters)
+                                  ? () => unawaited(_useUndo(engine))
+                                  : null,
+                            ),
+                            if (trayPlacementForRound(widget.level) ==
+                                TrayPlacement.bottom)
+                              GameTray(
+                                effects: _tileEffects,
+                                trayTiles: trayTiles,
+                                feedback: _trayFeedback,
+                                catalog: visualCatalog,
+                                worldTheme: worldTheme,
+                              ),
+                          ],
                         ),
-                        _BoosterBar(
-                          worldTheme: worldTheme,
-                          onShuffle: _canUseBooster(
-                                  _shuffleUsesRemaining, _extraShuffleBoosters)
-                              ? () => unawaited(_useShuffle(engine))
-                              : null,
-                          onHint: _canUseBooster(
-                                  _hintUsesRemaining, _extraHintBoosters)
-                              ? () => _useCatPowerUp(level, boardSize, tileSize)
-                              : null,
-                          undoLabel: _boosterCostLabel(
-                              _undoUsesRemaining, _extraUndoBoosters),
-                          hintLabel: _boosterCostLabel(
-                              _hintUsesRemaining, _extraHintBoosters),
-                          shuffleLabel: _boosterCostLabel(
-                              _shuffleUsesRemaining, _extraShuffleBoosters),
-                          onUndo: engine.canUndo &&
-                                  _canUseBooster(
-                                      _undoUsesRemaining, _extraUndoBoosters)
-                              ? () => unawaited(_useUndo(engine))
-                              : null,
-                        ),
-                        GameTray(
-                          trayTiles: trayTiles,
-                          feedback: _trayFeedback,
-                          catalog: visualCatalog,
-                          worldTheme: worldTheme,
-                        ),
-                      ],
-                    ),
-                  ),
+                      )),
                 );
               } catch (error, stackTrace) {
                 if (kDebugMode) {
