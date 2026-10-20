@@ -802,11 +802,13 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
               try {
                 final safeTop = MediaQuery.paddingOf(context).top;
                 final boardHeight = constraints.maxHeight - safeTop - 238;
+                final boardWidth =
+                    (constraints.maxWidth - 20).clamp(0.0, 440.0).toDouble();
                 final boardSize = Size(
-                  constraints.maxWidth - 20,
+                  boardWidth,
                   boardHeight.clamp(360.0, 620.0).toDouble(),
                 );
-                final tileSize = _tileSize(constraints.maxWidth);
+                final tileSize = _tileSize(boardWidth + 20);
                 final renderedBoardTiles = _renderedBoardSnapshot(
                   engine,
                   boardSize,
@@ -831,8 +833,25 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                         GameHeader(
                           title: _gameHeaderTitle(level),
                           onBack: () => Navigator.of(context).maybePop(),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          trailing: GameRoundIconButton(
+                            icon: Icons.pause_rounded,
+                            onPressed: () => _showPauseMenu(level),
+                          ),
+                        ),
+                        // The header Row measures non-flex actions at their
+                        // full width. Give statistics their own bounded Wrap
+                        // so long counters cannot crowd out the title/actions.
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            GameSpacing.lg,
+                            0,
+                            GameSpacing.lg,
+                            GameSpacing.sm,
+                          ),
+                          child: Wrap(
+                            spacing: GameSpacing.sm,
+                            runSpacing: GameSpacing.sm,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               GameBadge(
                                 icon: Icons.monetization_on_rounded,
@@ -846,7 +865,6 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: GameSpacing.sm),
                               GameBadge(
                                 icon: Icons.track_changes_rounded,
                                 child: Text(
@@ -857,11 +875,6 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: GameSpacing.sm),
-                              GameRoundIconButton(
-                                icon: Icons.pause_rounded,
-                                onPressed: () => _showPauseMenu(level),
                               ),
                             ],
                           ),
@@ -887,89 +900,97 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                         ],
                         Expanded(
                           child: Center(
-                            child: Container(
-                              width: boardSize.width,
-                              height: boardSize.height,
-                              margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                              decoration: BoxDecoration(
-                                gradient: worldTheme.boardGradient,
-                                borderRadius: GameRadius.extraLargeRadius,
-                                border: Border.all(
-                                  color: worldTheme.secondaryAccent
-                                      .withValues(alpha: 0.72),
-                                  width: 2,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Container(
+                                // Container reserves its border as padding.
+                                // Frame it OUTSIDE the logical canvas so the
+                                // Stack and engine use the same dimensions.
+                                // FittedBox scales canvas + frame together.
+                                width: boardSize.width + 4,
+                                height: boardSize.height + 4,
+                                margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                                decoration: BoxDecoration(
+                                  gradient: worldTheme.boardGradient,
+                                  borderRadius: GameRadius.extraLargeRadius,
+                                  border: Border.all(
+                                    color: worldTheme.secondaryAccent
+                                        .withValues(alpha: 0.72),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: GameColors.boardShadow
+                                          .withValues(alpha: 0.28),
+                                      blurRadius: 28,
+                                      offset: const Offset(0, 14),
+                                    ),
+                                    BoxShadow(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.18),
+                                      blurRadius: 12,
+                                      offset: const Offset(-3, -3),
+                                    ),
+                                  ],
                                 ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: GameColors.boardShadow
-                                        .withValues(alpha: 0.28),
-                                    blurRadius: 28,
-                                    offset: const Offset(0, 14),
-                                  ),
-                                  BoxShadow(
-                                    color: Colors.white.withValues(alpha: 0.18),
-                                    blurRadius: 12,
-                                    offset: const Offset(-3, -3),
-                                  ),
-                                ],
-                              ),
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  Positioned.fill(
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        borderRadius:
-                                            GameRadius.extraLargeRadius,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: GameColors.boardInnerShadow
-                                                .withValues(alpha: 0.16),
-                                            blurRadius: 28,
-                                            spreadRadius: -14,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  for (final tile in renderedBoardTiles)
-                                    Positioned(
-                                      key: ValueKey(tile.id),
-                                      left: tile.x * boardSize.width,
-                                      top: tile.y * boardSize.height,
-                                      width: tileSize.width,
-                                      height: tileSize.height,
-                                      child: Builder(
-                                        builder: (context) {
-                                          final covered =
-                                              coveredById[tile.id] ?? true;
-                                          final depth = maxLayer == 0
-                                              ? 1.0
-                                              : tile.layer / maxLayer;
-                                          return IgnorePointer(
-                                            ignoring: covered,
-                                            child: GameTileWidget(
-                                              tile: tile,
-                                              enabled: !covered,
-                                              blocked: covered,
-                                              depth: depth,
-                                              highlighted: hintedTileIds
-                                                  .contains(tile.id),
-                                              catalog: visualCatalog,
-                                              onTap: covered
-                                                  ? null
-                                                  : () => _onTileTap(
-                                                        level,
-                                                        tile,
-                                                        boardSize,
-                                                        tileSize,
-                                                      ),
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    Positioned.fill(
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          borderRadius:
+                                              GameRadius.extraLargeRadius,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: GameColors.boardInnerShadow
+                                                  .withValues(alpha: 0.16),
+                                              blurRadius: 28,
+                                              spreadRadius: -14,
                                             ),
-                                          );
-                                        },
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                ],
+                                    for (final tile in renderedBoardTiles)
+                                      Positioned(
+                                        key: ValueKey(tile.id),
+                                        left: tile.x * boardSize.width,
+                                        top: tile.y * boardSize.height,
+                                        width: tileSize.width,
+                                        height: tileSize.height,
+                                        child: Builder(
+                                          builder: (context) {
+                                            final covered =
+                                                coveredById[tile.id] ?? true;
+                                            final depth = maxLayer == 0
+                                                ? 1.0
+                                                : tile.layer / maxLayer;
+                                            return IgnorePointer(
+                                              ignoring: covered,
+                                              child: GameTileWidget(
+                                                tile: tile,
+                                                enabled: !covered,
+                                                blocked: covered,
+                                                depth: depth,
+                                                highlighted: hintedTileIds
+                                                    .contains(tile.id),
+                                                catalog: visualCatalog,
+                                                onTap: covered
+                                                    ? null
+                                                    : () => _onTileTap(
+                                                          level,
+                                                          tile,
+                                                          boardSize,
+                                                          tileSize,
+                                                        ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),

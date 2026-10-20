@@ -1,6 +1,8 @@
 import 'dart:math';
 
 import '../core/tile_catalog.dart';
+import 'board_layout.dart';
+import 'game_engine.dart';
 import 'tile.dart';
 
 class EndlessBoardGenerator {
@@ -32,7 +34,7 @@ class EndlessBoardGenerator {
       ..shuffle(_random);
 
     final positions = _positionsFor(profile, tileCount);
-    return List<Tile>.generate(tileCount, (index) {
+    final tiles = List<Tile>.generate(tileCount, (index) {
       final position = positions[index];
       return Tile(
         id: 'endless_${round}_$index',
@@ -42,6 +44,42 @@ class EndlessBoardGenerator {
         layer: position.layer,
       );
     });
+
+    // Random inventories with complete triples are not necessarily clearable:
+    // coverage can force seven unmatched tiles before a triple is available.
+    // The last painted remaining tile is always uncovered at any screen size.
+    // Assign a tray-safe type sequence along that guaranteed removal order.
+    final removalOrder = GameEngine(tiles).renderedBoardTiles.reversed.toList();
+    final removalTypes = clearableTileOrder(
+      typeBag,
+      random: Random(_solutionSeed(typeBag, round)),
+      difficulty: round <= 3
+          ? 2
+          : round <= 7
+              ? 3
+              : 4,
+    );
+    final typeById = <String, String>{
+      for (var i = 0; i < removalOrder.length; i++)
+        removalOrder[i].id: removalTypes[i],
+    };
+    return tiles
+        .map((tile) => tile.copyWith(type: typeById[tile.id]!))
+        .toList();
+  }
+
+  int _solutionSeed(List<String> shuffledInventory, int round) {
+    // Do not consume additional _random values: keep existing seeded counts,
+    // inventories and positions, including subsequent boards in the same run.
+    // Avoid String.hashCode so the derived seed is stable across processes.
+    var seed = round & 0x7fffffff;
+    for (final type in shuffledInventory) {
+      for (final unit in type.codeUnits) {
+        seed = (seed * 31 + unit) & 0x7fffffff;
+      }
+      seed = (seed * 31) & 0x7fffffff;
+    }
+    return seed;
   }
 
   _EndlessProfile _profileForRound(int round) {

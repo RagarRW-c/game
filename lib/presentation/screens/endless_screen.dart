@@ -496,11 +496,13 @@ class _EndlessScreenState extends State<EndlessScreen> {
         builder: (context, constraints) {
           final safeTop = MediaQuery.paddingOf(context).top;
           final boardHeight = constraints.maxHeight - safeTop - 286;
+          final boardWidth =
+              (constraints.maxWidth - 20).clamp(0.0, 440.0).toDouble();
           final boardSize = Size(
-            constraints.maxWidth - 20,
+            boardWidth,
             boardHeight.clamp(330.0, 600.0).toDouble(),
           );
-          final tileSize = _tileSize(constraints.maxWidth);
+          final tileSize = _tileSize(boardWidth + 20);
           final renderedBoardTiles = _renderedBoardSnapshot(
             engine,
             boardSize,
@@ -533,60 +535,66 @@ class _EndlessScreenState extends State<EndlessScreen> {
                   ),
                   Expanded(
                     child: Center(
-                      child: Container(
-                        width: boardSize.width,
-                        height: boardSize.height,
-                        margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                        decoration: BoxDecoration(
-                          gradient: worldTheme.boardGradient,
-                          borderRadius: GameRadius.extraLargeRadius,
-                          border: Border.all(
-                            color: worldTheme.secondaryAccent
-                                .withValues(alpha: 0.72),
-                            width: 2,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Container(
+                          // Keep the 2px border outside the logical canvas.
+                          // Otherwise Container reduces the Stack by 4px while
+                          // tile origins still use the full engine boardSize.
+                          width: boardSize.width + 4,
+                          height: boardSize.height + 4,
+                          margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                          decoration: BoxDecoration(
+                            gradient: worldTheme.boardGradient,
+                            borderRadius: GameRadius.extraLargeRadius,
+                            border: Border.all(
+                              color: worldTheme.secondaryAccent
+                                  .withValues(alpha: 0.72),
+                              width: 2,
+                            ),
+                            boxShadow: GameShadows.medium(),
                           ),
-                          boxShadow: GameShadows.medium(),
-                        ),
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            for (final tile in renderedBoardTiles)
-                              Positioned(
-                                key: ValueKey(tile.id),
-                                left: tile.x * boardSize.width,
-                                top: tile.y * boardSize.height,
-                                width: tileSize.width,
-                                height: tileSize.height,
-                                child: Builder(
-                                  builder: (context) {
-                                    final covered =
-                                        coveredById[tile.id] ?? true;
-                                    final depth = maxLayer == 0
-                                        ? 1.0
-                                        : tile.layer / maxLayer;
-                                    return IgnorePointer(
-                                      ignoring: covered,
-                                      child: GameTileWidget(
-                                        tile: tile,
-                                        enabled: !covered,
-                                        blocked: covered,
-                                        depth: depth,
-                                        highlighted:
-                                            _hintedTileIds.contains(tile.id),
-                                        catalog: visualCatalog,
-                                        onTap: covered
-                                            ? null
-                                            : () => _onTileTap(
-                                                  tile,
-                                                  boardSize,
-                                                  tileSize,
-                                                ),
-                                      ),
-                                    );
-                                  },
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              for (final tile in renderedBoardTiles)
+                                Positioned(
+                                  key: ValueKey(tile.id),
+                                  left: tile.x * boardSize.width,
+                                  top: tile.y * boardSize.height,
+                                  width: tileSize.width,
+                                  height: tileSize.height,
+                                  child: Builder(
+                                    builder: (context) {
+                                      final covered =
+                                          coveredById[tile.id] ?? true;
+                                      final depth = maxLayer == 0
+                                          ? 1.0
+                                          : tile.layer / maxLayer;
+                                      return IgnorePointer(
+                                        ignoring: covered,
+                                        child: GameTileWidget(
+                                          tile: tile,
+                                          enabled: !covered,
+                                          blocked: covered,
+                                          depth: depth,
+                                          highlighted:
+                                              _hintedTileIds.contains(tile.id),
+                                          catalog: visualCatalog,
+                                          onTap: covered
+                                              ? null
+                                              : () => _onTileTap(
+                                                    tile,
+                                                    boardSize,
+                                                    tileSize,
+                                                  ),
+                                        ),
+                                      );
+                                    },
+                                  ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),

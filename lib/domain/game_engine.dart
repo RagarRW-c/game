@@ -305,7 +305,7 @@ class GameEngine {
 
   void _updateResult() {
     _sanitizeTray();
-    if (tray.length > trayLimit) {
+    if (tray.length >= trayLimit) {
       result = GameResult.lost;
     } else if (boardTiles.isEmpty) {
       result = GameResult.won;

@@ -44,9 +44,21 @@ class _GameTileWidgetState extends State<GameTileWidget> {
         const TileArt(Icons.help_rounded, GameColors.tileFallback);
     final topLift =
         widget.blocked ? 0.0 : widget.depth.clamp(0.0, 1.0).toDouble();
-    final shadowOpacity = widget.blocked ? 0.16 : 0.22 + (topLift * 0.18);
-    final blur = widget.blocked ? 7.0 : 10.0 + (topLift * 9.0);
-    final yOffset = widget.blocked ? 4.0 : 6.0 + (topLift * 4.0);
+    final shadowOpacity = widget.trayTile
+        ? 0.22 + (topLift * 0.18)
+        : widget.blocked
+            ? 0.18
+            : 0.24 + (topLift * 0.06);
+    final blur = widget.trayTile
+        ? 10.0 + (topLift * 9.0)
+        : widget.blocked
+            ? 3.0
+            : 5.0 + topLift * 2.0;
+    final yOffset = widget.trayTile
+        ? 6.0 + (topLift * 4.0)
+        : widget.blocked
+            ? 2.0
+            : 3.0 + topLift;
     final radius =
         widget.trayTile ? GameRadius.mediumRadius : GameRadius.largeRadius;
 
@@ -59,7 +71,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
         duration: GameDurations.quick,
         curve: Curves.easeInOut,
         opacity: widget.blocked
-            ? 0.58
+            ? 0.86
             : widget.enabled
                 ? 1
                 : 0.52,
@@ -76,7 +88,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
           child: Container(
             foregroundDecoration: BoxDecoration(
               color: widget.blocked
-                  ? GameColors.tileBlockedOverlay.withValues(alpha: 0.26)
+                  ? GameColors.tileBlockedOverlay.withValues(alpha: 0.14)
                   : null,
               borderRadius: radius,
               gradient: widget.blocked
@@ -85,7 +97,11 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.white.withValues(alpha: 0.42 + (topLift * 0.10)),
+                        Colors.white.withValues(
+                          alpha: widget.trayTile
+                              ? 0.42 + (topLift * 0.10)
+                              : 0.22 + (topLift * 0.06),
+                        ),
                         Colors.white.withValues(alpha: 0.06),
                         Colors.black.withValues(alpha: 0.04),
                       ],
@@ -96,16 +112,23 @@ class _GameTileWidgetState extends State<GameTileWidget> {
               color: Color.lerp(
                 art.color,
                 GameColors.tileBlocked,
-                widget.blocked ? 0.36 : 0,
+                widget.blocked ? 0.24 : 0,
               ),
               borderRadius: radius,
               border: Border.all(
                 color: widget.highlighted
                     ? GameColors.tileHighlight
-                    : Colors.white.withValues(alpha: 0.94),
+                    : Colors.white
+                        .withValues(alpha: widget.blocked ? 0.60 : 0.94),
                 width: widget.highlighted ? 4 : 3,
               ),
               boxShadow: [
+                if (!widget.trayTile)
+                  BoxShadow(
+                    color: Color.lerp(art.color, Colors.black, 0.42)!,
+                    blurRadius: 0,
+                    offset: Offset(0, widget.blocked ? 2 : 3),
+                  ),
                 BoxShadow(
                   color: widget.highlighted
                       ? GameColors.tileHighlightGlow.withValues(alpha: 0.82)
@@ -116,9 +139,12 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                 ),
                 if (!widget.blocked)
                   BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.34),
-                    blurRadius: 6,
-                    offset: const Offset(-2, -2),
+                    color: Colors.white
+                        .withValues(alpha: widget.trayTile ? 0.34 : 0.18),
+                    blurRadius: widget.trayTile ? 6 : 2,
+                    offset: widget.trayTile
+                        ? const Offset(-2, -2)
+                        : const Offset(-1, -1),
                   ),
               ],
             ),
