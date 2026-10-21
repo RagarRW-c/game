@@ -52,6 +52,7 @@ class GameTray extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    effects?.catalog = catalog;
     final count = trayTiles.whereType<Tile>().length;
     final full = count == GameEngine.trayLimit;
     final nearFull = count >= 5 && !full;
@@ -138,6 +139,7 @@ class GameTray extends StatelessWidget {
                             : Colors.white,
                         matched: event.matched,
                         glints: effects == null,
+                        externalMatch: event.matched && effects != null,
                       ),
                     ),
                   ),
@@ -175,6 +177,7 @@ class _TrayLightPainter extends CustomPainter {
       required this.color,
       required this.matched,
       this.glints = true,
+      this.externalMatch = false,
       this.full = false});
   final double progress;
   final List<int> slots;
@@ -182,10 +185,13 @@ class _TrayLightPainter extends CustomPainter {
   final bool matched;
   final bool full;
   final bool glints;
+  final bool externalMatch;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (progress >= 1 && !full) return;
+    // The effects layer owns the synchronized match light. Keep the standalone
+    // tray feedback for callers without a flight layer and static warnings.
+    if (externalMatch || (progress >= 1 && !full)) return;
     final opacity = full ? .85 : (1 - progress);
     final width = size.width / GameEngine.trayLimit;
     for (final slot in slots) {
@@ -239,5 +245,6 @@ class _TrayLightPainter extends CustomPainter {
       old.color != color ||
       old.full != full ||
       old.glints != glints ||
+      old.externalMatch != externalMatch ||
       old.matched != matched;
 }

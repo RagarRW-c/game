@@ -14,6 +14,7 @@ class GameTileWidget extends StatefulWidget {
     this.depth = 1,
     this.trayTile = false,
     this.preserveBoardAppearance = false,
+    this.trayAppearanceBlend,
     this.catalog = tileCatalog,
     this.onTap,
   });
@@ -27,6 +28,9 @@ class GameTileWidget extends StatefulWidget {
 
   /// Flight copies keep board styling while belonging to the tray presentation.
   final bool preserveBoardAppearance;
+
+  /// Presentation-only morph used by the flight; normal tiles keep their style.
+  final double? trayAppearanceBlend;
   final Map<String, TileArt> catalog;
   final VoidCallback? onTap;
 
@@ -56,27 +60,19 @@ class _GameTileWidgetState extends State<GameTileWidget> {
   @override
   Widget build(BuildContext context) {
     final trayAppearance = widget.trayTile && !widget.preserveBoardAppearance;
+    final blend = widget.trayAppearanceBlend?.clamp(0.0, 1.0) ??
+        (trayAppearance ? 1.0 : 0.0);
+    double mix(double board, double tray) => board + (tray - board) * blend;
     final art = widget.catalog[widget.tile.type] ??
         const TileArt(Icons.help_rounded, GameColors.tileFallback);
     final topLift =
         widget.blocked ? 0.0 : widget.depth.clamp(0.0, 1.0).toDouble();
-    final shadowOpacity = trayAppearance
-        ? 0.22 + (topLift * 0.18)
-        : widget.blocked
-            ? 0.18
-            : 0.24 + (topLift * 0.06);
-    final blur = trayAppearance
-        ? 10.0 + (topLift * 9.0)
-        : widget.blocked
-            ? 3.0
-            : 6.0 + topLift * 2.0;
-    final yOffset = trayAppearance
-        ? 6.0 + (topLift * 4.0)
-        : widget.blocked
-            ? 2.0
-            : 3.0 + topLift;
-    final radius =
-        trayAppearance ? GameRadius.mediumRadius : GameRadius.largeRadius;
+    final shadowOpacity =
+        mix(widget.blocked ? .18 : .24 + topLift * .06, .22 + topLift * .18);
+    final blur = mix(widget.blocked ? 3 : 6 + topLift * 2, 10 + topLift * 9);
+    final yOffset = mix(widget.blocked ? 2 : 3 + topLift, 6 + topLift * 4);
+    final radius = BorderRadius.lerp(
+        GameRadius.largeRadius, GameRadius.mediumRadius, blend)!;
 
     return GestureDetector(
       onTap: widget.enabled ? widget.onTap : null,
@@ -119,9 +115,8 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                       end: Alignment.bottomRight,
                       colors: [
                         Colors.white.withValues(
-                          alpha: trayAppearance
-                              ? 0.42 + (topLift * 0.10)
-                              : (_pressed ? 0.30 : 0.12) + (topLift * 0.04),
+                          alpha: mix((_pressed ? .30 : .12) + topLift * .04,
+                              .42 + topLift * .10),
                         ),
                         Colors.white.withValues(alpha: 0.02),
                         Colors.black.withValues(alpha: 0.04),
@@ -153,9 +148,10 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                 width: widget.highlighted ? 4 : 3,
               ),
               boxShadow: [
-                if (!trayAppearance)
+                if (blend < 1)
                   BoxShadow(
-                    color: Color.lerp(art.color, Colors.black, 0.42)!,
+                    color: Color.lerp(art.color, Colors.black, 0.42)!
+                        .withValues(alpha: 1 - blend),
                     blurRadius: 0,
                     offset: Offset(0, widget.blocked ? 2 : 4),
                   ),
@@ -169,12 +165,9 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                 ),
                 if (!widget.blocked)
                   BoxShadow(
-                    color: Colors.white
-                        .withValues(alpha: trayAppearance ? 0.34 : 0.18),
-                    blurRadius: trayAppearance ? 6 : 2,
-                    offset: trayAppearance
-                        ? const Offset(-2, -2)
-                        : const Offset(-1, -1),
+                    color: Colors.white.withValues(alpha: mix(.18, .34)),
+                    blurRadius: mix(2, 6),
+                    offset: Offset(mix(-1, -2), mix(-1, -2)),
                   ),
               ],
             ),
@@ -184,7 +177,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                   left: 10,
                   right: 10,
                   top: 7,
-                  height: trayAppearance ? 4 : 5,
+                  height: mix(5, 4),
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white
@@ -197,7 +190,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
                   child: Icon(
                     art.icon,
                     color: Colors.white,
-                    size: trayAppearance ? 30 : 36,
+                    size: mix(36, 30),
                     shadows: widget.blocked
                         ? null
                         : const [

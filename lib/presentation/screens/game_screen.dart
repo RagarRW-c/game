@@ -286,6 +286,11 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         slot: before.length,
         tray: engine.tray,
         matchedIds: matchedIds,
+        matchedTiles: [
+          for (final id in [...before, ...collected])
+            if (matchedIds.contains(id) && engine.tileById(id) != null)
+              engine.tileById(id)!,
+        ],
         matchedSlots: _trayFeedback!.slots,
         placement: trayPlacementForRound(widget.level));
     dispatchTileFeedback(

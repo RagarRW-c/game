@@ -244,6 +244,11 @@ class _EndlessScreenState extends State<EndlessScreen> {
         slot: before.length,
         tray: engine.tray,
         matchedIds: matchedIds,
+        matchedTiles: [
+          for (final id in [...before, ...collected])
+            if (matchedIds.contains(id) && engine.tileById(id) != null)
+              engine.tileById(id)!,
+        ],
         matchedSlots: _trayFeedback!.slots,
         placement: trayPlacementForRound(_round));
     dispatchTileFeedback(
