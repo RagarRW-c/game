@@ -10,6 +10,7 @@ import 'package:triple_tile_adventure/domain/game_engine.dart';
 import 'package:triple_tile_adventure/domain/level.dart';
 
 import 'support/geometry.dart';
+import 'support/garden_balance_expectations.dart';
 import 'support/solver.dart';
 
 void main() {
@@ -123,12 +124,15 @@ void main() {
             List.generate(level.tiles.length, (i) {
               final t = level.tiles[i];
               final p = authored[i];
-              return t.x == p.x &&
-                  t.y == p.y &&
+              // Manual Garden curation has exact reviewed expectations; no
+              // skipped levels, widened tolerances or discarded assertions.
+              final curated = gardenPass1Coordinates[id]?[t.id];
+              return t.x == (curated?['x'] ?? p.x) &&
+                  t.y == (curated?['y'] ?? p.y) &&
                   t.layer == p.layer &&
                   t.type == authoredTypes[level.tiles.length - 1 - i];
             }).every((v) => v),
-            'Asset differs from current deterministic authoring recipe');
+            'Asset differs from the deterministic recipe plus reviewed Garden curation');
 
         final geometryRows = <Map<String, Object?>>[];
         for (final screen in qaScreens) {
