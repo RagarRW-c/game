@@ -251,8 +251,8 @@ Search nodes consumed: 0/200000. Exact paths and statistics are in the JSON file
 | space | 10/10 | 83.22 | 81.53–84.39 | 6 |
 | desert | 10/10 | 82.61 | 81.36–83.91 | 6 |
 | ice | 10/10 | 82.68 | 81.45–83.55 | 6 |
-| jungle | 10/10 | 83.65 | 82.27–85.20 | 6 |
-| volcano | 10/10 | 84.39 | 83.31–86.95 | 6 |
+| jungle | 10/10 | 83.62 | 82.27–85.20 | 6 |
+| volcano | 10/10 | 84.37 | 83.31–86.72 | 6 |
 | dream | 10/10 | 84.64 | 82.79–86.97 | 6 |
 | crystal | 10/10 | 85.68 | 84.53–86.57 | 6 |
 
@@ -264,15 +264,15 @@ Search nodes consumed: 0/200000. Exact paths and statistics are in the JSON file
 | 40 | SOLVED | 83.48 | -0.15 | 5.09 |
 | 50 | SOLVED | 82.51 | -0.84 | -0.97 |
 | 60 | SOLVED | 83.47 | -0.07 | 0.96 |
-| 70 | SOLVED | 84.27 | 0.33 | 0.80 |
-| 80 | SOLVED | 86.95 | 2.36 | 2.68 |
-| 90 | SOLVED | 85.84 | 0.53 | -1.11 |
+| 70 | SOLVED | 84.03 | 0.10 | 0.56 |
+| 80 | SOLVED | 86.72 | 2.13 | 2.69 |
+| 90 | SOLVED | 85.84 | 0.53 | -0.88 |
 | 100 | SOLVED | 85.69 | -0.44 | -0.15 |
 
 | Highest heuristic score | World | Score |
 |---|---|---:|
 | 89 | dream | 86.97 |
-| 80 | volcano | 86.95 |
+| 80 | volcano | 86.72 |
 | 98 | crystal | 86.57 |
 | 96 | crystal | 86.49 |
 | 84 | dream | 86.33 |
@@ -292,14 +292,14 @@ Search nodes consumed: 0/200000. Exact paths and statistics are in the JSON file
 | 40 → 41 | -1.74 | WITHIN_HEURISTIC_BAND; world boundary |
 | 50 → 51 | -0.66 | WITHIN_HEURISTIC_BAND; world boundary |
 | 60 → 61 | -1.20 | WITHIN_HEURISTIC_BAND; world boundary |
-| 70 → 71 | -0.62 | WITHIN_HEURISTIC_BAND; world boundary |
-| 80 → 81 | -3.56 | WITHIN_HEURISTIC_BAND; world boundary |
+| 70 → 71 | -0.39 | WITHIN_HEURISTIC_BAND; world boundary |
+| 80 → 81 | -3.34 | WITHIN_HEURISTIC_BAND; world boundary |
 | 90 → 91 | -0.43 | WITHIN_HEURISTIC_BAND; world boundary |
 
 | Additional investigation | Findings |
 |---|---|
 
-Near-flat windows (heuristic range ≤3 over four levels): `[{"from":27,"through":30,"score_range":1.6576006201615172},{"from":31,"through":34,"score_range":1.8165240079897984},{"from":32,"through":35,"score_range":1.8165240079897984},{"from":33,"through":36,"score_range":2.664666464903931},{"from":34,"through":37,"score_range":2.865231868326916},{"from":35,"through":38,"score_range":1.2424704163102405},{"from":36,"through":39,"score_range":1.2424704163102405},{"from":37,"through":40,"score_range":1.2424704163102405},{"from":38,"through":41,"score_range":1.737662844868467},{"from":39,"through":42,"score_range":1.737662844868467},{"from":40,"through":43,"score_range":1.737662844868467},{"from":41,"through":44,"score_range":0.8468975468975373},{"from":42,"through":45,"score_range":1.230384930384929},{"from":43,"through":46,"score_range":2.165500239185789},{"from":44,"through":47,"score_range":2.165500239185789},{"from":45,"through":48,"score_range":2.5515970515970565},{"from":46,"through":49,"score_range":0.9250642013353882},{"from":47,"through":50,"score_range":1.405376466352081},{"from":48,"through":51,"score_range":2.069665729459544},{"from":49,"through":52,"score_range":1.53649165574285},{"from":50,"through":53,"score_range":1.10176226902378},{"from":51,"through":54,"score_range":1.4197548684687433},{"from":52,"through":55,"score_range":1.4197548684687433},{"from":53,"through":56,"score_range":1.0607788639703557},{"from":54,"through":57,"score_range":1.7357888657888765},{"from":55,"through":58,"score_range":1.7398461810226564},{"from":56,"through":59,"score_range":1.7398461810226564},{"from":57,"through":60,"score_range":0.08045372523844208},{"from":58,"through":61,"score_range":1.2820157090412323},{"from":59,"through":62,"score_range":1.3111380378127677},{"from":60,"through":63,"score_range":1.3111380378127677},{"from":61,"through":64,"score_range":1.3111380378127677},{"from":62,"through":65,"score_range":2.0594364720916047},{"from":63,"through":66,"score_range":2.0594364720916047},{"from":64,"through":67,"score_range":2.1865713558089936},{"from":65,"through":68,"score_range":2.022042178005492},{"from":66,"through":69,"score_range":2.022042178005492},{"from":67,"through":70,"score_range":2.022042178005492},{"from":68,"through":71,"score_range":1.0881775051516769},{"from":69,"through":72,"score_range":0.8427103107640761},{"from":70,"through":73,"score_range":0.6242727441757836},{"from":71,"through":74,"score_range":0.6843367387697157},{"from":72,"through":75,"score_range":0.6843367387697157},{"from":73,"through":76,"score_range":1.2112808585316657},{"from":74,"through":77,"score_range":1.3157991730111576},{"from":75,"through":78,"score_range":0.7312804367717547},{"from":76,"through":79,"score_range":0.10807939594855043},{"from":77,"through":80,"score_range":2.4296477997954185},{"from":84,"through":87,"score_range":2.1367111885404455},{"from":85,"through":88,"score_range":1.3530308558323867},{"from":89,"through":92,"score_range":1.9774284005237632},{"from":90,"through":93,"score_range":0.8409018937580015},{"from":91,"through":94,"score_range":0.8828686868686759},{"from":92,"through":95,"score_range":1.4383017705927585},{"from":93,"through":96,"score_range":1.9640375180375145},{"from":94,"through":97,"score_range":1.9640375180375145},{"from":95,"through":98,"score_range":0.6092843923276803},{"from":96,"through":99,"score_range":0.996241608180128},{"from":97,"through":100,"score_range":0.996241608180128}]`.
+Near-flat windows (heuristic range ≤3 over four levels): `[{"from":27,"through":30,"score_range":1.6576006201615172},{"from":31,"through":34,"score_range":1.8165240079897984},{"from":32,"through":35,"score_range":1.8165240079897984},{"from":33,"through":36,"score_range":2.664666464903931},{"from":34,"through":37,"score_range":2.865231868326916},{"from":35,"through":38,"score_range":1.2424704163102405},{"from":36,"through":39,"score_range":1.2424704163102405},{"from":37,"through":40,"score_range":1.2424704163102405},{"from":38,"through":41,"score_range":1.737662844868467},{"from":39,"through":42,"score_range":1.737662844868467},{"from":40,"through":43,"score_range":1.737662844868467},{"from":41,"through":44,"score_range":0.8468975468975373},{"from":42,"through":45,"score_range":1.230384930384929},{"from":43,"through":46,"score_range":2.165500239185789},{"from":44,"through":47,"score_range":2.165500239185789},{"from":45,"through":48,"score_range":2.5515970515970565},{"from":46,"through":49,"score_range":0.9250642013353882},{"from":47,"through":50,"score_range":1.405376466352081},{"from":48,"through":51,"score_range":2.069665729459544},{"from":49,"through":52,"score_range":1.53649165574285},{"from":50,"through":53,"score_range":1.10176226902378},{"from":51,"through":54,"score_range":1.4197548684687433},{"from":52,"through":55,"score_range":1.4197548684687433},{"from":53,"through":56,"score_range":1.0607788639703557},{"from":54,"through":57,"score_range":1.7357888657888765},{"from":55,"through":58,"score_range":1.7398461810226564},{"from":56,"through":59,"score_range":1.7398461810226564},{"from":57,"through":60,"score_range":0.08045372523844208},{"from":58,"through":61,"score_range":1.2820157090412323},{"from":59,"through":62,"score_range":1.3111380378127677},{"from":60,"through":63,"score_range":1.3111380378127677},{"from":61,"through":64,"score_range":1.3111380378127677},{"from":62,"through":65,"score_range":2.0594364720916047},{"from":63,"through":66,"score_range":2.0594364720916047},{"from":64,"through":67,"score_range":2.1865713558089936},{"from":65,"through":68,"score_range":2.022042178005492},{"from":66,"through":69,"score_range":2.022042178005492},{"from":67,"through":70,"score_range":2.022042178005492},{"from":68,"through":71,"score_range":0.8522445953638709},{"from":69,"through":72,"score_range":0.6067774009762701},{"from":70,"through":73,"score_range":0.3883398343879776},{"from":71,"through":74,"score_range":0.6843367387697157},{"from":72,"through":75,"score_range":0.6843367387697157},{"from":73,"through":76,"score_range":1.2112808585316657},{"from":74,"through":77,"score_range":1.3157991730111576},{"from":75,"through":78,"score_range":0.7312804367717547},{"from":76,"through":79,"score_range":0.10807939594855043},{"from":77,"through":80,"score_range":2.2003903165056897},{"from":84,"through":87,"score_range":2.1367111885404455},{"from":85,"through":88,"score_range":1.3530308558323867},{"from":89,"through":92,"score_range":1.9774284005237632},{"from":90,"through":93,"score_range":0.8409018937580015},{"from":91,"through":94,"score_range":0.8828686868686759},{"from":92,"through":95,"score_range":1.4383017705927585},{"from":93,"through":96,"score_range":1.9640375180375145},{"from":94,"through":97,"score_range":1.9640375180375145},{"from":95,"through":98,"score_range":0.6092843923276803},{"from":96,"through":99,"score_range":0.996241608180128},{"from":97,"through":100,"score_range":0.996241608180128}]`.
 
 Endless boards measured: 88; SOLVED on all screens: 88.
 The JSON distinguishes fresh-seed cases from continuous seeded runs and records reproducibility failures.
