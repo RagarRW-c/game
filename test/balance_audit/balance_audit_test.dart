@@ -15,7 +15,10 @@ import 'support/balance_metrics.dart';
 
 const worldNames = ['garden', 'ocean', 'candy', 'space', 'desert', 'ice',
   'jungle', 'volcano', 'dream', 'crystal'];
-const boundaryRounds = [1, 3, 4, 7, 8, 12, 13, 30, 100];
+const boundaryRounds = [
+  1, 3, 4, 7, 8, 12, 13, 14, 15, 20, 21, 24, 25, 26,
+  30, 31, 49, 50, 51, 52, 74, 75, 76, 100, 101,
+];
 const seeds = [0, 1, 42, 2147483647];
 const beginMarker = '<!-- BALANCE_MEASUREMENTS_BEGIN -->';
 const endMarker = '<!-- BALANCE_MEASUREMENTS_END -->';
@@ -248,7 +251,8 @@ void main() {
       writeJson('qa/balance_endless.json', {...metadata, 'status': 'RUNNING', 'samples': endless});
     }
     for (final theme in TileVisualTheme.values) {
-      final rounds = theme == TileVisualTheme.garden ? boundaryRounds : [1, 4, 8, 13];
+      final rounds = theme == TileVisualTheme.garden
+          ? boundaryRounds : [1, 4, 8, 13, 20, 30, 50, 75, 100];
       final selectedSeeds = theme == TileVisualTheme.garden ? seeds : [0];
       for (final round in rounds) {
         for (final seed in selectedSeeds) {
@@ -261,12 +265,12 @@ void main() {
     for (final seed in [0, 42]) {
       final generator = EndlessBoardGenerator(random: Random(seed));
       final repeat = EndlessBoardGenerator(random: Random(seed));
-      for (var round = 1; round <= 30; round++) {
+      for (var round = 1; round <= 101; round++) {
         final theme = TileVisualTheme.values[((round - 1) ~/ 3) % 10];
         final tiles = generator.generate(round: round, theme: theme);
         final repeated = repeat.generate(round: round, theme: theme);
         if (boundaryRounds.contains(round)) sample(round, seed, theme,
-            'continuous_rounds_1_to_30_default_theme_cycle', tiles, repeated);
+            'continuous_rounds_1_to_101_default_theme_cycle', tiles, repeated);
       }
     }
     final summary = curveSummary(campaign);

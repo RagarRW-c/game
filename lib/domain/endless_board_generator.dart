@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../core/tile_catalog.dart';
 import 'board_layout.dart';
+import 'endless_difficulty.dart';
 import 'game_engine.dart';
 import 'tile.dart';
 
@@ -14,6 +15,7 @@ class EndlessBoardGenerator {
     required int round,
     required TileVisualTheme theme,
   }) {
+    if (round >= 14) return _generateProgressive(round, theme);
     final profile = _profileForRound(round);
     final tileCount = _divisibleByThree(
       profile.minTiles +
@@ -62,6 +64,90 @@ class EndlessBoardGenerator {
     final typeById = <String, String>{
       for (var i = 0; i < removalOrder.length; i++)
         removalOrder[i].id: removalTypes[i],
+    };
+    return tiles
+        .map((tile) => tile.copyWith(type: typeById[tile.id]!))
+        .toList();
+  }
+
+  List<Tile> _generateProgressive(int round, TileVisualTheme theme) {
+    final profile = EndlessDifficulty.forRound(round);
+    final tileCount = profile.minTiles +
+        3 * _random.nextInt((profile.maxTiles - profile.minTiles) ~/ 3 + 1);
+    final layers = profile.minLayers +
+        _random.nextInt(profile.maxLayers - profile.minLayers + 1);
+    final types = tileCatalogForTheme(theme).keys.toList()..shuffle(_random);
+    final palette = types.take(min(profile.typeCount, types.length)).toList();
+    // Guarantee the requested variety, then vary the remaining triple counts.
+    final triples = List<String>.from(palette);
+    while (triples.length < tileCount ~/ 3) {
+      triples.add(palette[_random.nextInt(palette.length)]);
+    }
+    triples.shuffle(_random);
+
+    final positions = <_TilePosition>[];
+    final slots = List<int>.generate(16, (i) => i)..shuffle(_random);
+    final mirror = _random.nextBool();
+    for (var layer = 0; layer < layers; layer++) {
+      final lowerCount = tileCount - profile.topTiles;
+      final count = layer == layers - 1
+          ? profile.topTiles
+          : lowerCount ~/ (layers - 1) +
+              (layer < lowerCount % (layers - 1) ? 1 : 0);
+      // Rotate holes between layers. A whole layer shares one small offset:
+      // cells stay separate within that layer, while adjacent cells on other
+      // layers can cover one another without accumulated jitter or edge piles.
+      for (var i = 0; i < count; i++) {
+        final cell = slots[(i + layer * 3) % slots.length];
+        final column = cell % 4;
+        final row = cell ~/ 4;
+        final direction = layer.isEven ? -1.0 : 1.0;
+        final dx = profile.layout == EndlessLayout.weave
+            ? 0.0
+            : direction * profile.offset;
+        final dy = profile.layout == EndlessLayout.terraces
+            ? 0.0
+            : direction * profile.offset;
+        final x = 0.075 + column * 0.190 + dx;
+        positions.add(_TilePosition(
+          mirror ? 0.765 - x : x,
+          0.100 + row * 0.180 + dy,
+          layer,
+        ));
+      }
+    }
+    positions.shuffle(_random);
+    final tiles = List<Tile>.generate(
+        tileCount,
+        (i) => Tile(
+              id: 'endless_${round}_$i',
+              type: triples.first,
+              x: positions[i].x,
+              y: positions[i].y,
+              layer: positions[i].layer,
+            ));
+
+    final order = <String>[];
+    var batchIndex = 0;
+    while (triples.isNotEmpty) {
+      final width = profile.batchWidth(batchIndex++);
+      final batch = <String>[];
+      while (batch.length < width && triples.isNotEmpty) {
+        final distinct = triples.indexWhere((type) => !batch.contains(type));
+        batch.add(triples.removeAt(distinct < 0 ? 0 : distinct));
+      }
+      order.addAll(clearableTileOrder(
+        [
+          for (final type in batch) ...[type, type, type]
+        ],
+        random: _random,
+        difficulty: width,
+      ));
+    }
+    final removalOrder = GameEngine(tiles).renderedBoardTiles.reversed.toList();
+    final typeById = <String, String>{
+      for (var i = 0; i < removalOrder.length; i++)
+        removalOrder[i].id: order[i],
     };
     return tiles
         .map((tile) => tile.copyWith(type: typeById[tile.id]!))

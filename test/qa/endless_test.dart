@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:triple_tile_adventure/core/tile_catalog.dart';
 import 'package:triple_tile_adventure/domain/endless_board_generator.dart';
+import 'package:triple_tile_adventure/domain/endless_difficulty.dart';
 import 'package:triple_tile_adventure/domain/game_engine.dart';
 import 'package:triple_tile_adventure/domain/game_result.dart';
 import 'package:triple_tile_adventure/domain/tile.dart';
@@ -12,6 +13,7 @@ import 'package:triple_tile_adventure/domain/tile.dart';
 import 'support/engine_tap_oracle.dart';
 import 'support/geometry.dart';
 import 'support/legacy_endless_board_generator.dart';
+import 'support/pre_progression_endless_generator.dart';
 import 'support/solver.dart';
 
 const rounds = [1, 3, 4, 7, 8, 12, 13, 100];
@@ -72,18 +74,33 @@ void main() {
         final generator = EndlessBoardGenerator(random: Random(seed));
         final repeat = EndlessBoardGenerator(random: Random(seed));
         final legacy = LegacyEndlessBoardGenerator(random: Random(seed));
+        final preProgression =
+            PreProgressionEndlessBoardGenerator(random: Random(seed));
         for (final round in rounds) {
           final tiles = generator.generate(round: round, theme: theme);
           final repeated = repeat.generate(round: round, theme: theme);
           final original = legacy.generate(round: round, theme: theme);
+          final baseline = preProgression.generate(round: round, theme: theme);
           final key = '${theme.name}/round=$round/seed=$seed';
           String shape(List<Tile> list) => list
               .map((t) => '${t.id}:${t.x}:${t.y}:${t.layer}:${t.state}')
               .join('|');
-          expect(shape(tiles), shape(original), reason: key);
-          expect(tiles.map((t) => t.type).toList()..sort(),
+          // Preserve the historical solution-repair contract for every old
+          // sample, including round 100. The approved progression intentionally
+          // changes late geometry/inventory; its stronger bounds and exact
+          // stage contracts are covered in endless_progression_test.dart.
+          expect(shape(baseline), shape(original), reason: key);
+          expect(baseline.map((t) => t.type).toList()..sort(),
               original.map((t) => t.type).toList()..sort(),
               reason: key);
+          if (round <= 13) {
+            expect(shape(tiles), shape(original), reason: key);
+            expect(tiles.map((t) => t.type).toList(),
+                baseline.map((t) => t.type).toList(),
+                reason: key);
+          } else {
+            expect(shape(tiles), isNot(shape(original)), reason: key);
+          }
           expect(shape(tiles), shape(repeated), reason: key);
           expect(tiles.map((t) => t.type).toList(),
               repeated.map((t) => t.type).toList(),
@@ -142,32 +159,37 @@ void main() {
               .join('|');
           check(signature(tiles) == signature(again),
               'Seeded generator not reproducible');
-          final minCount = round <= 3
-              ? 24
-              : round <= 7
+          final later = round >= 14 ? EndlessDifficulty.forRound(round) : null;
+          final minCount = later?.minTiles ??
+              (round <= 3
+                  ? 24
+                  : round <= 7
+                      ? 30
+                      : round <= 12
+                          ? 42
+                          : 54);
+          final maxCount = later?.maxTiles ??
+              (round <= 3
                   ? 30
-                  : round <= 12
+                  : round <= 7
                       ? 42
-                      : 54;
-          final maxCount = round <= 3
-              ? 30
-              : round <= 7
-                  ? 42
-                  : round <= 12
-                      ? 54
-                      : 72;
-          final minLayers = round <= 3
-              ? 2
-              : round <= 7
+                      : round <= 12
+                          ? 54
+                          : 72);
+          final minLayers = later?.minLayers ??
+              (round <= 3
+                  ? 2
+                  : round <= 7
+                      ? 3
+                      : round <= 12
+                          ? 4
+                          : 5);
+          final maxLayers = later?.maxLayers ??
+              (round <= 7
                   ? 3
                   : round <= 12
                       ? 4
-                      : 5;
-          final maxLayers = round <= 7
-              ? 3
-              : round <= 12
-                  ? 4
-                  : 6;
+                      : 6);
           check(
               tiles.length >= minCount &&
                   tiles.length <= maxCount &&
