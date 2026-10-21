@@ -70,6 +70,17 @@ class _DailyChallengesScreenState extends State<DailyChallengesScreen> {
   @override
   Widget build(BuildContext context) {
     final state = _state;
+    // Keep scaled headings wide enough to leave room for the challenge list.
+    // The balance remains visible in the list rather than squeezing the title.
+    final balanceInContent = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    final balanceBadge = GameBadge(
+      icon: Icons.monetization_on_rounded,
+      gradient: GameGradients.badge,
+      child: Text(
+        '$_coins',
+        style: GameTextStyles.button.copyWith(color: Colors.white),
+      ),
+    );
     return Scaffold(
       body: GameBackground(
         child: SafeArea(
@@ -78,16 +89,7 @@ class _DailyChallengesScreenState extends State<DailyChallengesScreen> {
               GameHeader(
                 title: 'Daily Challenges',
                 onBack: () => Navigator.of(context).maybePop(),
-                trailing: GameBadge(
-                  icon: Icons.monetization_on_rounded,
-                  gradient: GameGradients.badge,
-                  child: Text(
-                    '$_coins',
-                    style: GameTextStyles.button.copyWith(
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
+                trailing: balanceInContent ? null : balanceBadge,
               ),
               Expanded(
                 child: _loading || state == null
@@ -95,6 +97,13 @@ class _DailyChallengesScreenState extends State<DailyChallengesScreen> {
                     : ListView(
                         padding: const EdgeInsets.all(GameSpacing.lg),
                         children: [
+                          if (balanceInContent) ...[
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: balanceBadge,
+                            ),
+                            const SizedBox(height: GameSpacing.md),
+                          ],
                           GameCard(
                             padding: const EdgeInsets.all(GameSpacing.lg),
                             child: Column(
@@ -193,45 +202,56 @@ class _ChallengeCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  gradient: complete
-                      ? GameGradients.successButton
-                      : GameGradients.primaryButton,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3),
-                  boxShadow: GameShadows.light(),
-                ),
-                child: Icon(
-                  _challengeIcon(definition.id),
-                  color: Colors.white,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(width: GameSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      definition.title,
-                      style: GameTextStyles.body.copyWith(fontSize: 18),
+          LayoutBuilder(builder: (context, constraints) {
+            final stackReward = constraints.maxWidth < 340 ||
+                MediaQuery.textScalerOf(context).scale(1) > 1.3;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      gradient: complete
+                          ? GameGradients.successButton
+                          : GameGradients.primaryButton,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: GameShadows.light(),
                     ),
-                    const SizedBox(height: GameSpacing.xs),
-                    Text(
-                      '${entry.cappedProgress}/${definition.target}',
-                      style: GameTextStyles.caption,
+                    child: Icon(
+                      _challengeIcon(definition.id),
+                      color: Colors.white,
+                      size: 30,
                     ),
-                  ],
-                ),
-              ),
-              _RewardBadge(definition: definition),
-            ],
-          ),
+                  ),
+                  const SizedBox(width: GameSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          definition.title,
+                          style: GameTextStyles.body.copyWith(fontSize: 18),
+                        ),
+                        const SizedBox(height: GameSpacing.xs),
+                        Text(
+                          '${entry.cappedProgress}/${definition.target}',
+                          style: GameTextStyles.caption,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!stackReward) _RewardBadge(definition: definition),
+                ]),
+                if (stackReward) ...[
+                  const SizedBox(height: GameSpacing.sm),
+                  _RewardBadge(definition: definition),
+                ],
+              ],
+            );
+          }),
           const SizedBox(height: GameSpacing.md),
           ClipRRect(
             borderRadius: GameRadius.smallRadius,

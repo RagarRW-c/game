@@ -19,6 +19,7 @@ class TreasureChestsScreen extends StatefulWidget {
 class _TreasureChestsScreenState extends State<TreasureChestsScreen> {
   late Future<List<TreasureChest>> _chestsFuture;
   Timer? _timer;
+  bool _openingNow = false;
 
   @override
   void didChangeDependencies() {
@@ -51,20 +52,56 @@ class _TreasureChestsScreenState extends State<TreasureChestsScreen> {
   }
 
   Future<void> _openNow(TreasureChest chest) async {
-    final repository = AppScope.of(context).progressRepository;
-    final result = await repository.openTreasureChestNow(chest.id);
-    if (!mounted) return;
-    if (result.notEnoughCoins) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not enough coins')),
+    if (_openingNow) return;
+    _openingNow = true;
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => GameDialogFrame(
+          title: 'Open Chest Now?',
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            GameRewardEmblem(
+              icon: _iconForType(chest.type),
+              gradient: _gradientForType(chest.type),
+            ),
+            const SizedBox(height: GameSpacing.md),
+            Text(chest.title,
+                textAlign: TextAlign.center, style: GameTextStyles.h2),
+            const SizedBox(height: GameSpacing.sm),
+            Text('Spend ${_instantCostForType(chest.type)} coins to open now?',
+                textAlign: TextAlign.center, style: GameTextStyles.body),
+            const SizedBox(height: GameSpacing.lg),
+            GameButton(
+                label: 'Open Now',
+                icon: Icons.lock_open_rounded,
+                variant: GameButtonVariant.gold,
+                onPressed: () => Navigator.of(context).pop(true)),
+            const SizedBox(height: GameSpacing.md),
+            GameButton(
+                label: 'Cancel',
+                variant: GameButtonVariant.secondary,
+                onPressed: () => Navigator.of(context).pop(false)),
+          ]),
+        ),
       );
-      return;
+      if (!mounted || confirmed != true) return;
+      final repository = AppScope.of(context).progressRepository;
+      final result = await repository.openTreasureChestNow(chest.id);
+      if (!mounted) return;
+      if (result.notEnoughCoins) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Not enough coins')),
+        );
+        return;
+      }
+      final reward = result.reward;
+      if (reward == null) return;
+      unawaited(AppScope.of(context).audioService.playChestOpen());
+      _reload();
+      await _showRewardDialog(chest, reward);
+    } finally {
+      _openingNow = false;
     }
-    final reward = result.reward;
-    if (reward == null) return;
-    unawaited(AppScope.of(context).audioService.playChestOpen());
-    _reload();
-    await _showRewardDialog(chest, reward);
   }
 
   Future<void> _showRewardDialog(
@@ -176,49 +213,68 @@ class _ChestSlotCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  gradient: _gradientForType(value.type),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 4),
-                  boxShadow: [
-                    ...GameShadows.medium(accent),
-                    if (value.type == TreasureChestType.gold)
-                      ...GameShadows.glow(GameColors.accentGold),
-                  ],
+          LayoutBuilder(builder: (context, constraints) {
+            final stackAction = constraints.maxWidth < 340 ||
+                MediaQuery.textScalerOf(context).scale(1) > 1.3;
+            return Column(children: [
+              Row(children: [
+                Container(
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    gradient: _gradientForType(value.type),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 4),
+                    boxShadow: [
+                      ...GameShadows.medium(accent),
+                      if (value.type == TreasureChestType.gold)
+                        ...GameShadows.glow(GameColors.accentGold),
+                    ],
+                  ),
+                  child: Icon(
+                    _iconForType(value.type),
+                    color: Colors.white,
+                    size: 42,
+                  ),
                 ),
-                child: Icon(
-                  _iconForType(value.type),
-                  color: Colors.white,
-                  size: 42,
+                const SizedBox(width: GameSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        value.title,
+                        style: GameTextStyles.h2.copyWith(fontSize: 24),
+                      ),
+                      const SizedBox(height: GameSpacing.xs),
+                      Text(
+                        unlocked
+                            ? 'Ready to open'
+                            : _formatDuration(value.remaining(now)),
+                        style: GameTextStyles.body,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: GameSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      value.title,
-                      style: GameTextStyles.h2.copyWith(fontSize: 24),
+                if (!stackAction)
+                  SizedBox(
+                    width: 104,
+                    child: GameButton(
+                      label: unlocked ? 'Open' : 'Locked',
+                      icon: unlocked
+                          ? Icons.lock_open_rounded
+                          : Icons.lock_rounded,
+                      onPressed: unlocked ? () => onOpen(value) : null,
+                      variant: unlocked
+                          ? GameButtonVariant.gold
+                          : GameButtonVariant.secondary,
+                      height: 50,
                     ),
-                    const SizedBox(height: GameSpacing.xs),
-                    Text(
-                      unlocked
-                          ? 'Ready to open'
-                          : _formatDuration(value.remaining(now)),
-                      style: GameTextStyles.body,
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 104,
-                child: GameButton(
+                  ),
+              ]),
+              if (stackAction) ...[
+                const SizedBox(height: GameSpacing.md),
+                GameButton(
                   label: unlocked ? 'Open' : 'Locked',
                   icon: unlocked ? Icons.lock_open_rounded : Icons.lock_rounded,
                   onPressed: unlocked ? () => onOpen(value) : null,
@@ -227,9 +283,9 @@ class _ChestSlotCard extends StatelessWidget {
                       : GameButtonVariant.secondary,
                   height: 50,
                 ),
-              ),
-            ],
-          ),
+              ],
+            ]);
+          }),
           const SizedBox(height: GameSpacing.lg),
           _RewardPreview(type: value.type),
           if (!unlocked) ...[
@@ -300,9 +356,10 @@ class _ChestRewardDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.88, end: 1),
-      duration: GameDurations.normal,
+      tween: Tween<double>(begin: reduceMotion ? 1 : 0.88, end: 1),
+      duration: reduceMotion ? Duration.zero : GameDurations.normal,
       curve: Curves.easeOutBack,
       builder: (context, scale, child) {
         return Opacity(

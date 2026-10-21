@@ -59,6 +59,40 @@ class GameSoftGlow extends StatelessWidget {
   }
 }
 
+/// A compact reward emblem shared by the smaller game dialogs.
+class GameRewardEmblem extends StatelessWidget {
+  const GameRewardEmblem(
+      {super.key,
+      required this.icon,
+      this.gradient = GameGradients.badge,
+      this.size = 82});
+
+  final IconData icon;
+  final Gradient gradient;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: gradient,
+            border: Border.all(color: Colors.white, width: 4),
+            boxShadow: [
+              ...GameShadows.glow(GameColors.accentGold),
+              const BoxShadow(
+                  color: Color(0x664A3152),
+                  blurRadius: 9,
+                  offset: Offset(0, 5)),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: size * 0.55),
+        ),
+      );
+}
+
 class GameCard extends StatelessWidget {
   const GameCard({
     super.key,
@@ -182,6 +216,8 @@ class _GameButtonState extends State<GameButton> {
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null;
+    final wrapLabel =
+        widget.wrapLabel || MediaQuery.textScalerOf(context).scale(1) > 1.3;
     final radius =
         BorderRadius.circular((widget.height * 0.48).clamp(18, 28).toDouble());
     final duration = MediaQuery.disableAnimationsOf(context)
@@ -202,11 +238,10 @@ class _GameButtonState extends State<GameButton> {
           builder: (context, scale, child) =>
               Transform.scale(scale: scale, child: child),
           child: Container(
-            height: widget.wrapLabel ? null : widget.height,
-            constraints: widget.wrapLabel
-                ? BoxConstraints(minHeight: widget.height)
-                : null,
-            padding: widget.wrapLabel
+            height: wrapLabel ? null : widget.height,
+            constraints:
+                wrapLabel ? BoxConstraints(minHeight: widget.height) : null,
+            padding: wrapLabel
                 ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
                 : null,
             decoration: BoxDecoration(
@@ -289,11 +324,11 @@ class _GameButtonState extends State<GameButton> {
                 Flexible(
                   child: Text(
                     widget.label,
-                    maxLines: widget.wrapLabel ? null : 1,
-                    overflow: widget.wrapLabel
+                    maxLines: wrapLabel ? null : 1,
+                    overflow: wrapLabel
                         ? TextOverflow.visible
                         : TextOverflow.ellipsis,
-                    textAlign: widget.wrapLabel ? TextAlign.center : null,
+                    textAlign: wrapLabel ? TextAlign.center : null,
                     style: GameTextStyles.button.copyWith(
                       color: _foreground,
                       fontSize: widget.sculpted ? 19 : null,
@@ -399,8 +434,11 @@ class GameHeader extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              maxLines:
+                  MediaQuery.textScalerOf(context).scale(1) > 1.3 ? null : 1,
+              overflow: MediaQuery.textScalerOf(context).scale(1) > 1.3
+                  ? TextOverflow.visible
+                  : TextOverflow.ellipsis,
               style: GameTextStyles.title,
             ),
           ),
@@ -465,68 +503,103 @@ class GameDialogFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final compactHeader = MediaQuery.textScalerOf(context).scale(1) > 1.3;
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0, end: 1),
-      duration: GameDurations.normal,
+      duration: reduceMotion ? Duration.zero : GameDurations.normal,
       curve: Curves.easeOutBack,
       builder: (context, value, child) {
-        return Dialog.fullscreen(
+        return Dialog(
+          insetPadding: EdgeInsets.zero,
           backgroundColor: Colors.transparent,
           child: Opacity(
             opacity: value.clamp(0, 1),
-            child: Transform.scale(scale: 0.9 + (value * 0.1), child: child),
+            child: Transform.scale(
+              scale: reduceMotion ? 1 : 0.94 + (value * 0.06),
+              child: child,
+            ),
           ),
         );
       },
-      child: Container(
-        color: GameColors.dialogOverlay.withValues(alpha: 0.62),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                GameCard(
-                  margin: const EdgeInsets.all(GameSpacing.xl),
-                  padding: const EdgeInsets.fromLTRB(
-                    GameSpacing.xl,
-                    72,
-                    GameSpacing.xl,
-                    GameSpacing.xl,
-                  ),
-                  child: child,
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) => Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 440,
+                maxHeight: constraints.maxHeight - 16,
+              ),
+              child: GameCard(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.all(GameSpacing.lg),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                      decoration: BoxDecoration(
+                        gradient: GameGradients.dialogHeader,
+                        borderRadius: GameRadius.largeRadius,
+                        border: Border.all(color: Colors.white70, width: 2),
+                        boxShadow:
+                            GameShadows.light(GameColors.primaryBlueDark),
+                      ),
+                      child: compactHeader
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (onClose != null)
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: GameRoundIconButton(
+                                      key: const ValueKey('game_dialog_close'),
+                                      icon: Icons.close_rounded,
+                                      onPressed: onClose,
+                                      backgroundColor: GameColors.dangerRed,
+                                    ),
+                                  ),
+                                Text(
+                                  title,
+                                  textAlign: TextAlign.center,
+                                  style: GameTextStyles.title
+                                      .copyWith(fontSize: 18),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    textAlign: TextAlign.center,
+                                    style: GameTextStyles.title
+                                        .copyWith(fontSize: 25),
+                                  ),
+                                ),
+                                if (onClose != null) ...[
+                                  const SizedBox(width: 8),
+                                  GameRoundIconButton(
+                                    key: const ValueKey('game_dialog_close'),
+                                    icon: Icons.close_rounded,
+                                    onPressed: onClose,
+                                    backgroundColor: GameColors.dangerRed,
+                                  ),
+                                ],
+                              ],
+                            ),
+                    ),
+                    const SizedBox(height: GameSpacing.lg),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        key: const ValueKey('game_dialog_content_scroll'),
+                        child: child,
+                      ),
+                    ),
+                  ],
                 ),
-                Positioned(
-                  left: GameSpacing.xxl,
-                  right: GameSpacing.xxl,
-                  top: 0,
-                  child: Container(
-                    height: 82,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      gradient: GameGradients.dialogHeader,
-                      borderRadius: GameRadius.extraLargeRadius,
-                      border: Border.all(color: Colors.white70, width: 3),
-                      boxShadow: GameShadows.medium(GameColors.primaryBlueDark),
-                    ),
-                    child: Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      style: GameTextStyles.title.copyWith(fontSize: 30),
-                    ),
-                  ),
-                ),
-                if (onClose != null)
-                  Positioned(
-                    right: GameSpacing.lg,
-                    top: 48,
-                    child: GameRoundIconButton(
-                      icon: Icons.close_rounded,
-                      onPressed: onClose,
-                      backgroundColor: GameColors.dangerRed,
-                    ),
-                  ),
-              ],
+              ),
             ),
           ),
         ),

@@ -151,7 +151,7 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(reward.icon, color: GameColors.accentGold, size: 72),
+            GameRewardEmblem(icon: reward.icon),
             const SizedBox(height: GameSpacing.md),
             Text(reward.label, style: GameTextStyles.h2),
             const SizedBox(height: GameSpacing.xl),
@@ -185,58 +185,81 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
                 onBack: () => Navigator.of(context).maybePop(),
               ),
               Expanded(
-                child: Center(
-                  child: GameCard(
-                    margin: const EdgeInsets.all(GameSpacing.lg),
-                    child: _loading
-                        ? const _WheelLoadingState()
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  AnimatedBuilder(
-                                    animation: _rotation,
-                                    builder: (context, child) {
-                                      return Transform.rotate(
-                                        angle: _rotation.value * 2 * pi,
-                                        child: child,
-                                      );
-                                    },
-                                    child: const _Wheel(rewards: _rewards),
-                                  ),
-                                  const Positioned(
-                                    top: 0,
-                                    child: Icon(
-                                      Icons.arrow_drop_down_rounded,
-                                      color: GameColors.dangerRed,
-                                      size: 54,
+                child: LayoutBuilder(
+                    builder: (context, constraints) => SingleChildScrollView(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                                minHeight: constraints.maxHeight),
+                            child: Center(
+                                child: GameCard(
+                              margin: const EdgeInsets.all(GameSpacing.lg),
+                              child: _loading
+                                  ? const _WheelLoadingState()
+                                  : Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width:
+                                              MediaQuery.sizeOf(context).width <
+                                                      360
+                                                  ? 240
+                                                  : 280,
+                                          height:
+                                              MediaQuery.sizeOf(context).width <
+                                                      360
+                                                  ? 240
+                                                  : 280,
+                                          child: FittedBox(
+                                              child: Stack(
+                                            alignment: Alignment.center,
+                                            children: [
+                                              AnimatedBuilder(
+                                                animation: _rotation,
+                                                builder: (context, child) {
+                                                  return Transform.rotate(
+                                                    angle: _rotation.value *
+                                                        2 *
+                                                        pi,
+                                                    child: child,
+                                                  );
+                                                },
+                                                child: const _Wheel(
+                                                    rewards: _rewards),
+                                              ),
+                                              const Positioned(
+                                                top: 0,
+                                                child: Icon(
+                                                  Icons.arrow_drop_down_rounded,
+                                                  color: GameColors.dangerRed,
+                                                  size: 54,
+                                                ),
+                                              ),
+                                            ],
+                                          )),
+                                        ),
+                                        const SizedBox(height: GameSpacing.xl),
+                                        Text(
+                                          _available
+                                              ? 'Spin once today'
+                                              : 'Next spin tomorrow',
+                                          style: GameTextStyles.body,
+                                        ),
+                                        const SizedBox(height: GameSpacing.lg),
+                                        GameButton(
+                                          label: _available
+                                              ? 'Daily Spin'
+                                              : 'Come Back Tomorrow',
+                                          icon: Icons.casino_rounded,
+                                          onPressed: _available && !_spinning
+                                              ? _spin
+                                              : null,
+                                          variant: GameButtonVariant.gold,
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: GameSpacing.xl),
-                              Text(
-                                _available
-                                    ? 'Spin once today'
-                                    : 'Next spin tomorrow',
-                                style: GameTextStyles.body,
-                              ),
-                              const SizedBox(height: GameSpacing.lg),
-                              GameButton(
-                                label: _available
-                                    ? 'Daily Spin'
-                                    : 'Come Back Tomorrow',
-                                icon: Icons.casino_rounded,
-                                onPressed:
-                                    _available && !_spinning ? _spin : null,
-                                variant: GameButtonVariant.gold,
-                              ),
-                            ],
+                            )),
                           ),
-                  ),
-                ),
+                        )),
               ),
             ],
           ),
@@ -269,6 +292,12 @@ class _Wheel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final segmentFontSize = textScale >= 2
+        ? 9.0
+        : textScale > 1.3
+            ? 10.0
+            : 12.0;
     return SizedBox(
       width: 280,
       height: 280,
@@ -291,22 +320,28 @@ class _Wheel extends StatelessWidget {
                     border: Border.all(color: Colors.white, width: 2),
                     boxShadow: GameShadows.light(),
                   ),
-                  child: Transform.rotate(
-                    angle: -(2 * pi / rewards.length) * index,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(rewards[index].icon,
-                            color: Colors.white, size: 24),
-                        const SizedBox(height: GameSpacing.xs),
-                        Text(
-                          rewards[index].shortLabel,
-                          textAlign: TextAlign.center,
-                          style: GameTextStyles.caption.copyWith(
-                            color: Colors.white,
-                          ),
+                  child: Semantics(
+                    label: rewards[index].label,
+                    child: ExcludeSemantics(
+                      child: Transform.rotate(
+                        angle: -(2 * pi / rewards.length) * index,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(rewards[index].icon,
+                                color: Colors.white, size: 24),
+                            const SizedBox(height: GameSpacing.xs),
+                            Text(
+                              rewards[index].shortLabel,
+                              textAlign: TextAlign.center,
+                              style: GameTextStyles.caption.copyWith(
+                                color: Colors.white,
+                                fontSize: segmentFontSize,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -361,7 +396,7 @@ class _WheelReward {
 
   String get shortLabel {
     if (coins != null) return '$coins';
-    return '+1 ${_boosterName(booster!)}';
+    return _boosterName(booster!);
   }
 
   IconData get icon {

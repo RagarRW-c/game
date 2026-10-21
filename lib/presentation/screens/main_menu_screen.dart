@@ -119,11 +119,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.monetization_on_rounded,
-              color: GameColors.accentGold,
-              size: 72,
-            ),
+            const GameRewardEmblem(icon: Icons.monetization_on_rounded),
             const SizedBox(height: GameSpacing.md),
             const Text('+100 coins', style: GameTextStyles.h2),
             const SizedBox(height: GameSpacing.xl),
@@ -425,9 +421,10 @@ class _DailyLoginStreakDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.9, end: 1),
-      duration: GameDurations.normal,
+      tween: Tween<double>(begin: reduceMotion ? 1 : 0.9, end: 1),
+      duration: reduceMotion ? Duration.zero : GameDurations.normal,
       curve: Curves.easeOutBack,
       builder: (context, scale, child) {
         return Opacity(
@@ -490,13 +487,17 @@ class _StreakRewardRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const rewards = <int>[50, 75, 100, 125, 150, 200, 300];
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (var index = 0; index < rewards.length; index++)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = MediaQuery.textScalerOf(context).scale(1) > 1.3 ? 3 : 4;
+      final width = (constraints.maxWidth - (columns - 1) * 4) / columns;
+      return Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 4,
+        runSpacing: 6,
+        children: [
+          for (var index = 0; index < rewards.length; index++)
+            SizedBox(
+              width: width,
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: GameSpacing.xs),
                 decoration: BoxDecoration(
@@ -510,6 +511,7 @@ class _StreakRewardRow extends StatelessWidget {
                       : GameShadows.light(),
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       'D${index + 1}',
@@ -525,8 +527,8 @@ class _StreakRewardRow extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-      ],
-    );
+        ],
+      );
+    });
   }
 }

@@ -367,16 +367,24 @@ class _SettingsAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withValues(alpha: 0.74),
+      color: Colors.transparent,
       borderRadius: GameRadius.largeRadius,
       child: InkWell(
         borderRadius: GameRadius.largeRadius,
         onTap: onTap,
-        child: Padding(
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: GameGradients.panel,
+            borderRadius: GameRadius.largeRadius,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: GameShadows.light(color),
+          ),
           padding: const EdgeInsets.all(GameSpacing.md),
           child: Row(
             children: [
-              Icon(icon, color: color),
+              CircleAvatar(
+                  backgroundColor: color.withValues(alpha: 0.15),
+                  child: Icon(icon, color: color)),
               const SizedBox(width: GameSpacing.md),
               Expanded(child: Text(label, style: GameTextStyles.body)),
               Icon(Icons.chevron_right_rounded, color: color),
@@ -409,10 +417,14 @@ class _SettingsIcon extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: AnimatedOpacity(
-          duration: GameDurations.quick,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : GameDurations.quick,
           opacity: enabled ? 1 : 0.62,
           child: AnimatedContainer(
-            duration: GameDurations.normal,
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : GameDurations.normal,
             width: 58,
             height: 58,
             decoration: BoxDecoration(
@@ -454,13 +466,17 @@ class _SettingsSwitch extends StatelessWidget {
         vertical: GameSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.74),
+        gradient: GameGradients.panel,
         borderRadius: GameRadius.largeRadius,
         border: Border.all(color: Colors.white, width: 2),
+        boxShadow: GameShadows.light(GameColors.primaryBlue),
       ),
       child: Row(
         children: [
-          Icon(icon, color: GameColors.primaryBlue),
+          CircleAvatar(
+            backgroundColor: GameColors.primaryBlue.withValues(alpha: 0.14),
+            child: Icon(icon, color: GameColors.primaryBlue),
+          ),
           const SizedBox(width: GameSpacing.md),
           Expanded(child: Text(label, style: GameTextStyles.body)),
           Switch(

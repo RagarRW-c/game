@@ -553,6 +553,10 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const GameRewardEmblem(icon: Icons.pause_rounded),
+            const SizedBox(height: GameSpacing.md),
+            const Text('Ready when you are', style: GameTextStyles.body),
+            const SizedBox(height: GameSpacing.lg),
             GameButton(
               label: 'Resume',
               icon: Icons.play_arrow_rounded,

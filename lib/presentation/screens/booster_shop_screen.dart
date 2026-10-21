@@ -49,6 +49,7 @@ class _BoosterShopScreenState extends State<BoosterShopScreen> {
   }
 
   Future<void> _buy({
+    required String itemName,
     required int price,
     int undo = 0,
     int hint = 0,
@@ -56,6 +57,43 @@ class _BoosterShopScreenState extends State<BoosterShopScreen> {
   }) async {
     if (_buying) return;
     setState(() => _buying = true);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => GameDialogFrame(
+        title: 'Confirm Purchase',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const GameRewardEmblem(icon: Icons.shopping_bag_rounded),
+            const SizedBox(height: GameSpacing.md),
+            Text(itemName,
+                textAlign: TextAlign.center, style: GameTextStyles.h2),
+            const SizedBox(height: GameSpacing.sm),
+            Text('Spend $price coins?',
+                textAlign: TextAlign.center, style: GameTextStyles.body),
+            const SizedBox(height: GameSpacing.lg),
+            GameButton(
+              label: 'Buy for $price coins',
+              icon: Icons.monetization_on_rounded,
+              variant: GameButtonVariant.gold,
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+            const SizedBox(height: GameSpacing.md),
+            GameButton(
+              label: 'Cancel',
+              variant: GameButtonVariant.secondary,
+              onPressed: () => Navigator.of(context).pop(false),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (confirmed != true) {
+      setState(() => _buying = false);
+      return;
+    }
 
     final repository = AppScope.of(context).progressRepository;
     final paid = await repository.spendCoins(price);
@@ -129,7 +167,10 @@ class _BoosterShopScreenState extends State<BoosterShopScreen> {
                             price: _undoPrice,
                             onBuy: _buying
                                 ? null
-                                : () => _buy(price: _undoPrice, undo: 1),
+                                : () => _buy(
+                                    itemName: '+1 Undo booster',
+                                    price: _undoPrice,
+                                    undo: 1),
                           ),
                           const SizedBox(height: GameSpacing.md),
                           _ShopItemCard(
@@ -139,7 +180,10 @@ class _BoosterShopScreenState extends State<BoosterShopScreen> {
                             price: _hintPrice,
                             onBuy: _buying
                                 ? null
-                                : () => _buy(price: _hintPrice, hint: 1),
+                                : () => _buy(
+                                    itemName: '+1 Hint booster',
+                                    price: _hintPrice,
+                                    hint: 1),
                           ),
                           const SizedBox(height: GameSpacing.md),
                           _ShopItemCard(
@@ -149,7 +193,10 @@ class _BoosterShopScreenState extends State<BoosterShopScreen> {
                             price: _shufflePrice,
                             onBuy: _buying
                                 ? null
-                                : () => _buy(price: _shufflePrice, shuffle: 1),
+                                : () => _buy(
+                                    itemName: '+1 Shuffle booster',
+                                    price: _shufflePrice,
+                                    shuffle: 1),
                           ),
                           const SizedBox(height: GameSpacing.md),
                           _ShopItemCard(
@@ -161,6 +208,7 @@ class _BoosterShopScreenState extends State<BoosterShopScreen> {
                             onBuy: _buying
                                 ? null
                                 : () => _buy(
+                                      itemName: 'Booster Pack',
                                       price: _packPrice,
                                       undo: 1,
                                       hint: 1,
@@ -198,33 +246,39 @@ class _InventoryPanel extends StatelessWidget {
         children: [
           Text('Inventory', style: GameTextStyles.h2.copyWith(fontSize: 24)),
           const SizedBox(height: GameSpacing.md),
-          Row(
-            children: [
-              Expanded(
-                child: _InventoryBadge(
-                  icon: Icons.arrow_back_rounded,
-                  label: 'Undo',
-                  count: undo,
-                ),
-              ),
-              const SizedBox(width: GameSpacing.sm),
-              Expanded(
-                child: _InventoryBadge(
-                  icon: Icons.pets_rounded,
-                  label: 'Hint',
-                  count: hint,
-                ),
-              ),
-              const SizedBox(width: GameSpacing.sm),
-              Expanded(
-                child: _InventoryBadge(
-                  icon: Icons.air_rounded,
-                  label: 'Shuffle',
-                  count: shuffle,
-                ),
-              ),
-            ],
-          ),
+          LayoutBuilder(builder: (context, constraints) {
+            final scaled = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+            final columns = scaled
+                ? 1
+                : constraints.maxWidth < 310
+                    ? 2
+                    : 3;
+            final width =
+                (constraints.maxWidth - (columns - 1) * GameSpacing.sm) /
+                    columns;
+            return Wrap(
+              spacing: GameSpacing.sm,
+              runSpacing: GameSpacing.sm,
+              children: [
+                SizedBox(
+                    width: width,
+                    child: _InventoryBadge(
+                        icon: Icons.arrow_back_rounded,
+                        label: 'Undo',
+                        count: undo)),
+                SizedBox(
+                    width: width,
+                    child: _InventoryBadge(
+                        icon: Icons.pets_rounded, label: 'Hint', count: hint)),
+                SizedBox(
+                    width: width,
+                    child: _InventoryBadge(
+                        icon: Icons.air_rounded,
+                        label: 'Shuffle',
+                        count: shuffle)),
+              ],
+            );
+          }),
         ],
       ),
     );
@@ -260,12 +314,9 @@ class _InventoryBadge extends StatelessWidget {
             'x$count',
             style: GameTextStyles.button.copyWith(color: Colors.white),
           ),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GameTextStyles.caption.copyWith(color: Colors.white70),
-          ),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: GameTextStyles.caption.copyWith(color: Colors.white70)),
         ],
       ),
     );
@@ -296,8 +347,10 @@ class _ShopItemCard extends StatelessWidget {
       shadow: featured
           ? GameShadows.glow(GameColors.accentGold)
           : GameShadows.medium(),
-      child: Row(
-        children: [
+      child: LayoutBuilder(builder: (context, constraints) {
+        final stack = constraints.maxWidth < 340 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.3;
+        final description = Row(children: [
           Container(
             width: 58,
             height: 58,
@@ -321,20 +374,28 @@ class _ShopItemCard extends StatelessWidget {
               ],
             ),
           ),
+        ]);
+        final button = GameButton(
+          label: '$price',
+          icon: Icons.monetization_on_rounded,
+          onPressed: onBuy,
+          variant:
+              featured ? GameButtonVariant.gold : GameButtonVariant.primary,
+          height: 48,
+          sculpted: true,
+        );
+        if (stack)
+          return Column(children: [
+            description,
+            const SizedBox(height: GameSpacing.md),
+            button,
+          ]);
+        return Row(children: [
+          Expanded(child: description),
           const SizedBox(width: GameSpacing.md),
-          SizedBox(
-            width: 104,
-            child: GameButton(
-              label: '$price',
-              icon: Icons.monetization_on_rounded,
-              onPressed: onBuy,
-              variant:
-                  featured ? GameButtonVariant.gold : GameButtonVariant.primary,
-              height: 48,
-            ),
-          ),
-        ],
-      ),
+          SizedBox(width: 104, child: button),
+        ]);
+      }),
     );
   }
 }

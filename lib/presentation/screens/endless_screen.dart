@@ -809,6 +809,8 @@ class _EndlessResultsDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          const GameRewardEmblem(icon: Icons.emoji_events_rounded),
+          const SizedBox(height: GameSpacing.lg),
           _ResultRow(label: 'Final score', value: '$finalScore'),
           _ResultRow(label: 'Best score', value: '$bestScore'),
           _ResultRow(label: 'Boards cleared', value: '$boardsCleared'),
