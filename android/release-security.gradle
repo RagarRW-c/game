@@ -1,0 +1,61 @@
+// Shared by the app and the isolated policy checks. Never opens key material.
+class ReleaseSecurityPolicy {
+    void validateVariant(String flavor, String buildType, String encodedDefines,
+                         Map signing, Closure resolveFile) {
+        if (!(flavor in ['dev', 'prod'])) {
+            throw new GradleException('Select the dev or prod Android flavor.')
+        }
+        def seen = [] as Set
+        if (encodedDefines) {
+            encodedDefines.split(',', -1).each { encoded ->
+                String define
+                try {
+                    define = new String(Base64.decoder.decode(encoded), 'UTF-8')
+                } catch (IllegalArgumentException ignored) {
+                    // Do not echo a define: unrelated defines can contain secrets.
+                    throw new GradleException('Invalid dart-defines encoding.')
+                }
+                def separator = define.indexOf('=')
+                def key = separator < 0 ? define : define.substring(0, separator)
+                if (key in ['FLAVOR', 'FLUTTER_APP_FLAVOR']) {
+                    if (!seen.add(key) || separator < 0 ||
+                        define.substring(separator + 1) != flavor) {
+                        throw new GradleException('Dart flavor definitions must occur once and match the Android flavor.')
+                    }
+                }
+            }
+        }
+        // Debug/Profile retain their normal SDK signing; no upload secrets needed.
+        if (buildType != 'release') return
+
+        def required = ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD',
+                        'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']
+        def missing = required.findAll { !signing[it]?.trim() }
+        if (missing) {
+            throw new GradleException('Release signing requires non-empty environment variables: ' + missing.join(', '))
+        }
+        if (signing.ANDROID_KEY_ALIAS.equalsIgnoreCase('androiddebugkey') ||
+            signing.ANDROID_KEYSTORE_PASSWORD == 'android' ||
+            signing.ANDROID_KEY_PASSWORD == 'android') {
+            throw new GradleException('Debug signing credentials are forbidden for release builds.')
+        }
+        File store
+        boolean readable
+        try {
+            store = resolveFile(signing.ANDROID_KEYSTORE_PATH)
+            readable = store.isFile() && store.canRead()
+        } catch (Exception ignored) {
+            throw new GradleException('ANDROID_KEYSTORE_PATH is invalid or inaccessible.')
+        }
+        if (store.name.equalsIgnoreCase('debug.keystore')) {
+            throw new GradleException('A debug keystore is forbidden for release builds.')
+        }
+        if (!readable) {
+            throw new GradleException('ANDROID_KEYSTORE_PATH must reference an existing readable upload keystore file.')
+        }
+        // Alias existence, passwords and private-key usability are validated by
+        // AGP during actual signing. Metadata checks cannot authenticate a key.
+    }
+}
+
+ext.releaseSecurityPolicy = new ReleaseSecurityPolicy()

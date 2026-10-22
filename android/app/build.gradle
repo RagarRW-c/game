@@ -4,6 +4,14 @@ plugins {
     id 'dev.flutter.flutter-gradle-plugin'
 }
 
+apply from: '../release-security.gradle'
+
+// No defaults: only the Android signing tasks may open the private keystore.
+def uploadSigning = ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD',
+                     'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD'].collectEntries {
+    [(it): System.getenv(it)]
+}
+
 android {
     namespace 'com.ragarrwc.game'
     compileSdkVersion 36
@@ -41,17 +49,25 @@ android {
 
     signingConfigs {
         release {
-            // Replace with your Play Console upload key before publishing.
-            storeFile file(System.getenv('ANDROID_KEYSTORE_PATH') ?: 'debug.keystore')
-            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: 'android'
-            keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: 'androiddebugkey'
-            keyPassword System.getenv('ANDROID_KEY_PASSWORD') ?: 'android'
+            if (uploadSigning.ANDROID_KEYSTORE_PATH?.trim()) {
+                try {
+                    storeFile file(uploadSigning.ANDROID_KEYSTORE_PATH)
+                } catch (Exception ignored) {
+                    // Defer invalid paths to the redacted release-only check.
+                    // An unused release path must not prevent DEV Debug sync.
+                }
+            }
+            storePassword uploadSigning.ANDROID_KEYSTORE_PASSWORD
+            keyAlias uploadSigning.ANDROID_KEY_ALIAS
+            keyPassword uploadSigning.ANDROID_KEY_PASSWORD
         }
     }
 
     buildTypes {
         release {
             signingConfig signingConfigs.release
+            debuggable false
+            jniDebuggable false
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -61,4 +77,44 @@ android {
 
 flutter {
     source '../..'
+}
+
+// Guard Android artifacts, not prebuild or Flutter compilation: Flutter can
+// schedule another flavor's compile task as an auxiliary dependency.
+android.applicationVariants.all { variant ->
+    def suffix = variant.name.capitalize()
+    def securityCheck = tasks.register("verify${suffix}Security") {
+        group = 'verification'
+        description = 'Checks flavor agreement and release signing inputs without opening a keystore.'
+        doLast {
+            releaseSecurityPolicy.validateVariant(
+                variant.flavorName, variant.buildType.name,
+                project.findProperty('dart-defines')?.toString(), uploadSigning,
+                { path -> project.file(path) })
+            if (variant.buildType.name == 'release' &&
+                (variant.buildType.debuggable || variant.buildType.jniDebuggable ||
+                 variant.signingConfig?.name != 'release')) {
+                throw new GradleException('Release must use the explicit upload signing config and disable debugging.')
+            }
+        }
+    }
+    // AGP's providers identify this variant's APK package and assemble tasks.
+    variant.packageApplicationProvider.configure { task ->
+        task.dependsOn(securityCheck)
+    }
+    variant.assembleProvider.configure { task ->
+        task.dependsOn(securityCheck)
+    }
+    // The legacy variant API has no equivalent public bundle/signing providers.
+    // Match AGP 8.6.1's complete variant task names lazily, including the unsigned
+    // bundle stages. Normalize GStrings before collection membership checks.
+    final Set<String> guardedTaskNames = [
+        "bundle${suffix}", "validateSigning${suffix}",
+        "build${suffix}PreBundle", "package${suffix}Bundle", "sign${suffix}Bundle",
+    ].collect { it.toString() }.toSet()
+    tasks.configureEach { task ->
+        if (guardedTaskNames.contains(task.name)) {
+            task.dependsOn(securityCheck)
+        }
+    }
 }

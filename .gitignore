@@ -13,6 +13,18 @@ android/local.properties
 android/app/*.jks
 android/app/*.keystore
 android/app/debug.keystore
+# Private signing inputs, regardless of local placement. Keep upload keys outside
+# the repository; ignore rules do not protect already tracked files.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+key.properties
+signing.properties
+.env
+.env.*
+!.env.example
 assets/audio/*.wav
 android/app/src/main/res/mipmap-*/ic_launcher.png
 android/gradle/wrapper/gradle-wrapper.jar

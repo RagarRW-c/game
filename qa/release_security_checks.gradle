@@ -1,0 +1,168 @@
+// Run as an init script with Gradle -p android -I qa/release_security_checks.gradle.
+// The task uses synthetic signing metadata and never reads signing environment values.
+
+class MetadataOnlyFile extends File {
+    boolean syntheticFilePresent = true
+    boolean syntheticReadable = true
+    MetadataOnlyFile(String name) { super(name) }
+    @Override boolean isFile() { syntheticFilePresent }
+    @Override boolean canRead() { syntheticReadable }
+}
+
+gradle.beforeProject { androidProject ->
+    if (androidProject != androidProject.rootProject ||
+        !new File(androidProject.projectDir, 'release-security.gradle').isFile() ||
+        !new File(androidProject.projectDir, 'app/build.gradle').isFile()) {
+        return
+    }
+    androidProject.apply from: new File(androidProject.projectDir, 'release-security.gradle')
+    // Optional real-graph regression mode. Use with a single assemble/bundle
+    // task and --dry-run, preserving Flutter's normal task-selection context.
+    // This property is only a test oracle: it never changes production wiring.
+    def expectedVariant = androidProject.findProperty('securityExpectedVariant')?.toString()
+    if (expectedVariant != null) {
+        assert expectedVariant in ['DevDebug', 'DevProfile', 'DevRelease',
+                                   'ProdDebug', 'ProdProfile', 'ProdRelease'] :
+            'securityExpectedVariant must name a supported Android variant.'
+        androidProject.gradle.taskGraph.whenReady { graph ->
+            def taskPaths = graph.allTasks.collect { it.path }
+            def expectedCheck = ":app:verify${expectedVariant}Security".toString()
+            def observedChecks = taskPaths.findAll { it ==~ /:app:verify.+Security/ } as Set
+            def entryPoints = [":app:assemble${expectedVariant}".toString(),
+                               ":app:bundle${expectedVariant}".toString()]
+            assert entryPoints.any { it in taskPaths } :
+                'Graph verification requires the expected assemble or bundle entry point.'
+            // Use the populated graph to report real edges, including implicit
+            // artifact dependencies; do not infer a path from task-name order.
+            def dependencyPath = { String target ->
+                def pending = graph.allTasks.findAll { it.path in entryPoints }
+                    .collect { [task: it, path: [it.path]] }
+                def seen = [] as Set
+                int index = 0
+                while (index < pending.size()) {
+                    def item = pending[index++]
+                    if (!seen.add(item.task.path)) continue
+                    if (item.task.path == target) return item.path.join(' -> ')
+                    graph.getDependencies(item.task).each { dependency ->
+                        pending.add([task: dependency, path: item.path + dependency.path])
+                    }
+                }
+                'No dependency path from the selected artifact entry point.'
+            }
+            def flutterCompiles = graph.allTasks.findAll {
+                it.path ==~ /:app:compileFlutterBuild.+/
+            }
+            flutterCompiles.findAll {
+                it.path != ":app:compileFlutterBuild${expectedVariant}".toString()
+            }.each { task ->
+                println("Auxiliary Flutter compilation path: ${dependencyPath(task.path)}")
+            }
+            observedChecks.findAll { it != expectedCheck }.each { path ->
+                println("Unexpected security dependency path: ${dependencyPath(path)}")
+            }
+            assert observedChecks == ([expectedCheck] as Set) :
+                "Expected only $expectedCheck; scheduled security tasks: $observedChecks"
+            flutterCompiles.each { task ->
+                def compileGuards = graph.getDependencies(task).findAll {
+                    it.path ==~ /:app:verify.+Security/
+                }
+                assert compileGuards.isEmpty() :
+                    "${task.path} must not acquire artifact guards: ${compileGuards.collect { it.path }}"
+            }
+            def packageTask = ":app:package${expectedVariant}".toString()
+            def bundleStages = [":app:build${expectedVariant}PreBundle".toString(),
+                                ":app:package${expectedVariant}Bundle".toString(),
+                                ":app:sign${expectedVariant}Bundle".toString()]
+            if (entryPoints[0] in taskPaths) {
+                assert packageTask in taskPaths : 'APK graph must include its packaging task.'
+            }
+            if (entryPoints[1] in taskPaths) {
+                assert taskPaths.containsAll(bundleStages) :
+                    "Bundle graph must include all artifact stages: $bundleStages"
+            }
+            def protectedTasks = entryPoints +
+                [":app:validateSigning${expectedVariant}".toString(), packageTask] + bundleStages
+            protectedTasks.findAll { it in taskPaths }.each { path ->
+                def protectedTask = graph.allTasks.find { it.path == path }
+                def dependencyPaths = graph.getDependencies(protectedTask).collect { it.path }
+                assert expectedCheck in dependencyPaths :
+                    "$path must depend directly on $expectedCheck; dependencies: $dependencyPaths"
+                assert taskPaths.indexOf(expectedCheck) < taskPaths.indexOf(path) :
+                    "$expectedCheck must run before $path"
+            }
+            println("Release security task graph passed for $expectedVariant.")
+        }
+    }
+    androidProject.tasks.register('checkReleaseSecurity') {
+    doLast {
+        def policy = androidProject.extensions.extraProperties.get('releaseSecurityPolicy')
+        def signing = [ANDROID_KEYSTORE_PATH: 'synthetic-upload-file',
+                       ANDROID_KEYSTORE_PASSWORD: 'synthetic-store-password',
+                       ANDROID_KEY_ALIAS: 'synthetic-upload-alias',
+                       ANDROID_KEY_PASSWORD: 'synthetic-key-password']
+        def metadata = new MetadataOnlyFile('synthetic-upload-file')
+        def encode = { String value -> Base64.encoder.encodeToString(value.getBytes('UTF-8')) }
+        def rejected = { Closure action, String expected ->
+            try {
+                action()
+                throw new AssertionError('Expected release security rejection.')
+            } catch (GradleException failure) {
+                assert failure.message.contains(expected)
+                signing.values().each { assert !failure.message.contains(it) }
+                assert failure.cause == null // No underlying error can echo inputs.
+            }
+        }
+        ['dev', 'prod'].each { flavor ->
+            ['debug', 'profile'].each { mode ->
+                policy.validateVariant(flavor, mode, null, [:], {
+                    throw new AssertionError('Non-release must not inspect signing paths.')
+                })
+                policy.validateVariant(flavor, mode, encode("FLAVOR=$flavor"), [:], { metadata })
+                policy.validateVariant(flavor, mode, encode("FLUTTER_APP_FLAVOR=$flavor"), [:], { metadata })
+                policy.validateVariant(flavor, mode,
+                    [encode("FLAVOR=$flavor"), encode("FLUTTER_APP_FLAVOR=$flavor")].join(','), [:], { metadata })
+            }
+            policy.validateVariant(flavor, 'release', null, signing, { metadata })
+            policy.validateVariant(flavor, 'release', encode("FLAVOR=$flavor"), signing, { metadata })
+            policy.validateVariant(flavor, 'release', encode("FLUTTER_APP_FLAVOR=$flavor"), signing, { metadata })
+            policy.validateVariant(flavor, 'release',
+                [encode("FLAVOR=$flavor"), encode("FLUTTER_APP_FLAVOR=$flavor")].join(','), signing, { metadata })
+            signing.keySet().each { key ->
+                [null, '', '   '].each { missing ->
+                    def incomplete = signing + [(key): missing]
+                    rejected({ policy.validateVariant(flavor, 'release', null, incomplete, { metadata }) }, key)
+                }
+            }
+            ['FLAVOR', 'FLUTTER_APP_FLAVOR'].each { key ->
+                ['unknown', flavor == 'prod' ? 'dev' : 'prod', ''].each { other ->
+                    ['debug', 'profile', 'release'].each { mode ->
+                        rejected({ policy.validateVariant(flavor, mode, encode("$key=$other"), signing, { metadata }) }, 'match')
+                    }
+                }
+                def duplicate = [encode("$key=$flavor"), encode("$key=$flavor")].join(',')
+                rejected({ policy.validateVariant(flavor, 'debug', duplicate, [:], { metadata }) }, 'once')
+            }
+        }
+        rejected({ policy.validateVariant('prod', 'debug', '!invalid!', [:], { metadata }) }, 'encoding')
+        policy.validateVariant('prod', 'debug', encode('UNRELATED=synthetic-value'), [:], { metadata })
+        rejected({ policy.validateVariant('unknown', 'debug', null, [:], { metadata }) }, 'Select')
+        ['ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_PASSWORD'].each { key ->
+            rejected({ policy.validateVariant('prod', 'release', null, signing + [(key): 'android'], { metadata }) }, 'Debug')
+        }
+        rejected({ policy.validateVariant('prod', 'release', null,
+            signing + [ANDROID_KEY_ALIAS: 'androiddebugkey'], { metadata }) }, 'Debug')
+        rejected({ policy.validateVariant('prod', 'release', null, signing,
+            { new MetadataOnlyFile('debug.keystore') }) }, 'debug keystore')
+        metadata.syntheticFilePresent = false
+        rejected({ policy.validateVariant('prod', 'release', null, signing, { metadata }) }, 'readable')
+        metadata.syntheticFilePresent = true
+        metadata.syntheticReadable = false
+        rejected({ policy.validateVariant('prod', 'release', null, signing, { metadata }) }, 'readable')
+        rejected({ policy.validateVariant('prod', 'release', null, signing,
+            { throw new IllegalArgumentException('synthetic-store-password') }) }, 'invalid')
+        rejected({ policy.validateVariant('prod', 'release', null, signing,
+            { throw new GradleException('synthetic-store-password') }) }, 'invalid')
+        println('Release security policy checks passed (synthetic metadata only).')
+    }
+    }
+}

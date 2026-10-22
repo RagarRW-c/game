@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart' show appFlavor;
+
 enum AppFlavor {
   dev,
   prod,
@@ -10,14 +12,18 @@ abstract final class AppFlavorConfig {
   );
 
   static AppFlavor get current {
-    switch (_flavorName) {
+    // Flutter derives appFlavor from the actual native build variant. A legacy
+    // Dart define must never enable QA inside the production Android package.
+    // The fallback preserves host-side tests and unflavored development tools.
+    final flavorName = appFlavor ?? _flavorName;
+    switch (flavorName) {
       case 'dev':
         return AppFlavor.dev;
       case 'prod':
         return AppFlavor.prod;
       default:
         throw StateError(
-          'Unsupported FLAVOR="$_flavorName". Use "dev" or "prod".',
+          'Unsupported app flavor. Use "dev" or "prod".',
         );
     }
   }
