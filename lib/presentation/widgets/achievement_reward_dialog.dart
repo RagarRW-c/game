@@ -69,29 +69,48 @@ class AchievementRewardDialog extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // The close control never shares space with the title
-                          // and remains reachable while the content scrolls.
-                          Row(children: [
-                            const Expanded(
-                              child: ExcludeSemantics(
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Icon(Icons.auto_awesome_rounded,
-                                      color: Color(0xFFB18447), size: 28),
+                          // Art and Close have separate columns outside the
+                          // scroll clip. Reading a long title or its reward must
+                          // never leave half a medal at the viewport edge.
+                          Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(
+                                  width: 48,
+                                  child: ExcludeSemantics(
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Icon(Icons.auto_awesome_rounded,
+                                          color: Color(0xFFB18447), size: 28),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                            Tooltip(
-                              message: 'Close',
-                              child: GameRoundIconButton(
-                                key: const ValueKey('achievement_close'),
-                                icon: Icons.close_rounded,
-                                backgroundColor: const Color(0xFFE3D8EB),
-                                foregroundColor: const Color(0xFF5F496F),
-                                onPressed: onClose,
-                              ),
-                            ),
-                          ]),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Center(
+                                    child: _AchievementTrophy(
+                                      size: MediaQuery.sizeOf(context).height <
+                                                  650 ||
+                                              MediaQuery.textScalerOf(context)
+                                                      .scale(1) >
+                                                  1.3
+                                          ? 104
+                                          : 160,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Tooltip(
+                                  message: 'Close',
+                                  child: GameRoundIconButton(
+                                    key: const ValueKey('achievement_close'),
+                                    icon: Icons.close_rounded,
+                                    backgroundColor: const Color(0xFFE3D8EB),
+                                    foregroundColor: const Color(0xFF5F496F),
+                                    onPressed: onClose,
+                                  ),
+                                ),
+                              ]),
                           Flexible(
                             child: SingleChildScrollView(
                               key: const ValueKey('achievement_scroll'),
@@ -123,9 +142,7 @@ class AchievementRewardDialog extends StatelessWidget {
                                     ],
                                   ),
                                 ),
-                                const SizedBox(height: 12),
-                                const _AchievementTrophy(),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 20),
                                 Text(
                                   definition.name,
                                   key: const ValueKey('achievement_name'),
@@ -153,51 +170,63 @@ class AchievementRewardDialog extends StatelessWidget {
 }
 
 class _AchievementTrophy extends StatelessWidget {
-  const _AchievementTrophy();
+  const _AchievementTrophy({required this.size});
+
+  final double size;
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
         child: IgnorePointer(
           child: SizedBox(
-            width: 160,
-            height: 160,
-            child: GameCelebrationHalo(
-              color: const Color(0xFFDBAC54),
-              child: Center(
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFFFFBDA),
-                        Color(0xFFF4CB79),
-                        Color(0xFFD59A47)
-                      ],
+            key: const ValueKey('achievement_trophy'),
+            width: size,
+            height: size,
+            child: FittedBox(
+              child: SizedBox(
+                width: 160,
+                height: 160,
+                child: GameCelebrationHalo(
+                  color: const Color(0xFFDBAC54),
+                  child: Center(
+                    child: Container(
+                      key: const ValueKey('achievement_medal'),
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFFFFBDA),
+                            Color(0xFFF4CB79),
+                            Color(0xFFD59A47)
+                          ],
+                        ),
+                        border: Border.all(
+                            color: const Color(0xFFFFFADE), width: 3),
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Color(0xFFAE7B43), offset: Offset(0, 5)),
+                          BoxShadow(
+                              color: Color(0x33B47A40),
+                              blurRadius: 18,
+                              offset: Offset(0, 10)),
+                        ],
+                      ),
+                      child: const Icon(Icons.emoji_events_rounded,
+                          size: 86,
+                          color: Color(0xFFFFF5CD),
+                          shadows: [
+                            Shadow(
+                                color: Color(0xFFAF793A), offset: Offset(0, 3)),
+                            Shadow(
+                                color: Color(0x4492542E),
+                                blurRadius: 6,
+                                offset: Offset(0, 5)),
+                          ]),
                     ),
-                    border:
-                        Border.all(color: const Color(0xFFFFFADE), width: 3),
-                    boxShadow: const [
-                      BoxShadow(color: Color(0xFFAE7B43), offset: Offset(0, 5)),
-                      BoxShadow(
-                          color: Color(0x33B47A40),
-                          blurRadius: 18,
-                          offset: Offset(0, 10)),
-                    ],
                   ),
-                  child: const Icon(Icons.emoji_events_rounded,
-                      size: 86,
-                      color: Color(0xFFFFF5CD),
-                      shadows: [
-                        Shadow(color: Color(0xFFAF793A), offset: Offset(0, 3)),
-                        Shadow(
-                            color: Color(0x4492542E),
-                            blurRadius: 6,
-                            offset: Offset(0, 5)),
-                      ]),
                 ),
               ),
             ),
@@ -212,6 +241,7 @@ class _CoinReward extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
+        key: const ValueKey('achievement_reward_badge'),
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(

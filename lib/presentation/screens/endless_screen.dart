@@ -23,7 +23,21 @@ import '../widgets/game_ui.dart';
 import 'main_menu_screen.dart';
 
 class EndlessScreen extends StatefulWidget {
-  const EndlessScreen({super.key});
+  const EndlessScreen({super.key})
+      : initialRound = 1,
+        boardGenerator = null;
+
+  /// Mounts the real screen with controlled input, without playing earlier
+  /// rounds. Normal routes always use the default constructor above.
+  @visibleForTesting
+  const EndlessScreen.forTesting({
+    super.key,
+    required this.boardGenerator,
+    this.initialRound = 1,
+  }) : assert(initialRound > 0);
+
+  final int initialRound;
+  final EndlessBoardGenerator? boardGenerator;
 
   static const route = '/endless';
 
@@ -35,7 +49,8 @@ class _EndlessScreenState extends State<EndlessScreen> {
   static const int _maxBoosterUses = 2;
   static const int _boosterCoinCost = 150;
 
-  final EndlessBoardGenerator _generator = EndlessBoardGenerator();
+  late final EndlessBoardGenerator _generator =
+      widget.boardGenerator ?? EndlessBoardGenerator();
   final Set<String> _hintedTileIds = <String>{};
 
   late AppScope _scope;
@@ -89,7 +104,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
     if (!mounted) return;
     _selectedTheme = _themeFromCosmetics(cosmetics);
     setState(() {
-      _round = 1;
+      _round = widget.initialRound;
       _trayFeedback = null;
       _tileEffects.clear();
       _score = 0;
@@ -107,7 +122,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
       _boosterUsedThisBoard = false;
       _gameOverShowing = false;
       _loading = false;
-      _engine = _newEngineForRound(1);
+      _engine = _newEngineForRound(_round);
       _resetBoardBoosters();
     });
   }

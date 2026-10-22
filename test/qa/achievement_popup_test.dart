@@ -8,6 +8,7 @@ import 'package:triple_tile_adventure/presentation/widgets/achievement_popup.dar
 import 'package:triple_tile_adventure/presentation/widgets/achievement_reward_dialog.dart';
 
 import 'support/geometry.dart';
+import 'support/result_layout.dart';
 
 const _short = AchievementDefinition(
   id: AchievementId.firstMatch,
@@ -86,6 +87,15 @@ void main() {
           final titleBounds = tester.getRect(heading);
           expect(titleBounds.top, greaterThanOrEqualTo(viewport.top));
           expect(titleBounds.bottom, lessThanOrEqualTo(viewport.bottom));
+          expectAchievementArtworkVisible(tester);
+          final artworkBounds = resultGlobalRect(
+              tester, find.byKey(const ValueKey('achievement_trophy')));
+          if (definition == _long && scale == 2) {
+            final state = tester.state<ScrollableState>(
+                find.descendant(of: scroll, matching: find.byType(Scrollable)));
+            expect(state.position.maxScrollExtent, greaterThan(0),
+                reason: 'Oversized titles and rewards must remain scrollable.');
+          }
 
           for (final key in [
             'achievement_heading',
@@ -113,6 +123,13 @@ void main() {
                 reason:
                     'Close must remain fixed outside the scrolling content');
             expect(close.hitTestable(), findsOneWidget);
+            expectAchievementArtworkVisible(tester);
+            expect(
+                resultGlobalRect(
+                    tester, find.byKey(const ValueKey('achievement_trophy'))),
+                artworkBounds,
+                reason:
+                    'The whole illustration stays fixed while reading rewards');
             expect(tester.takeException(), isNull);
           }
           expect(find.text(definition.name), findsOneWidget);
@@ -121,6 +138,11 @@ void main() {
               tester.getRect(find.byKey(const ValueKey('achievement_reward')));
           expect(reward.top, greaterThanOrEqualTo(viewport.top));
           expect(reward.bottom, lessThanOrEqualTo(viewport.bottom));
+          expectResultInside(
+              viewport,
+              resultGlobalRect(tester,
+                  find.byKey(const ValueKey('achievement_reward_badge'))),
+              'The large coin badge must be entirely visible at the end');
           await tester.tap(close);
           await tester.pumpAndSettle();
           expect(closed, 1);
@@ -145,6 +167,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<Opacity>(fade).opacity, 1);
       expect(tester.widget<Transform>(scale).transform.entry(0, 0), 1);
+      expectAchievementArtworkVisible(tester);
       tester.element(find.byType(AchievementRewardDialog)).markNeedsBuild();
       await tester.pump();
       expect(tester.widget<Opacity>(fade).opacity, 1);

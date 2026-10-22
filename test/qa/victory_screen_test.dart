@@ -8,6 +8,7 @@ import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
 import 'package:triple_tile_adventure/presentation/widgets/world_atmosphere.dart';
 
 import 'support/geometry.dart';
+import 'support/result_layout.dart';
 
 Future<void> mountVictory(
   WidgetTester tester,
@@ -193,6 +194,97 @@ void main() {
     });
   }
 
+  for (final screen in qaScreens) {
+    for (final scale in [1.0, 1.6, 2.0]) {
+      for (final reducedMotion in [false, true]) {
+        for (final finalLevel in [false, true]) {
+          testWidgets(
+              'result text and actions stay separated ${screen.name} / $scale / '
+              'reduced=$reducedMotion / final=$finalLevel', (tester) async {
+            var next = 0;
+            var replay = 0;
+            var map = 0;
+            await mountVictory(tester, screen,
+                level: finalLevel ? 100 : 10,
+                boss: true,
+                finalLevel: finalLevel,
+                textScale: scale,
+                reducedMotion: reducedMotion,
+                next: () => next++,
+                replay: () => replay++,
+                map: () => map++);
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+            final scroll = find.byKey(const ValueKey('victory_scroll'));
+            final primary = find.byKey(const ValueKey('victory_next'));
+            final primaryBounds = resultGlobalRect(tester, primary);
+            expectVictoryContentSeparated(tester);
+
+            // Read each full paragraph, including the longer final-world copy.
+            // Real-font initial framing is additionally asserted by goldens.
+            for (final key in [
+              'victory_description',
+              'victory_milestone_title',
+              'victory_milestone_description',
+              'victory_reward_Coins',
+              'victory_reward_XP',
+              'victory_chest',
+            ]) {
+              await tester.ensureVisible(find.byKey(ValueKey(key)));
+              await tester.pumpAndSettle();
+              expectResultTextVisible(tester, key, 'victory_scroll');
+              if (key == 'victory_description') {
+                expectVictoryDescriptionVisible(tester);
+              }
+              expectVictoryContentSeparated(tester);
+              expect(resultGlobalRect(tester, primary), primaryBounds);
+              expect(tester.takeException(), isNull);
+            }
+
+            if (screen.size.height == 568 && scale == 2) {
+              final state = tester.state<ScrollableState>(find.descendant(
+                  of: scroll, matching: find.byType(Scrollable)));
+              expect(state.position.maxScrollExtent, greaterThan(0));
+              await tester.drag(scroll, const Offset(0, 120));
+              await tester.pumpAndSettle();
+              final before = state.position.pixels;
+              await tester.drag(scroll, const Offset(0, -80));
+              await tester.pumpAndSettle();
+              expect(state.position.pixels, greaterThan(before),
+                  reason: 'A real gesture must move the content.');
+              expect(resultGlobalRect(tester, primary), primaryBounds);
+            }
+
+            final safeBounds = Rect.fromLTRB(
+                0, screen.safeTop, screen.size.width, screen.size.height - 24);
+            for (final key in [
+              'victory_next',
+              'victory_replay',
+              'victory_map'
+            ]) {
+              final action = find.byKey(ValueKey(key));
+              await tester.ensureVisible(action);
+              await tester.pumpAndSettle();
+              expect(action.hitTestable(), findsOneWidget);
+              final bounds = resultGlobalRect(tester, action);
+              expectResultInside(safeBounds, bounds, '$key must be reachable');
+              expectResultInside(
+                  bounds,
+                  resultGlobalRect(tester,
+                      find.descendant(of: action, matching: find.byType(Text))),
+                  '$key must contain its complete scaled label');
+              expectVictoryContentSeparated(tester);
+              await tester.tap(action);
+              await tester.pumpAndSettle();
+              expect(tester.takeException(), isNull);
+            }
+            expect([next, replay, map], [1, 1, 1]);
+          });
+        }
+      }
+    }
+  }
+
   testWidgets('stars reveal once and announce their earned count',
       (tester) async {
     final semantics = tester.ensureSemantics();
@@ -205,8 +297,8 @@ void main() {
       expect(tester.widget<Opacity>(fades.first).opacity,
           allOf(greaterThan(0), lessThan(1)));
       await tester.pumpAndSettle();
-      expect(
-          tester.widgetList<Opacity>(fades).every((w) => w.opacity == 1), isTrue);
+      expect(tester.widgetList<Opacity>(fades).every((w) => w.opacity == 1),
+          isTrue);
       expect(find.bySemanticsLabel('3 of 3 stars'), findsOneWidget);
       expect(tester.takeException(), isNull);
     } finally {

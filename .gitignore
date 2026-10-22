@@ -6,6 +6,8 @@
 .pub/
 build/
 coverage/
+# Flutter golden mismatch artifacts; reviewed baselines remain trackable.
+test/goldens/**/failures/
 android/.gradle/
 android/local.properties
 android/app/*.jks

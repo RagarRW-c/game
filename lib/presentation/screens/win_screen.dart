@@ -52,6 +52,36 @@ class WinScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final world = WorldThemes.forLevel(level);
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    final primaryAction = GameButton(
+        key: const ValueKey('victory_next'),
+        label: isFinalLevel ? 'Final Reward' : 'Next Level',
+        icon: isFinalLevel
+            ? Icons.workspace_premium_rounded
+            : Icons.arrow_forward_rounded,
+        onPressed: onNext,
+        height: 60,
+        gradient: world.actionGradient);
+    final secondaryActions = Column(
+        key: const ValueKey('victory_secondary_actions'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GameButton(
+              key: const ValueKey('victory_replay'),
+              label: 'Replay',
+              icon: Icons.replay_rounded,
+              onPressed: onRestart,
+              height: 48,
+              foregroundColor: world.hudGradient.colors.last,
+              variant: GameButtonVariant.secondary),
+          const SizedBox(height: 8),
+          GameButton(
+              key: const ValueKey('victory_map'),
+              label: 'Back to Map',
+              icon: Icons.map_rounded,
+              onPressed: onMap,
+              height: 48,
+              gradient: world.hudGradient),
+        ]);
     return Dialog.fullscreen(
       backgroundColor: Colors.transparent,
       child: GameBackground(
@@ -62,150 +92,146 @@ class WinScreen extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 520),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(children: [
-              Expanded(
-                  child: SingleChildScrollView(
-                key: const ValueKey('victory_scroll'),
-                padding: const EdgeInsets.fromLTRB(0, 16, 0, 20),
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: 1),
-                  duration: reducedMotion
-                      ? Duration.zero
-                      : const Duration(milliseconds: 450),
-                  curve: Curves.easeOutCubic,
-                  builder: (context, value, child) => Opacity(
-                      opacity: value,
-                      child: Transform.translate(
-                          offset: Offset(0, (1 - value) * 10), child: child)),
-                  child: Column(children: [
-                    Text('${world.worldName.toUpperCase()}  ·  LEVEL $level',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            letterSpacing: 1.6,
-                            fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 10),
-                    Text(
-                        isFinalLevel
-                            ? 'Adventure Complete!'
-                            : 'Level Complete!',
-                        key: const ValueKey('victory_title'),
-                        textAlign: TextAlign.center,
-                        style: GameTextStyles.h1.copyWith(
-                            fontSize: MediaQuery.sizeOf(context).width < 360
-                                ? 30
-                                : 34,
-                            height: 1.08)),
-                    const SizedBox(height: 8),
-                    Text(
-                        isFinalLevel
-                            ? 'An extraordinary journey. A brilliant finish.'
-                            : isBossLevel
-                                ? '${bossTitle ?? world.worldName} defeated'
-                                : 'Beautifully matched. On to the next adventure!',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 14, height: 1.4)),
-                    const SizedBox(height: 16),
-                    _VictoryEmblem(
-                        world: world,
-                        special: isBossLevel || isFinalLevel,
-                        icon: isFinalLevel
-                            ? Icons.workspace_premium_rounded
-                            : emblemIcon ?? Icons.emoji_events_rounded),
-                    const SizedBox(height: 4),
-                    VictoryStars(stars: starsEarned),
-                    if (isBossLevel || isFinalLevel) ...[
+            child: LayoutBuilder(builder: (context, constraints) {
+              // Three scaled actions must not starve the description viewport.
+              // Keep the primary route pinned; secondary routes join the scroll
+              // only when available height per unit of text scale is limited.
+              final scrollSecondaryActions = constraints.maxHeight /
+                      MediaQuery.textScalerOf(context).scale(1) <
+                  400;
+              return Column(children: [
+                Expanded(
+                    child: SingleChildScrollView(
+                  key: const ValueKey('victory_scroll'),
+                  padding: const EdgeInsets.fromLTRB(0, 16, 0, 20),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: reducedMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 450),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, child) => Opacity(
+                        opacity: value,
+                        child: Transform.translate(
+                            offset: Offset(0, (1 - value) * 10), child: child)),
+                    child: Column(children: [
+                      Text('${world.worldName.toUpperCase()}  ·  LEVEL $level',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              letterSpacing: 1.6,
+                              fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 10),
+                      Text(
+                          isFinalLevel
+                              ? 'Adventure Complete!'
+                              : 'Level Complete!',
+                          key: const ValueKey('victory_title'),
+                          textAlign: TextAlign.center,
+                          style: GameTextStyles.h1.copyWith(
+                              fontSize: MediaQuery.sizeOf(context).width < 360
+                                  ? 30
+                                  : 34,
+                              height: 1.08)),
                       const SizedBox(height: 8),
-                      Container(
-                        key: const ValueKey('victory_milestone'),
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                            gradient: world.hudGradient,
-                            borderRadius: GameRadius.largeRadius,
-                            border: Border.all(
-                                color: world.secondaryAccent
-                                    .withValues(alpha: 0.7))),
-                        child: Column(children: [
-                          Text(
-                              milestoneTitle ??
-                                  (isFinalLevel
-                                      ? 'All worlds complete!'
-                                      : 'World Complete!'),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 6),
-                          Text(
-                              isFinalLevel
-                                  ? 'All 10 worlds conquered. Your final reward awaits.'
-                                  : '${WorldThemes.forLevel(level + 1).worldName} · ${milestoneMessage ?? 'New world unlocked!'}',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  height: 1.4)),
-                        ]),
-                      ),
+                      Text(
+                          isFinalLevel
+                              ? 'An extraordinary journey. A brilliant finish.'
+                              : isBossLevel
+                                  ? '${bossTitle ?? world.worldName} defeated'
+                                  : 'Beautifully matched. On to the next adventure!',
+                          key: const ValueKey('victory_description'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14, height: 1.4)),
+                      const SizedBox(height: 16),
+                      _VictoryEmblem(
+                          world: world,
+                          special: isBossLevel || isFinalLevel,
+                          icon: isFinalLevel
+                              ? Icons.workspace_premium_rounded
+                              : emblemIcon ?? Icons.emoji_events_rounded),
+                      const SizedBox(height: 4),
+                      VictoryStars(stars: starsEarned),
+                      if (isBossLevel || isFinalLevel) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          key: const ValueKey('victory_milestone'),
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                              gradient: world.hudGradient,
+                              borderRadius: GameRadius.largeRadius,
+                              border: Border.all(
+                                  color: world.secondaryAccent
+                                      .withValues(alpha: 0.7))),
+                          child: Column(children: [
+                            Text(
+                                milestoneTitle ??
+                                    (isFinalLevel
+                                        ? 'All worlds complete!'
+                                        : 'World Complete!'),
+                                key: const ValueKey('victory_milestone_title'),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w900)),
+                            const SizedBox(height: 6),
+                            Text(
+                                isFinalLevel
+                                    ? 'All 10 worlds conquered. Your final reward awaits.'
+                                    : '${WorldThemes.forLevel(level + 1).worldName} · ${milestoneMessage ?? 'New world unlocked!'}',
+                                key: const ValueKey(
+                                    'victory_milestone_description'),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    height: 1.4)),
+                          ]),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      _VictoryRewards(
+                          world: world,
+                          coins: coinsEarned,
+                          xp: xpEarned,
+                          chest: chestLabel),
+                      const SizedBox(height: 14),
+                      Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _VictoryStat('$tilesCleared tiles cleared'),
+                            _VictoryStat('Undo $undoUsed'),
+                            _VictoryStat('Hint $hintUsed'),
+                            _VictoryStat('Shuffle $shuffleUsed'),
+                          ]),
+                      if (scrollSecondaryActions) ...[
+                        const SizedBox(height: 24),
+                        secondaryActions,
+                      ],
+                    ]),
+                  ),
+                )),
+                // A real gap separates clipped scroll content from button
+                // shadows. The primary route remains reachable at every offset.
+                Padding(
+                  key: const ValueKey('victory_actions'),
+                  padding: const EdgeInsets.only(bottom: 12, top: 20),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    primaryAction,
+                    if (!scrollSecondaryActions) ...[
+                      const SizedBox(height: 10),
+                      secondaryActions,
                     ],
-                    const SizedBox(height: 16),
-                    _VictoryRewards(
-                        world: world,
-                        coins: coinsEarned,
-                        xp: xpEarned,
-                        chest: chestLabel),
-                    const SizedBox(height: 14),
-                    Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _VictoryStat('$tilesCleared tiles cleared'),
-                          _VictoryStat('Undo $undoUsed'),
-                          _VictoryStat('Hint $hintUsed'),
-                          _VictoryStat('Shuffle $shuffleUsed'),
-                        ]),
                   ]),
                 ),
-              )),
-              // Keep every action reachable on short phones. Only the artwork
-              // and rewards scroll; no fixed-height content column can overflow.
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12, top: 6),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  GameButton(
-                      key: const ValueKey('victory_next'),
-                      label: isFinalLevel ? 'Final Reward' : 'Next Level',
-                      icon: isFinalLevel
-                          ? Icons.workspace_premium_rounded
-                          : Icons.arrow_forward_rounded,
-                      onPressed: onNext,
-                      height: 60,
-                      gradient: world.actionGradient),
-                  const SizedBox(height: 10),
-                  GameButton(
-                      key: const ValueKey('victory_replay'),
-                      label: 'Replay',
-                      icon: Icons.replay_rounded,
-                      onPressed: onRestart,
-                      height: 48,
-                      foregroundColor: world.hudGradient.colors.last,
-                      variant: GameButtonVariant.secondary),
-                  const SizedBox(height: 8),
-                  GameButton(
-                      key: const ValueKey('victory_map'),
-                      label: 'Back to Map',
-                      icon: Icons.map_rounded,
-                      onPressed: onMap,
-                      height: 48,
-                      gradient: world.hudGradient),
-                ]),
-              ),
-            ]),
+              ]);
+            }),
           ),
         ))),
       ),
