@@ -40,11 +40,13 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
   int _coins = 0;
   bool _loginStreakPromptQueued = false;
   bool _loginStreakPromptShowing = false;
+  bool _initialized = false;
+  int _refreshGeneration = 0;
+  Future<void> _popupQueue = Future<void>.value();
   PageRoute<dynamic>? _route;
 
-  Future<void> _openProgressScreen(String route) async {
-    final changed = await Navigator.pushNamed(context, route);
-    if (mounted && changed == true) await _loadRewards();
+  void _openProgressScreen(String route) {
+    Navigator.pushNamed(context, route);
   }
 
   @override
@@ -55,8 +57,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
       _route = route;
       appRouteObserver.subscribe(this, route);
     }
-    unawaited(AppScope.of(context).audioService.startMenuMusic());
-    _loadRewards();
+    if (!_initialized) {
+      _initialized = true;
+      unawaited(AppScope.of(context).audioService.startMenuMusic());
+      _loadRewards();
+    }
   }
 
   @override
@@ -78,26 +83,43 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
   }
 
   Future<void> _loadRewards() async {
+    final generation = ++_refreshGeneration;
     final repository = AppScope.of(context).progressRepository;
     final coins = await repository.coins();
+    if (!mounted || generation != _refreshGeneration) return;
     final available = await repository.dailyRewardAvailable(DateTime.now());
+    if (!mounted || generation != _refreshGeneration) return;
     final spinAvailable = await repository.dailySpinAvailable(DateTime.now());
+    if (!mounted || generation != _refreshGeneration) return;
     final finalRewardUnlocked = await repository.finalRewardUnlocked();
+    if (!mounted || generation != _refreshGeneration) return;
     final loginStreakStatus =
         await repository.dailyLoginStreakStatus(DateTime.now());
-    if (!mounted) return;
-    setState(() {
-      _coins = coins;
-      _dailyRewardAvailable = available;
-      _dailySpinAvailable = spinAvailable;
-      _finalRewardUnlocked = finalRewardUnlocked;
-    });
+    if (!mounted || generation != _refreshGeneration) return;
+    if (_coins != coins ||
+        _dailyRewardAvailable != available ||
+        _dailySpinAvailable != spinAvailable ||
+        _finalRewardUnlocked != finalRewardUnlocked) {
+      setState(() {
+        _coins = coins;
+        _dailyRewardAvailable = available;
+        _dailySpinAvailable = spinAvailable;
+        _finalRewardUnlocked = finalRewardUnlocked;
+      });
+    }
     _queueLoginStreakPopup(loginStreakStatus);
-    await showPendingAchievementPopups(
-      context,
-      repository,
-      onPopup: AppScope.of(context).audioService.playAchievementUnlocked,
-    );
+    // A previous refresh may still be showing a popup. Serialize consumption
+    // without holding up newer coin/progress snapshots.
+    final popupTask = _popupQueue.then<void>((_) async {
+      if (!mounted) return;
+      await showPendingAchievementPopups(
+        context,
+        repository,
+        onPopup: AppScope.of(context).audioService.playAchievementUnlocked,
+      );
+    });
+    _popupQueue = popupTask.catchError((Object _, StackTrace __) {});
+    await popupTask;
   }
 
   Future<void> _claimDailyReward() async {
@@ -224,11 +246,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
                           end: Alignment.bottomCenter,
                           colors: [Color(0xFFAC8CEC), Color(0xFF7352B8)],
                         ),
-                        onPressed: () async {
-                          await Navigator.pushNamed(
-                              context, EndlessScreen.route);
-                          if (mounted) await _loadRewards();
-                        },
+                        onPressed: () =>
+                            Navigator.pushNamed(context, EndlessScreen.route),
                       ),
                       const SizedBox(height: GameSpacing.xl),
                       const _MenuSectionTitle('A little something every day'),
@@ -247,13 +266,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
                             : 'Next Spin Tomorrow',
                         icon: Icons.casino_rounded,
                         onPressed: _dailySpinAvailable
-                            ? () async {
-                                await Navigator.pushNamed(
-                                  context,
-                                  LuckyWheelScreen.route,
-                                );
-                                if (mounted) await _loadRewards();
-                              }
+                            ? () => Navigator.pushNamed(
+                                context, LuckyWheelScreen.route)
                             : null,
                       ),
                       const SizedBox(height: GameSpacing.md),
@@ -275,13 +289,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
                         label: 'Booster Shop',
                         variant: GameButtonVariant.gold,
                         icon: Icons.storefront_rounded,
-                        onPressed: () async {
-                          await Navigator.pushNamed(
-                            context,
-                            BoosterShopScreen.route,
-                          );
-                          if (mounted) await _loadRewards();
-                        },
+                        onPressed: () => Navigator.pushNamed(
+                            context, BoosterShopScreen.route),
                       ),
                       const SizedBox(height: GameSpacing.md),
                       Row(
@@ -315,13 +324,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
                       PrimaryButton(
                         label: 'Daily Challenges',
                         icon: Icons.task_alt_rounded,
-                        onPressed: () async {
-                          await Navigator.pushNamed(
-                            context,
-                            DailyChallengesScreen.route,
-                          );
-                          if (mounted) await _loadRewards();
-                        },
+                        onPressed: () => Navigator.pushNamed(
+                            context, DailyChallengesScreen.route),
                       ),
                       const SizedBox(height: GameSpacing.md),
                       PrimaryButton(
@@ -339,13 +343,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
                             child: GameButton(
                               label: 'Achievements',
                               icon: Icons.emoji_events_rounded,
-                              onPressed: () async {
-                                await Navigator.pushNamed(
-                                  context,
-                                  AchievementsScreen.route,
-                                );
-                                if (mounted) await _loadRewards();
-                              },
+                              onPressed: () => Navigator.pushNamed(
+                                  context, AchievementsScreen.route),
                               variant: GameButtonVariant.gold,
                             ),
                           ),

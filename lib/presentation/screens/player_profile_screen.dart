@@ -33,6 +33,13 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
     return _ProfileData(profile: profile, cosmetics: cosmetics);
   }
 
+  void _refreshProfile() {
+    final profileFuture = _loadProfileData();
+    setState(() {
+      _profileFuture = profileFuture;
+    });
+  }
+
   Future<void> _selectFrame(String id) async {
     final selected =
         await AppScope.of(context).progressRepository.selectAvatarFrame(id);
@@ -41,7 +48,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
       _showLockedMessage();
       return;
     }
-    setState(() => _profileFuture = _loadProfileData());
+    _refreshProfile();
   }
 
   Future<void> _selectBackground(String id) async {
@@ -53,7 +60,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
       _showLockedMessage();
       return;
     }
-    setState(() => _profileFuture = _loadProfileData());
+    _refreshProfile();
   }
 
   Future<void> _selectBadge(String id) async {
@@ -64,7 +71,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
       _showLockedMessage();
       return;
     }
-    setState(() => _profileFuture = _loadProfileData());
+    _refreshProfile();
   }
 
   void _showLockedMessage() {
@@ -95,36 +102,50 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                             title: 'Player Profile',
                             onBack: () => Navigator.of(context).maybePop(),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: GameSpacing.lg,
-                            ),
-                            child: _ProfileHeader(data: data),
-                          ),
-                          const SizedBox(height: GameSpacing.md),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: GameSpacing.lg,
-                            ),
-                            child: _ProfileTabs(),
-                          ),
                           Expanded(
-                            child: TabBarView(
-                              children: [
-                                _OverviewTab(profile: data.profile),
-                                _CosmeticsTab(
-                                  cosmetics: data.cosmetics,
-                                  onSelectFrame: (id) {
-                                    unawaited(_selectFrame(id));
-                                  },
-                                  onSelectBackground: (id) {
-                                    unawaited(_selectBackground(id));
-                                  },
-                                  onSelectBadge: (id) {
-                                    unawaited(_selectBadge(id));
-                                  },
+                            // Large text can make the summary taller than the
+                            // viewport. Scroll it with the active tab's list,
+                            // while keeping the page title and Back accessible.
+                            child: NestedScrollView(
+                              headerSliverBuilder:
+                                  (context, innerBoxIsScrolled) => [
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: GameSpacing.lg,
+                                    ),
+                                    child: _ProfileHeader(data: data),
+                                  ),
+                                ),
+                                const SliverToBoxAdapter(
+                                  child: SizedBox(height: GameSpacing.md),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: GameSpacing.lg,
+                                    ),
+                                    child: _ProfileTabs(),
+                                  ),
                                 ),
                               ],
+                              body: TabBarView(
+                                children: [
+                                  _OverviewTab(profile: data.profile),
+                                  _CosmeticsTab(
+                                    cosmetics: data.cosmetics,
+                                    onSelectFrame: (id) {
+                                      unawaited(_selectFrame(id));
+                                    },
+                                    onSelectBackground: (id) {
+                                      unawaited(_selectBackground(id));
+                                    },
+                                    onSelectBadge: (id) {
+                                      unawaited(_selectBadge(id));
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -160,9 +181,15 @@ class _ProfileTabs extends StatelessWidget {
         labelColor: Colors.white,
         unselectedLabelColor: GameColors.mutedInk,
         labelStyle: GameTextStyles.button,
-        tabs: const [
-          Tab(text: 'Overview'),
-          Tab(text: 'Cosmetics'),
+        tabs: [
+          for (final label in ['Overview', 'Cosmetics'])
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 46),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: GameSpacing.sm),
+                child: Center(child: Text(label, textAlign: TextAlign.center)),
+              ),
+            ),
         ],
       ),
     );
@@ -176,79 +203,118 @@ class _OverviewTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cards = <_ProfileStatCard>[
+      _ProfileStatCard(
+        icon: Icons.monetization_on_rounded,
+        label: 'Coins',
+        value: '${profile.coins}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.star_rounded,
+        label: 'Total Stars',
+        value: '${profile.totalStars}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.flag_rounded,
+        label: 'Levels Completed',
+        value: '${profile.levelsCompleted}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.emoji_events_rounded,
+        label: 'Achievements',
+        value: '${profile.achievementsUnlocked}/${profile.achievementsTotal}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.collections_bookmark_rounded,
+        label: 'Collection',
+        value: '${profile.collectionUnlocked}/${profile.collectionTotal}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.casino_rounded,
+        label: 'Wheel Spins',
+        value: '${profile.luckyWheelSpins}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.local_fire_department_rounded,
+        label: 'Daily Streak',
+        value: '${profile.dailyStreak}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.auto_awesome_rounded,
+        label: 'Boosters Used',
+        value: '${profile.totalBoostersUsed}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.check_circle_rounded,
+        label: 'Tiles Matched',
+        value: '${profile.totalTilesMatched}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.all_inclusive_rounded,
+        label: 'Best Endless',
+        value: '${profile.bestEndlessScore}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.replay_rounded,
+        label: 'Endless Runs',
+        value: '${profile.totalEndlessRuns}',
+      ),
+      _ProfileStatCard(
+        icon: Icons.grid_view_rounded,
+        label: 'Endless Boards',
+        value: '${profile.totalEndlessBoardsCleared}',
+      ),
+    ];
     return ListView(
       padding: const EdgeInsets.all(GameSpacing.lg),
       children: [
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          mainAxisSpacing: GameSpacing.md,
-          crossAxisSpacing: GameSpacing.md,
-          childAspectRatio: 1.1,
-          children: [
-            _ProfileStatCard(
-              icon: Icons.monetization_on_rounded,
-              label: 'Coins',
-              value: '${profile.coins}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.star_rounded,
-              label: 'Total Stars',
-              value: '${profile.totalStars}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.flag_rounded,
-              label: 'Levels Completed',
-              value: '${profile.levelsCompleted}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.emoji_events_rounded,
-              label: 'Achievements',
-              value:
-                  '${profile.achievementsUnlocked}/${profile.achievementsTotal}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.collections_bookmark_rounded,
-              label: 'Collection',
-              value: '${profile.collectionUnlocked}/${profile.collectionTotal}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.casino_rounded,
-              label: 'Wheel Spins',
-              value: '${profile.luckyWheelSpins}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.local_fire_department_rounded,
-              label: 'Daily Streak',
-              value: '${profile.dailyStreak}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.auto_awesome_rounded,
-              label: 'Boosters Used',
-              value: '${profile.totalBoostersUsed}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.check_circle_rounded,
-              label: 'Tiles Matched',
-              value: '${profile.totalTilesMatched}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.all_inclusive_rounded,
-              label: 'Best Endless',
-              value: '${profile.bestEndlessScore}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.replay_rounded,
-              label: 'Endless Runs',
-              value: '${profile.totalEndlessRuns}',
-            ),
-            _ProfileStatCard(
-              icon: Icons.grid_view_rounded,
-              label: 'Endless Boards',
-              value: '${profile.totalEndlessBoardsCleared}',
-            ),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final cellWidth = (constraints.maxWidth - GameSpacing.md) / 2;
+            // GameCard contributes 12 px of padding and a 3 px border per side.
+            final textWidth = cellWidth - 2 * (GameSpacing.md + 3);
+            final defaultStyle = DefaultTextStyle.of(context).style;
+            final textScaler = MediaQuery.textScalerOf(context);
+
+            double textHeight(String text, TextStyle style) {
+              final painter = TextPainter(
+                text: TextSpan(text: text, style: defaultStyle.merge(style)),
+                textAlign: TextAlign.center,
+                textDirection: Directionality.of(context),
+                textScaler: textScaler,
+                locale: Localizations.maybeLocaleOf(context),
+              )..layout(maxWidth: textWidth);
+              final height = painter.height;
+              painter.dispose();
+              return height;
+            }
+
+            final valueStyle = GameTextStyles.h2.copyWith(fontSize: 25);
+            final contentHeight = cards.fold<double>(0, (height, card) {
+              final needed = 34 +
+                  GameSpacing.sm +
+                  textHeight(card.value, valueStyle) +
+                  GameSpacing.xs +
+                  textHeight(card.label, GameTextStyles.caption);
+              return needed > height ? needed : height;
+            });
+            final originalExtent = cellWidth / 1.1;
+            final requiredExtent = contentHeight + 2 * (GameSpacing.md + 3) + 2;
+            final extent = requiredExtent > originalExtent
+                ? requiredExtent
+                : originalExtent;
+
+            return GridView.count(
+              primary: false,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              mainAxisSpacing: GameSpacing.md,
+              crossAxisSpacing: GameSpacing.md,
+              mainAxisExtent: extent,
+              children: cards,
+            );
+          },
         ),
       ],
     );
@@ -432,6 +498,36 @@ class _CosmeticCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const sideActionWidth = 104.0;
+    final textScaler = MediaQuery.textScalerOf(context);
+    final actionLabel = selected ? 'Active' : 'Select';
+    final labelPainter = TextPainter(
+      text: TextSpan(
+        text: actionLabel,
+        style: DefaultTextStyle.of(context).style.merge(GameTextStyles.button),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: textScaler,
+      locale: Localizations.maybeLocaleOf(context),
+    )..layout();
+    // The side action reserves room for its icon and the gap before the text.
+    // Move it below the description if its full label cannot fit beside it.
+    final iconWidth = IconTheme.of(context).size ?? 24;
+    final stackAction = textScaler.scale(1) > 1.3 ||
+        labelPainter.width > sideActionWidth - iconWidth - GameSpacing.sm;
+    labelPainter.dispose();
+    final action = GameButton(
+      label: actionLabel,
+      icon: selected ? Icons.check_circle_rounded : Icons.palette_rounded,
+      onPressed: selected
+          ? () {}
+          : unlocked
+              ? onPressed
+              : null,
+      variant:
+          selected ? GameButtonVariant.success : GameButtonVariant.secondary,
+      height: 46,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: GameSpacing.md),
       child: GameCard(
@@ -441,64 +537,58 @@ class _CosmeticCard extends StatelessWidget {
         shadow: selected
             ? GameShadows.glow(GameColors.accentGold)
             : GameShadows.medium(item.theme.primaryAccent),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                gradient: unlocked ? item.theme.trayGradient : null,
-                color: unlocked ? null : GameColors.mutedInk,
-                borderRadius: GameRadius.largeRadius,
-                border: Border.all(color: Colors.white, width: 3),
-                boxShadow: GameShadows.light(item.theme.primaryAccent),
-              ),
-              child: Icon(
-                unlocked ? item.icon : Icons.lock_rounded,
-                color: Colors.white,
-                size: 30,
-              ),
-            ),
-            const SizedBox(width: GameSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.name,
-                    style: GameTextStyles.h2.copyWith(fontSize: 20),
+            Row(
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    gradient: unlocked ? item.theme.trayGradient : null,
+                    color: unlocked ? null : GameColors.mutedInk,
+                    borderRadius: GameRadius.largeRadius,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: GameShadows.light(item.theme.primaryAccent),
                   ),
-                  const SizedBox(height: GameSpacing.xs),
-                  Text(
-                    unlocked
-                        ? selected
-                            ? 'Selected'
-                            : 'Unlocked'
-                        : item.unlockCondition,
-                    style: GameTextStyles.caption,
+                  child: Icon(
+                    unlocked ? item.icon : Icons.lock_rounded,
+                    color: Colors.white,
+                    size: 30,
                   ),
+                ),
+                const SizedBox(width: GameSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: GameTextStyles.h2.copyWith(fontSize: 20),
+                      ),
+                      const SizedBox(height: GameSpacing.xs),
+                      Text(
+                        unlocked
+                            ? selected
+                                ? 'Selected'
+                                : 'Unlocked'
+                            : item.unlockCondition,
+                        style: GameTextStyles.caption,
+                      ),
+                    ],
+                  ),
+                ),
+                if (!stackAction) ...[
+                  const SizedBox(width: GameSpacing.sm),
+                  SizedBox(width: sideActionWidth, child: action),
                 ],
-              ),
+              ],
             ),
-            const SizedBox(width: GameSpacing.sm),
-            SizedBox(
-              width: 104,
-              child: GameButton(
-                label: selected ? 'Active' : 'Select',
-                icon: selected
-                    ? Icons.check_circle_rounded
-                    : Icons.palette_rounded,
-                onPressed: selected
-                    ? () {}
-                    : unlocked
-                        ? onPressed
-                        : null,
-                variant: selected
-                    ? GameButtonVariant.success
-                    : GameButtonVariant.secondary,
-                height: 46,
-              ),
-            ),
+            if (stackAction) ...[
+              const SizedBox(height: GameSpacing.md),
+              SizedBox(width: double.infinity, child: action),
+            ],
           ],
         ),
       ),
