@@ -194,6 +194,14 @@ class GoldenAudio implements GameAudioService {
   @override
   Future<void> playLuckyWheelSpin() async {}
   @override
+  Future<void> playWheelTick() async {}
+  @override
+  Future<void> playWheelStop() async {}
+  @override
+  Future<void> playWheelReveal() async {}
+  @override
+  Future<void> playWheelCollection() async {}
+  @override
   Future<void> playAchievementUnlocked() async {}
   @override
   Future<void> playWorldUnlocked() async {}

@@ -129,6 +129,10 @@ class GameAudioService {
   Future<void> playGameOver() => _play('game_over');
   Future<void> playChestOpen() => _play('chest_open');
   Future<void> playLuckyWheelSpin() => _play('wheel_spin');
+  Future<void> playWheelTick() => _play('wheel_tick');
+  Future<void> playWheelStop() => _play('wheel_stop');
+  Future<void> playWheelReveal() => _play('wheel_reveal');
+  Future<void> playWheelCollection() => _play('wheel_collection');
   Future<void> playAchievementUnlocked() => _play('achievement');
   Future<void> playWorldUnlocked() => _play('world_unlock');
 
@@ -258,6 +262,21 @@ class GameAudioService {
           (frequency: 784, seconds: 0.08),
           (frequency: 1175, seconds: 0.16),
         ];
+      // Original synthesized cues; no reference audio or external assets.
+      case 'wheel_tick':
+        return [(frequency: 1100, seconds: 0.018)];
+      case 'wheel_stop':
+        return [(frequency: 440, seconds: 0.045)];
+      case 'wheel_reveal':
+        return [
+          (frequency: 659, seconds: 0.07),
+          (frequency: 880, seconds: 0.1),
+        ];
+      case 'wheel_collection':
+        return [
+          (frequency: 1046, seconds: 0.035),
+          (frequency: 1318, seconds: 0.06),
+        ];
       case 'wheel_spin':
         return [
           (frequency: 740, seconds: 0.04),
@@ -284,6 +303,9 @@ class GameAudioService {
   }
 
   double _volumeForCue(String cue) {
+    if (cue == 'wheel_tick') return .25;
+    if (cue == 'wheel_stop') return .55;
+    if (cue == 'wheel_reveal' || cue == 'wheel_collection') return .65;
     if (cue.startsWith('tap')) return 0.58;
     if (cue == 'match') return 0.78;
     if (cue == 'level_complete') return 0.90;

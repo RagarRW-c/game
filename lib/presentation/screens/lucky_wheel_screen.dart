@@ -3,270 +3,485 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../core/audio_service.dart';
+import '../../domain/daily_wheel_reward.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/achievement_popup.dart';
 import '../widgets/game_ui.dart';
+import '../widgets/lucky_wheel_art.dart';
+import '../widgets/wheel_motion.dart';
+import '../widgets/wheel_reward_effects.dart';
 
 class LuckyWheelScreen extends StatefulWidget {
-  const LuckyWheelScreen({super.key});
+  const LuckyWheelScreen({
+    super.key,
+    this.spinDuration = const Duration(milliseconds: 4600),
+    this.random,
+  });
 
   static const route = '/lucky-wheel';
+  final Duration spinDuration;
+  // Injection controls selection in deterministic widget tests, never the odds.
+  final Random? random;
 
   @override
   State<LuckyWheelScreen> createState() => _LuckyWheelScreenState();
 }
 
 class _LuckyWheelScreenState extends State<LuckyWheelScreen>
-    with SingleTickerProviderStateMixin {
-  static const _rewards = <_WheelReward>[
-    _WheelReward.coins(30),
-    _WheelReward.coins(50),
-    _WheelReward.coins(75),
-    _WheelReward.coins(100),
-    _WheelReward.coins(150),
-    _WheelReward.coins(200),
-    _WheelReward.booster(_WheelBooster.hint),
-    _WheelReward.booster(_WheelBooster.shuffle),
-    _WheelReward.booster(_WheelBooster.undo),
-  ];
-
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  static const _rewards = DailyWheelReward.values;
   late final AnimationController _controller;
-  late Animation<double> _rotation;
+  late final AnimationController _celebration;
+  late GameAudioService _audio;
+  final _layerKey = GlobalKey();
+  final _wheelArtKey = GlobalKey();
+  final _counterKey = GlobalKey();
+  final _segmentKeys = List<GlobalKey>.generate(
+      DailyWheelReward.values.length, (_) => GlobalKey());
+  late final Widget _wheelArtwork = RepaintBoundary(
+      child: LuckyWheelFace(
+          rewards: _rewards, artKey: _wheelArtKey, segmentKeys: _segmentKeys));
   bool _available = false;
   bool _loading = true;
   bool _spinning = false;
+  bool _settled = false;
+  bool _reducedMotion = false;
+  bool _foreground = true;
+  bool _presentationInterrupted = false;
+  bool _collectedSound = false;
+  String? _error;
+  int _coins = 0;
+  int _boundary = 0;
+  int _lastTickMicros = -100000;
+  int _lastCrossingMicros = -100000;
+  double _fromTurns = 0;
+  double _targetTurns = 0;
+  DailyWheelClaim? _claim;
+  int? _winningSegment;
+
+  double get _turns =>
+      _fromTurns +
+      (_targetTurns - _fromTurns) *
+          const WheelSpinCurve().transform(_controller.value);
+  bool get _visible =>
+      mounted && _foreground && (ModalRoute.of(context)?.isCurrent ?? true);
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    WidgetsBinding.instance.addObserver(this);
+    _controller =
+        AnimationController(vsync: this, duration: widget.spinDuration)
+          ..addListener(_onRotation);
+    _celebration = AnimationController(
       vsync: this,
-      duration: GameDurations.slow,
-    );
-    _rotation = const AlwaysStoppedAnimation<double>(0);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAvailability());
+      duration: const Duration(milliseconds: 1000),
+    )..addListener(_onCelebration);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_loadAvailability());
+    });
   }
 
-  Future<void> _loadAvailability() async {
-    var canSpin = true;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _audio = AppScope.of(context).audioService;
+    _reducedMotion = MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
+    if (_spinning && !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      _presentationInterrupted = true;
+      _finishMotion();
+    }
+    if (_reducedMotion) _finishMotion();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    // Finish presentation only. Never cancel or repeat a repository claim.
+    if (!_foreground) {
+      if (_spinning) _presentationInterrupted = true;
+      _finishMotion();
+    }
+  }
+
+  void _finishMotion() {
+    if (_controller.isAnimating) _controller.value = 1;
+    if (_celebration.isAnimating) _celebration.value = 1;
+  }
+
+  void _cancelUnconfirmedMotion() {
+    final current = _turns;
+    _controller.stop(canceled: true);
+    _fromTurns = _targetTurns = current;
+  }
+
+  Future<void> _sound(Future<void> Function() play) async {
+    if (!_visible || _presentationInterrupted) return;
     try {
-      final status = await AppScope.of(context)
-          .progressRepository
-          .dailySpinStatus(DateTime.now());
-      canSpin = status.canSpin;
+      await play();
     } catch (_) {
-      canSpin = true;
-    } finally {
-      if (mounted) {
-        setState(() {
-          _available = canSpin;
-          _loading = false;
-        });
+      // Optional audio must never turn a committed reward into a failed claim.
+    }
+  }
+
+  void _onRotation() {
+    if (!_controller.isAnimating || !_visible || _reducedMotion) return;
+    final crossing = WheelMotion.crossedBoundary(_turns, _rewards.length);
+    if (crossing == _boundary) return;
+    _boundary = crossing;
+    final micros = _controller.lastElapsedDuration?.inMicroseconds ?? 0;
+    _lastCrossingMicros = micros;
+    // At most one sound per frame and one per 80 ms, no catch-up sound queue.
+    if (micros - _lastTickMicros >= 80000) {
+      _lastTickMicros = micros;
+      unawaited(_sound(_audio.playWheelTick));
+    }
+  }
+
+  void _onCelebration() {
+    if (!_collectedSound && _celebration.value >= .76) {
+      _collectedSound = true;
+      if (_claim?.reward.coins != null) {
+        unawaited(_sound(_audio.playWheelCollection));
       }
     }
   }
 
-  Future<void> _spin() async {
-    if (_spinning || !_available) return;
+  Future<void> _loadAvailability() async {
     final repository = AppScope.of(context).progressRepository;
-    setState(() => _spinning = true);
-    final canSpin = await repository.dailySpinAvailable(DateTime.now());
-    if (!mounted) return;
-    if (!canSpin) {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final status = await repository.dailySpinStatus(DateTime.now());
+      final coins = await repository.coins();
+      if (!mounted) return;
+      setState(() {
+        _available = status.canSpin;
+        _coins = coins;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
       setState(() {
         _available = false;
-        _spinning = false;
+        _loading = false;
+        _error = 'Could not check your daily spin. Please try again.';
       });
-      return;
     }
-
-    unawaited(AppScope.of(context).audioService.playLuckyWheelSpin());
-    final random = Random();
-    final selectedIndex = random.nextInt(_rewards.length);
-    final fullTurns = 4 + random.nextInt(2);
-    final segmentTurn = selectedIndex / _rewards.length;
-    final target = fullTurns + segmentTurn;
-
-    setState(() {
-      _rotation = Tween<double>(
-        begin: 0,
-        end: target,
-      ).animate(
-          CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
-    });
-
-    _controller
-      ..reset()
-      ..forward();
-    await _controller.forward(from: 0);
-    if (!mounted) return;
-
-    final reward = _rewards[selectedIndex];
-    await _applyReward(reward);
-    await repository.markDailySpinClaimed(DateTime.now());
-    await repository.recordLuckyWheelSpin();
-    if (mounted) {
-      await showPendingAchievementPopups(
-        context,
-        repository,
-        onPopup: AppScope.of(context).audioService.playAchievementUnlocked,
-      );
-    }
-    if (!mounted) return;
-
-    setState(() {
-      _available = false;
-      _spinning = false;
-    });
-    await _showRewardDialog(reward);
   }
 
-  Future<void> _applyReward(_WheelReward reward) async {
+  Future<void> _animate(AnimationController controller) async {
+    if (_reducedMotion || !_visible || _presentationInterrupted) {
+      controller.value = 1;
+      return;
+    }
+    try {
+      await controller.forward(from: 0).orCancel;
+    } on TickerCanceled {
+      // Disposal cancels only the visual wait; the grant has its own future.
+    }
+  }
+
+  Future<void> _spin() async {
+    if (_spinning || !_available || _loading || !_visible) return;
     final repository = AppScope.of(context).progressRepository;
-    if (reward.coins != null) {
-      await repository.addCoins(reward.coins!);
-      return;
-    }
-    switch (reward.booster) {
-      case _WheelBooster.hint:
-        await repository.addExtraHintBoosters(1);
-        break;
-      case _WheelBooster.shuffle:
-        await repository.addExtraShuffleBoosters(1);
-        break;
-      case _WheelBooster.undo:
-        await repository.addExtraUndoBoosters(1);
-        break;
-      case null:
-        break;
+    final now = DateTime.now();
+    final selected = (widget.random ?? Random()).nextInt(_rewards.length);
+    _winningSegment = selected;
+    _fromTurns = _turns;
+    _targetTurns =
+        WheelMotion.landingTurns(selected, _rewards.length, from: _fromTurns);
+    _boundary = WheelMotion.crossedBoundary(_fromTurns, _rewards.length);
+    _lastTickMicros = _lastCrossingMicros = -100000;
+    _collectedSound = false;
+    _presentationInterrupted = false;
+    _controller.duration = widget.spinDuration;
+    setState(() {
+      _spinning = true;
+      _settled = false;
+      _error = null;
+    });
+    // Immediate visual response, with the result chosen before either operation.
+    // The grant is not conditional on controller completion, mounted or foreground.
+    final motion = _animate(_controller);
+    unawaited(_sound(_audio.playLuckyWheelSpin));
+    try {
+      final claim =
+          await repository.claimDailySpin(now, reward: _rewards[selected]);
+      if (!mounted) return;
+      if (claim == null) {
+        _cancelUnconfirmedMotion();
+        final balance = await repository.coins();
+        if (!mounted) return;
+        setState(() {
+          _available = false;
+          _spinning = false;
+          _coins = balance;
+        });
+        return;
+      }
+      setState(() {
+        _claim = claim;
+        _coins = claim.coinsBefore;
+        _available = false;
+      });
+      await motion;
+      if (!mounted) return;
+      setState(() => _settled = true);
+      unawaited(_sound(_audio.playWheelStop));
+      unawaited(_sound(_audio.playWheelReveal));
+      await _animate(_celebration);
+      if (!mounted) return;
+      setState(() {
+        _spinning = false;
+        _coins = claim.coinsAfter;
+      });
+      if (!_visible || _presentationInterrupted) return;
+      await _showRewardDialog(claim.reward);
+      if (!mounted || !_visible) return;
+      await showPendingAchievementPopups(context, repository,
+          onPopup: () => _sound(_audio.playAchievementUnlocked));
+    } catch (_) {
+      if (!mounted) return;
+      _cancelUnconfirmedMotion();
+      if (_celebration.isAnimating) _celebration.value = 1;
+      setState(() {
+        _spinning = false;
+        _available = false;
+        _error = 'Could not confirm your reward. Recheck your saved spin.';
+      });
     }
   }
 
-  Future<void> _showRewardDialog(_WheelReward reward) async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => GameDialogFrame(
-        title: 'Reward',
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+  Future<void> _showRewardDialog(DailyWheelReward reward) => showDialog<void>(
+        context: context,
+        builder: (dialogContext) => GameDialogFrame(
+          title: 'Reward',
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
             GameRewardEmblem(icon: reward.icon),
             const SizedBox(height: GameSpacing.md),
             Text(reward.label, style: GameTextStyles.h2),
             const SizedBox(height: GameSpacing.xl),
             GameButton(
-              label: 'Nice',
-              icon: Icons.check_rounded,
-              onPressed: () => Navigator.of(context).pop(),
-              variant: GameButtonVariant.success,
-            ),
-          ],
+                label: 'Nice',
+                icon: Icons.check_rounded,
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                variant: GameButtonVariant.success),
+          ]),
         ),
-      ),
-    );
-  }
+      );
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
+    _celebration.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: GameBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              GameHeader(
-                title: 'Lucky Wheel',
-                onBack: () => Navigator.of(context).maybePop(),
-              ),
-              Expanded(
-                child: LayoutBuilder(
-                    builder: (context, constraints) => SingleChildScrollView(
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                                minHeight: constraints.maxHeight),
-                            child: Center(
-                                child: GameCard(
-                              margin: const EdgeInsets.all(GameSpacing.lg),
-                              child: _loading
-                                  ? const _WheelLoadingState()
-                                  : Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        SizedBox(
-                                          width:
-                                              MediaQuery.sizeOf(context).width <
-                                                      360
-                                                  ? 240
-                                                  : 280,
-                                          height:
-                                              MediaQuery.sizeOf(context).width <
-                                                      360
-                                                  ? 240
-                                                  : 280,
-                                          child: FittedBox(
-                                              child: Stack(
-                                            alignment: Alignment.center,
-                                            children: [
-                                              AnimatedBuilder(
-                                                animation: _rotation,
-                                                builder: (context, child) {
-                                                  return Transform.rotate(
-                                                    angle: _rotation.value *
-                                                        2 *
-                                                        pi,
-                                                    child: child,
-                                                  );
-                                                },
-                                                child: const _Wheel(
-                                                    rewards: _rewards),
-                                              ),
-                                              const Positioned(
-                                                top: 0,
-                                                child: Icon(
-                                                  Icons.arrow_drop_down_rounded,
-                                                  color: GameColors.dangerRed,
-                                                  size: 54,
-                                                ),
-                                              ),
-                                            ],
-                                          )),
-                                        ),
-                                        const SizedBox(height: GameSpacing.xl),
-                                        Text(
-                                          _available
-                                              ? 'Spin once today'
-                                              : 'Next spin tomorrow',
-                                          style: GameTextStyles.body,
-                                        ),
-                                        const SizedBox(height: GameSpacing.lg),
-                                        GameButton(
-                                          label: _available
-                                              ? 'Daily Spin'
-                                              : 'Come Back Tomorrow',
-                                          icon: Icons.casino_rounded,
-                                          onPressed: _available && !_spinning
-                                              ? _spin
-                                              : null,
-                                          variant: GameButtonVariant.gold,
-                                        ),
-                                      ],
-                                    ),
-                            )),
-                          ),
-                        )),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  Widget _counter() => AnimatedBuilder(
+        animation: _celebration,
+        builder: (context, _) {
+          final claim = _claim;
+          final t = _reducedMotion
+              ? 1.0
+              : Curves.easeOutCubic.transform(
+                  ((_celebration.value - .70) / .30).clamp(0.0, 1.0));
+          final coins = claim == null
+              ? _coins
+              : (claim.coinsBefore + (claim.coinsAfter - claim.coinsBefore) * t)
+                  .round();
+          return Semantics(
+            label: '$coins coins',
+            liveRegion: !_spinning,
+            child: ExcludeSemantics(
+                child: GameBadge(
+              key: _counterKey,
+              icon: Icons.monetization_on_rounded,
+              child: Text('$coins',
+                  key: const ValueKey('wheel_coins'),
+                  style: GameTextStyles.caption.copyWith(color: Colors.white)),
+            )),
+          );
+        },
+      );
+
+  Widget _header() {
+    final showCounter = _spinning || _claim != null;
+    // A scaled counter beside the title can leave only a few pixels per line
+    // at narrow widths. Give both their full width without shrinking text.
+    final stackCounter = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    final header = GameHeader(
+        title: 'Lucky Wheel',
+        onBack: () => Navigator.of(context).maybePop(),
+        trailing: showCounter && !stackCounter ? _counter() : null);
+    if (!showCounter || !stackCounter) return header;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      header,
+      Padding(
+          padding: const EdgeInsets.fromLTRB(
+              GameSpacing.lg, 0, GameSpacing.lg, GameSpacing.sm),
+          child: Align(alignment: Alignment.centerRight, child: _counter())),
+    ]);
   }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: GameBackground(
+            child: SafeArea(
+                child: Stack(children: [
+          Column(children: [
+            _header(),
+            Expanded(
+                child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                  child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                    child: GameCard(
+                  margin: const EdgeInsets.all(GameSpacing.lg),
+                  child: _loading
+                      ? const _WheelLoadingState()
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const LuckyWheelRibbon(),
+                            SizedBox(
+                              width: MediaQuery.sizeOf(context).width < 360
+                                  ? 240
+                                  : 280,
+                              height: MediaQuery.sizeOf(context).width < 360
+                                  ? 324
+                                  : 378,
+                              child: FittedBox(
+                                  child: SizedBox(
+                                width: 280,
+                                height: 378,
+                                child: Stack(children: [
+                                  const Positioned(
+                                      top: 298, child: LuckyWheelPedestal()),
+                                  Positioned(
+                                      top: 35,
+                                      child: AnimatedBuilder(
+                                          animation: _controller,
+                                          builder: (context, child) =>
+                                              Transform.rotate(
+                                                  key: const ValueKey(
+                                                      'wheel_rotation'),
+                                                  angle: _turns * 2 * pi,
+                                                  child: child),
+                                          child: _wheelArtwork)),
+                                  Positioned(
+                                      left: 116,
+                                      top: 0,
+                                      child: AnimatedBuilder(
+                                        animation: _controller,
+                                        child: const LuckyWheelPointer(
+                                            key: ValueKey('wheel_pointer')),
+                                        builder: (context, child) {
+                                          final age = ((_controller
+                                                          .lastElapsedDuration
+                                                          ?.inMicroseconds ??
+                                                      0) -
+                                                  _lastCrossingMicros) /
+                                              85000;
+                                          final pulse =
+                                              _controller.isAnimating &&
+                                                      !_reducedMotion &&
+                                                      _foreground
+                                                  ? (1 - age).clamp(0.0, 1.0)
+                                                  : 0.0;
+                                          return Transform.scale(
+                                              scale: 1 + .08 * pulse,
+                                              alignment: Alignment.topCenter,
+                                              child: child);
+                                        },
+                                      )),
+                                ]),
+                              )),
+                            ),
+                            const SizedBox(height: GameSpacing.xl),
+                            Text(
+                                _available
+                                    ? 'Spin once today'
+                                    : 'Next spin tomorrow',
+                                style: GameTextStyles.body),
+                            if (_settled && _claim != null) ...[
+                              const SizedBox(height: GameSpacing.sm),
+                              Semantics(
+                                  liveRegion: true,
+                                  child: Text(_claim!.reward.label,
+                                      key: const ValueKey('wheel_result'),
+                                      style: GameTextStyles.h2)),
+                            ],
+                            if (_error != null) ...[
+                              const SizedBox(height: GameSpacing.sm),
+                              Text(_error!,
+                                  textAlign: TextAlign.center,
+                                  style: GameTextStyles.body),
+                            ],
+                            const SizedBox(height: GameSpacing.lg),
+                            GameButton(
+                                label: _error != null
+                                    ? 'Try Again'
+                                    : _spinning
+                                        ? 'Spinning...'
+                                        : _available
+                                            ? 'Daily Spin'
+                                            : 'Come Back Tomorrow',
+                                icon: Icons.casino_rounded,
+                                onPressed: _spinning
+                                    ? null
+                                    : _error != null
+                                        ? _loadAvailability
+                                        : _available
+                                            ? _spin
+                                            : null,
+                                variant: GameButtonVariant.gold),
+                            if (MediaQuery.textScalerOf(context).scale(1) >
+                                1.3) ...[
+                              const SizedBox(height: GameSpacing.xl),
+                              Semantics(
+                                header: true,
+                                child: const Text('Wheel rewards',
+                                    style: GameTextStyles.body),
+                              ),
+                              for (final reward in _rewards)
+                                Text(reward.label,
+                                    textAlign: TextAlign.center,
+                                    style: GameTextStyles.body),
+                            ],
+                          ],
+                        ),
+                )),
+              )),
+            )),
+          ]),
+          if (_settled &&
+              _claim != null &&
+              !_reducedMotion &&
+              !_celebration.isCompleted)
+            Positioned.fill(
+                child: IgnorePointer(
+                    child: RepaintBoundary(
+              child: CustomPaint(
+                  key: _layerKey,
+                  painter: WheelRewardPainter(
+                      animation: _celebration,
+                      layerKey: _layerKey,
+                      wheelArtKey: _wheelArtKey,
+                      winningSegmentKey: _segmentKeys[_winningSegment!],
+                      winningIndex: _winningSegment!,
+                      counterKey: _counterKey,
+                      coins: _claim!.reward.coins != null)),
+            ))),
+        ]))),
+      );
 }
 
 class _WheelLoadingState extends StatelessWidget {
@@ -282,143 +497,5 @@ class _WheelLoadingState extends StatelessWidget {
         Text('Checking spin...', style: GameTextStyles.body),
       ],
     );
-  }
-}
-
-class _Wheel extends StatelessWidget {
-  const _Wheel({required this.rewards});
-
-  final List<_WheelReward> rewards;
-
-  @override
-  Widget build(BuildContext context) {
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final segmentFontSize = textScale >= 2
-        ? 9.0
-        : textScale > 1.3
-            ? 10.0
-            : 12.0;
-    return SizedBox(
-      width: 280,
-      height: 280,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          for (var index = 0; index < rewards.length; index++)
-            Transform.rotate(
-              angle: (2 * pi / rewards.length) * index,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Container(
-                  width: 86,
-                  height: 126,
-                  alignment: Alignment.topCenter,
-                  padding: const EdgeInsets.only(top: GameSpacing.md),
-                  decoration: BoxDecoration(
-                    color: _segmentColor(index),
-                    borderRadius: GameRadius.largeRadius,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: GameShadows.light(),
-                  ),
-                  child: Semantics(
-                    label: rewards[index].label,
-                    child: ExcludeSemantics(
-                      child: Transform.rotate(
-                        angle: -(2 * pi / rewards.length) * index,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(rewards[index].icon,
-                                color: Colors.white, size: 24),
-                            const SizedBox(height: GameSpacing.xs),
-                            Text(
-                              rewards[index].shortLabel,
-                              textAlign: TextAlign.center,
-                              style: GameTextStyles.caption.copyWith(
-                                color: Colors.white,
-                                fontSize: segmentFontSize,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          Container(
-            width: 84,
-            height: 84,
-            decoration: BoxDecoration(
-              gradient: GameGradients.badge,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 4),
-              boxShadow: GameShadows.medium(GameColors.accentGold),
-            ),
-            child: const Icon(
-              Icons.casino_rounded,
-              color: Colors.white,
-              size: 42,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _segmentColor(int index) {
-    const colors = <Color>[
-      GameColors.primaryBlue,
-      GameColors.secondaryPurple,
-      GameColors.successGreen,
-      GameColors.warningOrange,
-      GameColors.dangerRed,
-      GameColors.accentGoldDark,
-    ];
-    return colors[index % colors.length];
-  }
-}
-
-enum _WheelBooster { hint, shuffle, undo }
-
-class _WheelReward {
-  const _WheelReward.coins(this.coins) : booster = null;
-  const _WheelReward.booster(this.booster) : coins = null;
-
-  final int? coins;
-  final _WheelBooster? booster;
-
-  String get label {
-    if (coins != null) return '+$coins coins';
-    return '+1 ${_boosterName(booster!)} booster';
-  }
-
-  String get shortLabel {
-    if (coins != null) return '$coins';
-    return _boosterName(booster!);
-  }
-
-  IconData get icon {
-    if (coins != null) return Icons.monetization_on_rounded;
-    switch (booster!) {
-      case _WheelBooster.hint:
-        return Icons.pets_rounded;
-      case _WheelBooster.shuffle:
-        return Icons.air_rounded;
-      case _WheelBooster.undo:
-        return Icons.arrow_back_rounded;
-    }
-  }
-
-  String _boosterName(_WheelBooster booster) {
-    switch (booster) {
-      case _WheelBooster.hint:
-        return 'Hint';
-      case _WheelBooster.shuffle:
-        return 'Shuffle';
-      case _WheelBooster.undo:
-        return 'Undo';
-    }
   }
 }

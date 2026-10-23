@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_flavor.dart';
+import '../domain/daily_wheel_reward.dart';
 import 'level_repository.dart';
 
 enum TreasureChestType { wood, silver, gold }
@@ -378,6 +379,30 @@ class ProgressRepository {
   static const _dailyLoginStreakKey = 'daily_login_streak';
   static const _dailyLoginLastClaimDateKey = 'daily_login_last_claim_date';
   static const _lastDailySpinDateKey = 'last_daily_spin_date';
+  // Shared across repository instances/routes. Animation lifetime never owns
+  // this operation, and eligibility is rechecked inside the serialized claim.
+  // Keep only pending work. A completed Future retains its scheduling zone;
+  // reusing it after that zone's lifetime (notably a widget test's fake clock)
+  // can strand a later availability read and its loading spinner.
+  static Future<void>? _dailySpinQueue;
+
+  static Future<T> _serializeDailySpin<T>(Future<T> Function() action) {
+    final previous = _dailySpinQueue;
+    final result = previous == null
+        ? Future<T>.sync(action)
+        : previous.then((_) => action());
+    late final Future<void> pending;
+    void release() {
+      // An earlier request must not clear the tail of a newer queued claim.
+      if (identical(_dailySpinQueue, pending)) _dailySpinQueue = null;
+    }
+
+    pending = result.then<void>((_) => release(),
+        onError: (Object _, StackTrace __) => release());
+    _dailySpinQueue = pending;
+    return result;
+  }
+
   static const _levelOneTutorialSeenKey = 'level_one_tutorial_seen';
   static const _extraHintBoostersKey = 'extra_hint_boosters';
   static const _extraShuffleBoostersKey = 'extra_shuffle_boosters';
@@ -663,6 +688,10 @@ class ProgressRepository {
   }
 
   Future<int> coins() async {
+    // A menu refresh after Back must not capture the pre-claim balance while
+    // the wheel's independent persistence operation is still completing.
+    final pendingSpin = _dailySpinQueue;
+    if (pendingSpin != null) await pendingSpin;
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_coinsKey) ?? 0;
   }
@@ -770,6 +799,8 @@ class ProgressRepository {
   }
 
   Future<DailySpinStatus> dailySpinStatus(DateTime now) async {
+    final pendingSpin = _dailySpinQueue;
+    if (pendingSpin != null) await pendingSpin;
     final prefs = await SharedPreferences.getInstance();
     final today = _polishDateKey(now);
     final lastSpinDate = prefs.getString(_lastDailySpinDateKey);
@@ -780,13 +811,51 @@ class ProgressRepository {
     );
   }
 
-  Future<bool> markDailySpinClaimed(DateTime now) async {
-    final prefs = await SharedPreferences.getInstance();
-    final today = _polishDateKey(now);
-    if (prefs.getString(_lastDailySpinDateKey) == today) return false;
-    await prefs.setString(_lastDailySpinDateKey, today);
-    return true;
-  }
+  Future<bool> markDailySpinClaimed(DateTime now) =>
+      _serializeDailySpin(() async {
+        final prefs = await SharedPreferences.getInstance();
+        final today = _polishDateKey(now);
+        if (prefs.getString(_lastDailySpinDateKey) == today) return false;
+        await prefs.setString(_lastDailySpinDateKey, today);
+        return true;
+      });
+
+  /// Commit immediately on tap, independently of presentation and navigation.
+  /// A repeat/concurrent request for the same Polish calendar day grants nothing.
+  Future<DailyWheelClaim?> claimDailySpin(
+    DateTime now, {
+    required DailyWheelReward reward,
+  }) =>
+      _serializeDailySpin(() async {
+        final prefs = await SharedPreferences.getInstance();
+        final today = _polishDateKey(now);
+        if (prefs.getString(_lastDailySpinDateKey) == today) return null;
+        final before = prefs.getInt(_coinsKey) ?? 0;
+        if (reward.coins case final amount?) {
+          await addCoins(amount);
+        } else {
+          switch (reward) {
+            case DailyWheelReward.hint:
+              await addExtraHintBoosters(1);
+              break;
+            case DailyWheelReward.shuffle:
+              await addExtraShuffleBoosters(1);
+              break;
+            case DailyWheelReward.undo:
+              await addExtraUndoBoosters(1);
+              break;
+            default:
+              throw StateError('Unknown wheel reward');
+          }
+        }
+        await prefs.setString(_lastDailySpinDateKey, today);
+        await recordLuckyWheelSpin();
+        return DailyWheelClaim(
+          reward: reward,
+          coinsBefore: before,
+          coinsAfter: prefs.getInt(_coinsKey) ?? 0,
+        );
+      });
 
   Future<int> extraHintBoosters() async {
     final prefs = await SharedPreferences.getInstance();
