@@ -79,19 +79,28 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
       _route = route;
       appRouteObserver.subscribe(this, route);
     }
-    unawaited(_scope.audioService.startGameplayMusic());
+    _startLevelMusic();
     _levelFuture = _scope.levelRepository.loadLevel(widget.level);
     unawaited(_loadPlayerState());
   }
 
   @override
   void didPush() {
-    unawaited(_scope.audioService.startGameplayMusic());
+    _startLevelMusic();
   }
 
   @override
   void didPopNext() {
-    unawaited(_scope.audioService.startGameplayMusic());
+    _startLevelMusic();
+  }
+
+  void _startLevelMusic() {
+    // An outgoing route may rebuild when isCurrent changes. It must not reclaim
+    // music ownership from the level that was just pushed/replaced above it.
+    if (_route?.isCurrent ?? true) {
+      unawaited(_scope.audioService
+          .startGameplayMusic(level: widget.level, owner: this));
+    }
   }
 
   @override
@@ -99,7 +108,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     _tileEffects.dispose();
     final route = _route;
     if (route != null) appRouteObserver.unsubscribe(this);
-    unawaited(_scope.audioService.stopGameplayMusic());
+    unawaited(_scope.audioService.stopGameplayMusic(owner: this));
     super.dispose();
   }
 
@@ -107,6 +116,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   void didUpdateWidget(covariant GameScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.level != widget.level) {
+      _startLevelMusic();
       _levelFuture = _scope.levelRepository.loadLevel(widget.level);
       _engine = null;
       _resetAnimationState();

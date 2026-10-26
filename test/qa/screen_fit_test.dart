@@ -28,9 +28,9 @@ class _SilentAudio implements GameAudioService {
   void cancelPendingTileFeedback() {}
 
   @override
-  Future<void> startGameplayMusic() async {}
+  Future<void> startGameplayMusic({int level = 1, Object? owner}) async {}
   @override
-  Future<void> stopGameplayMusic() async {}
+  Future<void> stopGameplayMusic({Object? owner}) async {}
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

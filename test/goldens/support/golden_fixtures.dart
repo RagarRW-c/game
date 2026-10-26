@@ -173,9 +173,9 @@ class GoldenAudio implements GameAudioService {
   @override
   Future<void> startMenuMusic() async {}
   @override
-  Future<void> startGameplayMusic() async {}
+  Future<void> startGameplayMusic({int level = 1, Object? owner}) async {}
   @override
-  Future<void> stopGameplayMusic() async {}
+  Future<void> stopGameplayMusic({Object? owner}) async {}
   @override
   Future<void> pauseMusicForBackground() async {}
   @override

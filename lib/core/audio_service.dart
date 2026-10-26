@@ -1,26 +1,50 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 
-enum _MusicTrack { menu, gameplay }
+import 'game_music.dart';
 
 class GameAudioService {
-  GameAudioService({AudioPlayer? musicPlayer, List<AudioPlayer>? sfxPlayers})
+  GameAudioService(
+      {AudioPlayer? musicPlayer,
+      AudioPlayer Function()? createMusicDeck,
+      List<AudioPlayer>? sfxPlayers})
       : assert(sfxPlayers == null || sfxPlayers.length == _sfxPoolSize),
-        _music = musicPlayer ?? AudioPlayer(),
+        _music = GameMusic(
+            primary: musicPlayer ?? AudioPlayer(), createDeck: createMusicDeck),
         _sfxPlayers =
             sfxPlayers ?? List.generate(_sfxPoolSize, (_) => AudioPlayer());
-  static const String _backgroundMusicAsset = 'audio/background.mp3';
   static const int _sfxPoolSize = 4;
 
-  final AudioPlayer _music;
+  final GameMusic _music;
+  Object? _campaignOwner;
+  bool _campaignRequested = false;
   final List<AudioPlayer> _sfxPlayers;
   final Map<String, String> _generatedAudioPaths = <String, String>{};
-  bool musicEnabled = true;
-  bool sfxEnabled = true;
-  bool _musicConfigured = false;
+  bool _musicEnabled = true;
+  bool get musicEnabled => _musicEnabled;
+  set musicEnabled(bool enabled) {
+    _musicEnabled = enabled;
+    unawaited(_music.setEnabled(enabled));
+  }
+
+  bool _sfxEnabled = true;
+  bool get sfxEnabled => _sfxEnabled;
+  set sfxEnabled(bool enabled) {
+    if (_sfxEnabled == enabled) return;
+    _sfxEnabled = enabled;
+    if (!enabled && !_disposed) {
+      cancelPendingTileFeedback();
+      for (var i = 0; i < _sfxPlayers.length; i++) {
+        _sfxRequests[i]++;
+        unawaited(_sfxPlayers[i].stop().catchError((Object _) {}));
+      }
+    }
+  }
+
   bool _sfxConfigured = false;
   Future<void>? _sfxConfiguration;
   Future<void>? _tilePreparation;
@@ -30,72 +54,27 @@ class GameAudioService {
   bool _sfxSuspended = false;
   int _tileEpoch = 0;
   int _nextMatchPlayer = 1;
-  bool _musicPlaying = false;
-  bool _pausedByLifecycle = false;
   int _nextSfxPlayer = 0;
-  int _nextTapVariant = 0;
-  _MusicTrack? _activeMusicTrack;
-  Future<void> _musicQueue = Future<void>.value();
 
-  Future<void> startMenuMusic() =>
-      _runMusicOperation(() => _startMusic(_MusicTrack.menu));
-
-  Future<void> startGameplayMusic() =>
-      _runMusicOperation(() => _startMusic(_MusicTrack.gameplay));
-
-  Future<void> startMusic() => startMenuMusic();
-
-  Future<void> _runMusicOperation(Future<void> Function() operation) {
-    final next = _musicQueue.then((_) => operation());
-    _musicQueue = next.catchError((_) {});
-    return next;
+  Future<void> startMenuMusic() {
+    _campaignRequested = false;
+    _campaignOwner = null;
+    return _music.menu();
   }
 
-  Future<void> _startMusic(_MusicTrack track) async {
-    await _configureMusic(track);
-    if (!musicEnabled || _musicPlaying) return;
-
-    await _music.resume();
-    _musicPlaying = true;
+  Future<void> startGameplayMusic({int level = 1, Object? owner}) {
+    _campaignRequested = true;
+    _campaignOwner = owner;
+    return _music.campaign(level);
   }
 
-  Future<void> _configureMusic(_MusicTrack track) async {
-    if (_musicConfigured && _activeMusicTrack == track) return;
+  Future<void> startMusic() => _music.start();
 
-    if (_musicPlaying) await _music.stop();
-    await _music.setReleaseMode(ReleaseMode.loop);
-    await _music.setVolume(0.35);
-    await _music.setSource(AssetSource(_backgroundMusicAsset));
-    _activeMusicTrack = track;
-    _musicConfigured = true;
-    _musicPlaying = false;
-  }
-
-  Future<void> _resumeMusic() async {
-    if (_activeMusicTrack == null) return;
-    if (!_musicConfigured) await _configureMusic(_activeMusicTrack!);
-    if (!musicEnabled || _musicPlaying) return;
-
-    await _music.resume();
-    _musicPlaying = true;
-  }
-
-  Future<void> _pauseMusic({bool clearTrack = false}) async {
-    if (!_musicConfigured && !_musicPlaying) return;
-
-    await _music.pause();
-    _musicPlaying = false;
-    if (clearTrack) {
-      _activeMusicTrack = null;
-      _musicConfigured = false;
+  Future<void> stopGameplayMusic({Object? owner}) {
+    if (!_campaignRequested || !identical(owner, _campaignOwner)) {
+      return Future<void>.value();
     }
-  }
-
-  Future<void> stopGameplayMusic() async {
-    await _runMusicOperation(() async {
-      if (_activeMusicTrack != _MusicTrack.gameplay) return;
-      await _pauseMusic(clearTrack: true);
-    });
+    return startMenuMusic();
   }
 
   Future<void> pauseMusicForBackground() async {
@@ -105,10 +84,7 @@ class GameAudioService {
     for (var i = 0; i < _sfxPlayers.length; i++) {
       _sfxRequests[i]++;
     }
-    final musicPause = _runMusicOperation(() async {
-      _pausedByLifecycle = _pausedByLifecycle || _musicPlaying;
-      await _pauseMusic();
-    });
+    final musicPause = _music.setForeground(false);
     await Future.wait([
       musicPause,
       for (final player in _sfxPlayers) player.stop().catchError((_) {}),
@@ -118,30 +94,15 @@ class GameAudioService {
   Future<void> resumeMusicFromBackground() async {
     if (_disposed) return;
     _sfxSuspended = false;
-    await _runMusicOperation(() async {
-      if (!_pausedByLifecycle) return;
-      _pausedByLifecycle = false;
-      await _resumeMusic();
-    });
+    await _music.setForeground(true);
   }
 
-  Future<void> setMusicEnabled(bool enabled) async {
-    await _runMusicOperation(() async {
-      if (musicEnabled == enabled) return;
-
-      musicEnabled = enabled;
-      if (enabled) {
-        await _resumeMusic();
-      } else {
-        await _pauseMusic();
-      }
-    });
+  Future<void> setMusicEnabled(bool enabled) {
+    _musicEnabled = enabled;
+    return _music.setEnabled(enabled);
   }
 
-  Future<void> playTap() {
-    final cue = 'tap_${_nextTapVariant++ % 3}';
-    return _play(cue);
-  }
+  Future<void> playTap() => _play('tap');
 
   Future<void> playMatch() => _play('match');
 
@@ -155,10 +116,6 @@ class GameAudioService {
   Future<void> _prepareTileFeedback() async {
     if (_disposed) return;
     await _configureSfx();
-    for (final cue in ['tap_0', 'tap_1', 'tap_2', 'match']) {
-      if (_disposed) return;
-      await _audioPath(cue);
-    }
   }
 
   /// Invalidates asynchronous setup already dispatched by an outgoing board.
@@ -187,6 +144,9 @@ class GameAudioService {
     final int index;
     if (cue.startsWith('tap')) {
       index = 0;
+    } else if (cue == 'wheel_tick') {
+      // A long approved tick replaces its predecessor instead of layering.
+      index = 0;
     } else if (cue == 'match') {
       index = _nextMatchPlayer;
       _nextMatchPlayer = 1 + _nextMatchPlayer % (_sfxPoolSize - 1);
@@ -203,14 +163,21 @@ class GameAudioService {
         (!tileCue || epoch == _tileEpoch);
     await _configureSfx();
     if (!current()) return;
-    final path = await _audioPath(cue);
+    final asset = _approvedSfx(cue);
+    final Source source = asset != null
+        ? AssetSource(asset)
+        : DeviceFileSource(await _audioPath(cue));
     if (!current()) return;
     final player = _sfxPlayers[index];
     await player.stop();
     if (!current()) return;
     await player.setVolume(_volumeForCue(cue));
     if (!current()) return;
-    await player.play(DeviceFileSource(path));
+    // AssetSource resolves/caches the bundled MP3 asynchronously. Recheck board
+    // ownership after that gap instead of allowing play() to resume internally.
+    await player.setSource(source);
+    if (!current()) return;
+    await player.resume();
   }
 
   Future<void> _configureSfx() =>
@@ -228,6 +195,8 @@ class GameAudioService {
 
     for (final player in _sfxPlayers) {
       if (_disposed) return;
+      // Low-latency effects have no position consumer/completion clock here.
+      player.positionUpdater = null;
       await player.setReleaseMode(ReleaseMode.stop);
       if (_disposed) return;
       await player.setPlayerMode(PlayerMode.lowLatency);
@@ -235,8 +204,24 @@ class GameAudioService {
       await player.setAudioContext(sfxContext);
       if (_disposed) return;
       await player.setVolume(1);
+      if (_disposed) return;
+      // The plugin prepares the native source here, before the first impact.
+      await player.setSource(AssetSource(_approvedSfx(
+          identical(player, _sfxPlayers.first) ? 'tap' : 'match')!));
     }
     _sfxConfigured = true;
+  }
+
+  String? _approvedSfx(String cue) {
+    const base = 'audio/triotrek/sfx/';
+    if (cue.startsWith('tap')) return '${base}tile_tap_b.mp3';
+    return switch (cue) {
+      'match' => '${base}triple_match_c.mp3',
+      'wheel_tick' => '${base}wheel_tick_a.mp3',
+      'wheel_collection' => '${base}wheel_prize_coins.mp3',
+      _ =>
+        null, // Preserve all other existing cues, including wheel start/stop.
+    };
   }
 
   Future<String> _audioPath(String cue) async {
@@ -406,6 +391,8 @@ class GameAudioService {
     if (_disposed) return;
     _disposed = true;
     cancelPendingTileFeedback();
+    // Cancel music deadlines/fades immediately, even if SFX setup is pending.
+    final musicDisposal = _music.dispose();
     final configuring = _sfxConfiguration;
     if (configuring != null) {
       try {
@@ -414,7 +401,7 @@ class GameAudioService {
         // A failed setup must not prevent releasing the players.
       }
     }
-    await _music.dispose();
+    await musicDisposal;
     for (final player in _sfxPlayers) {
       await player.dispose();
     }

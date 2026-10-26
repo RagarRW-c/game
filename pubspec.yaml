@@ -22,3 +22,5 @@ flutter:
   assets:
     - assets/levels/
     - assets/audio/
+    - assets/audio/triotrek/music/
+    - assets/audio/triotrek/sfx/
