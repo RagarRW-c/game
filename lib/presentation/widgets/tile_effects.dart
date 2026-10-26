@@ -24,7 +24,8 @@ class TileFlightSource {
 }
 
 class TileFlight {
-  static const duration = Duration(milliseconds: 280);
+  static const duration = Duration(milliseconds: 440);
+  static const pickup = .14;
   static const arrival = .78;
   const TileFlight(
       this.serial, this.source, this.target, this.slot, this.matched);
@@ -34,28 +35,33 @@ class TileFlight {
   final int slot;
   final bool matched;
 
-  double appearanceAt(double progress) =>
-      Curves.easeInOut.transform(((progress - .18) / .60).clamp(0.0, 1.0));
+  double appearanceAt(double progress) => travelAt(progress);
 
   double opacityAt(double progress) => matched && progress >= arrival ? 0 : 1;
+
+  /// A visible pickup precedes transport. Both phase boundaries have zero
+  /// velocity and acceleration; gameplay has already accepted the selection.
+  double travelAt(double progress) {
+    if (progress <= pickup) return 0;
+    if (progress >= arrival) return 1;
+    return _smootherStep((progress - pickup) / (arrival - pickup));
+  }
+
+  double liftAt(double progress) => progress <= pickup
+      ? _smootherStep((progress / pickup).clamp(0.0, 1.0))
+      : 1 - travelAt(progress);
 
   Rect rectAt(double progress) {
     if (progress <= 0) return source.rect;
     if (progress >= 1 || progress == arrival) return target;
-    // Slow lift, acceleration, then a zero-velocity arrival. The two travel
-    // segments share their velocity at the midpoint; landing owns the last 22%.
-    final t = progress <= .5
-        ? .5 * math.pow(progress / .5, 2.4).toDouble()
-        : progress < arrival
-            ? 1 - .5 * math.pow((arrival - progress) / .28, 1.344).toDouble()
-            : 1.0;
+    final t = travelAt(progress);
     final rect = Rect.lerp(source.rect, target, t)!;
     if (progress < arrival) {
-      final lift =
-          math.pow(math.sin(math.pi * progress / arrival), 2).toDouble();
+      final lift = liftAt(progress);
+      final arc = math.pow(math.sin(math.pi * t), 3).toDouble();
       return rect
-          .inflate(math.min(rect.width, rect.height) * lift * .15)
-          .shift(Offset(lift * (slot >= 3 ? -16 : 16), -lift * 18));
+          .inflate(math.min(rect.width, rect.height) * lift * .11)
+          .shift(Offset(arc * (slot >= 3 ? -8 : 8), -lift * 12));
     }
     final landing = (progress - arrival) / (1 - arrival);
     final compression = landing < .45
@@ -64,8 +70,8 @@ class TileFlight {
             .4;
     return Rect.fromCenter(
         center: target.center,
-        width: target.width * (1 + compression * .08),
-        height: target.height * (1 - compression * .12));
+        width: target.width * (1 + compression * .05),
+        height: target.height * (1 - compression * .075));
   }
 }
 
@@ -77,7 +83,9 @@ class MatchedTileSnapshot {
 }
 
 class TrayBurst {
-  static const duration = Duration(milliseconds: 500);
+  static const duration = Duration(milliseconds: 640);
+  static const compressionDuration = Duration(milliseconds: 70);
+  static const fadeDuration = Duration(milliseconds: 80);
   static const particlesPerSlot = 12;
   const TrayBurst(this.serial, this.rects, this.direction,
       {this.snapshots = const [], this.catalog = tileCatalog, this.incomingId});
@@ -95,19 +103,23 @@ class TrayBurst {
       : TileFlight.duration.inMicroseconds *
           TileFlight.arrival /
           duration.inMicroseconds;
-  double get release => reactionStart + .14;
-  double reactionAt(double p) => ((p - reactionStart) / .14).clamp(0.0, 1.0);
+  double get _compression =>
+      compressionDuration.inMicroseconds / duration.inMicroseconds;
+  double get _fade => fadeDuration.inMicroseconds / duration.inMicroseconds;
+  double get release => reactionStart + _compression;
+  double reactionAt(double p) =>
+      ((p - reactionStart) / _compression).clamp(0.0, 1.0);
   double particlesAt(double p) =>
       ((p - release) / (1 - release)).clamp(0.0, 1.0);
   double opacityAt(MatchedTileSnapshot face, double p) {
     if (face.tile.id == incomingId && p < reactionStart) return 0;
-    return 1 - ((p - release) / .16).clamp(0.0, 1.0);
+    return 1 - _smoothStep(((p - release) / _fade).clamp(0.0, 1.0));
   }
 
   Rect rectAt(MatchedTileSnapshot face, double p) {
     if (p <= reactionStart) return face.rect;
-    final squeeze = math.sin(math.pi * reactionAt(p) / 2);
-    final clearing = ((p - release) / .16).clamp(0.0, 1.0);
+    final squeeze = _smoothStep(reactionAt(p));
+    final clearing = _smoothStep(((p - release) / _fade).clamp(0.0, 1.0));
     final scale = 1 - clearing * .24;
     return Rect.fromCenter(
         center: face.rect.center,
@@ -115,6 +127,9 @@ class TrayBurst {
         height: face.rect.height * (1 - squeeze * .13) * scale);
   }
 }
+
+double _smoothStep(double t) => t * t * (3 - 2 * t);
+double _smootherStep(double t) => t * t * t * (10 + t * (-15 + 6 * t));
 
 /// Presentation only: no engine reference, rewards, asynchronous work or timers.
 /// Eviction/cancellation reveals the canonical tray immediately.
@@ -451,22 +466,21 @@ class FlightAccentPainter extends CustomPainter {
           rect,
           Paint()
             ..color =
-                const Color(0xFFFFDF80).withValues(alpha: strength * .13 / i)
+                const Color(0xFFFFF4DA).withValues(alpha: strength * .06 / i)
             ..style = PaintingStyle.fill);
       canvas.drawRRect(
           rect,
           Paint()
-            ..color = Colors.white.withValues(alpha: strength * .28 / i)
+            ..color = Colors.white.withValues(alpha: strength * .12 / i)
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2);
     }
     final halo = RRect.fromRectAndRadius(
         flight.rectAt(progress).inflate(1.5), const Radius.circular(13));
-    // Dark edge reads on bright worlds; gold and white read on dark worlds.
+    // Let the ivory face and its shadow read first, rather than a neon frame.
     for (final stroke in [
-      (7.0, const Color(0xFF17304E), .45),
-      (4.0, const Color(0xFFFFD66B), .75),
-      (1.6, Colors.white, .95)
+      (3.0, const Color(0xFF17304E), .16),
+      (1.2, Colors.white, .50)
     ]) {
       canvas.drawRRect(
           halo,
@@ -484,12 +498,12 @@ class FlightAccentPainter extends CustomPainter {
       canvas.drawRRect(
           ring,
           Paint()
-            ..color = const Color(0xFFFFDF80).withValues(alpha: pulse * .8)
+            ..color = const Color(0xFFFFF4DA).withValues(alpha: pulse * .5)
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 3);
+            ..strokeWidth = 1.8);
       canvas.drawRRect(
           RRect.fromRectAndRadius(flight.target, const Radius.circular(12)),
-          Paint()..color = Colors.white.withValues(alpha: pulse * .35));
+          Paint()..color = Colors.white.withValues(alpha: pulse * .18));
     }
   }
 

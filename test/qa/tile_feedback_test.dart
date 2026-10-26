@@ -388,12 +388,18 @@ void main() {
     final size = tester.getSize(tile);
     final gesture = await tester.startGesture(tester.getCenter(tile));
     await tester.pump(const Duration(milliseconds: 200));
+    final pressTween = find.descendant(
+        of: tile, matching: find.byType(TweenAnimationBuilder<double>));
+    expect(tester.widget<TweenAnimationBuilder<double>>(pressTween).duration,
+        const Duration(milliseconds: 70));
     final transform =
         find.descendant(of: tile, matching: find.byType(Transform));
     expect(tester.widget<Transform>(transform).transformHitTests, isFalse);
     expect(tester.getSize(tile), size);
     await gesture.cancel();
     await tester.pumpAndSettle();
+    expect(tester.widget<TweenAnimationBuilder<double>>(pressTween).duration,
+        const Duration(milliseconds: 110));
     expect(taps, 0);
     await tester.tap(tile);
     await tester.pumpAndSettle();

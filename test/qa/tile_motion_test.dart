@@ -20,6 +20,7 @@ import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tile.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tray.dart';
 import 'package:triple_tile_adventure/presentation/widgets/tile_effects.dart';
+import 'package:triple_tile_adventure/presentation/widgets/tile_face.dart';
 
 import 'support/geometry.dart';
 
@@ -188,7 +189,7 @@ void main() {
                     .first)
                 .opacity,
             0);
-        await tester.pump(const Duration(milliseconds: 120));
+        await tester.pump(const Duration(milliseconds: 220));
         final halfway = _rect(tester, copy);
         expect((halfway.center - destination.center).distance,
             lessThan((source.center - destination.center).distance));
@@ -296,7 +297,7 @@ void main() {
     for (var i = 0; i < 3; i++) {
       tester.widget<GameTileWidget>(_board('m$i')).onTap!();
     }
-    await tester.pump(); // Flush persistence futures, not the 500 ms effect.
+    await tester.pump(); // Flush persistence futures, not the 640 ms effect.
     expect(_effects(tester).bursts, hasLength(1));
     expect(audio.calls.where((v) => v == 'match'), hasLength(1));
     expect(audio.calls.where((v) => v == 'won'), hasLength(1));
@@ -465,11 +466,12 @@ void main() {
           false);
       expect(flight.rectAt(0), flight.source.rect);
       expect(flight.rectAt(1), flight.target);
-      final midpoint = Rect.lerp(flight.source.rect, flight.target, .5)!;
+      final midpoint =
+          Rect.lerp(flight.source.rect, flight.target, flight.travelAt(.5))!;
       final lifted = flight.rectAt(.5);
-      expect(lifted.width, greaterThan(midpoint.width * 1.2));
+      expect(lifted.width, greaterThan(midpoint.width * 1.08));
       expect(lifted.center.dy, lessThan(midpoint.center.dy));
-      expect(lifted.width, lessThan(midpoint.width * 1.3));
+      expect(lifted.width, lessThan(midpoint.width * 1.22));
     }
     expect(FlightAccentPainter.trailSamples, 3);
     expect(TrayBurst.particlesPerSlot, 12);
@@ -491,7 +493,7 @@ void main() {
               .widget<TweenAnimationBuilder<double>>(
                   find.byKey(ValueKey('flight_${first.serial}')))
               .duration,
-          const Duration(milliseconds: 280));
+          const Duration(milliseconds: 440));
       await tester.pump(const Duration(milliseconds: 100));
       final accents = find.byWidgetPredicate(
           (w) => w is CustomPaint && w.painter is FlightAccentPainter);
@@ -518,7 +520,7 @@ void main() {
               .widget<TweenAnimationBuilder<double>>(
                   find.byKey(ValueKey('burst_${effects.bursts.single.serial}')))
               .duration,
-          const Duration(milliseconds: 500));
+          const Duration(milliseconds: 640));
       await tester.pumpAndSettle();
       expect(accents, findsNothing);
       expect(effects.flights, isEmpty);
@@ -580,6 +582,15 @@ void main() {
           0,
           false);
       expect(flight.rectAt(.08).width, greaterThan(50));
+      expect(TileFlight.duration, const Duration(milliseconds: 440));
+      expect(flight.travelAt(TileFlight.pickup), 0,
+          reason: 'Pickup must lift before starting transport.');
+      final pickedUp = flight.rectAt(TileFlight.pickup);
+      expect(pickedUp.center.dx, flight.source.rect.center.dx);
+      expect(pickedUp.center.dy, lessThan(flight.source.rect.center.dy));
+      expect(pickedUp.width, closeTo(flight.source.rect.width * 1.22, .001));
+      expect(flight.travelAt(280 / 440), inExclusiveRange(0, 1),
+          reason: 'The old completion deadline must now still be in transit.');
       final earlyTravel =
           (flight.rectAt(.50).center - flight.rectAt(.48).center).distance;
       final lateTravel =
@@ -592,6 +603,35 @@ void main() {
       expect(flight.rectAt(1), flight.target);
       expect(flight.appearanceAt(0), 0);
       expect(flight.appearanceAt(TileFlight.arrival), 1);
+      const h = .00001;
+      final leftAcceleration = (flight.travelAt(.5) -
+              2 * flight.travelAt(.5 - h) +
+              flight.travelAt(.5 - 2 * h)) /
+          (h * h);
+      final rightAcceleration = (flight.travelAt(.5 + 2 * h) -
+              2 * flight.travelAt(.5 + h) +
+              flight.travelAt(.5)) /
+          (h * h);
+      expect(leftAcceleration, closeTo(rightAcceleration, .03),
+          reason: 'The brake must not introduce an acceleration kink.');
+      final endAcceleration = (flight.travelAt(TileFlight.arrival) -
+              2 * flight.travelAt(TileFlight.arrival - h) +
+              flight.travelAt(TileFlight.arrival - 2 * h)) /
+          (h * h);
+      expect(endAcceleration.abs(), lessThan(.1),
+          reason: 'Travel acceleration must approach zero before landing.');
+      final pickupAcceleration = (flight.travelAt(TileFlight.pickup + 2 * h) -
+              2 * flight.travelAt(TileFlight.pickup + h) +
+              flight.travelAt(TileFlight.pickup)) /
+          (h * h);
+      expect(pickupAcceleration.abs(), lessThan(.1),
+          reason: 'Transport must start smoothly after pickup.');
+      var previous = 0.0;
+      for (var step = 0; step <= 1000; step++) {
+        final travel = flight.travelAt(step / 1000);
+        expect(travel, inInclusiveRange(previous, 1.0));
+        previous = travel;
+      }
       for (var frame = 0; frame <= 100; frame++) {
         final rect = flight.rectAt(frame / 100);
         expect(rect.isFinite, isTrue);
@@ -623,15 +663,21 @@ void main() {
       expect(copyTile.depth, trayTile.depth);
       expect(copyTile.catalog, trayTile.catalog);
       expect(copyTile.trayAppearanceBlend, 1);
-      Container surface(Finder parent) => tester.widget<Container>(
-          find.descendant(of: parent, matching: find.byType(Container)));
-      expect(surface(copy).decoration, surface(canonical).decoration);
-      expect(surface(copy).foregroundDecoration,
-          surface(canonical).foregroundDecoration);
-      Icon icon(Finder parent) => tester.widget<Icon>(
-          find.descendant(of: parent, matching: find.byType(Icon)));
-      expect(icon(copy).icon, icon(canonical).icon);
-      expect(icon(copy).size, icon(canonical).size);
+      TileFace surface(Finder parent) => tester.widget<TileFace>(
+          find.descendant(of: parent, matching: find.byType(TileFace)));
+      expect(surface(copy).art, surface(canonical).art);
+      expect(surface(copy).blocked, surface(canonical).blocked);
+      expect(surface(copy).highlighted, surface(canonical).highlighted);
+      expect(surface(copy).pressed, surface(canonical).pressed);
+      expect(surface(copy).depth, surface(canonical).depth);
+      expect(surface(copy).trayBlend, surface(canonical).trayBlend);
+      Finder symbol(Finder parent) =>
+          find.descendant(of: parent, matching: find.byType(TileSymbol));
+      expect(tester.widget<TileSymbol>(symbol(copy)).art.icon,
+          tester.widget<TileSymbol>(symbol(canonical)).art.icon);
+      expect(tester.widget<TileSymbol>(symbol(copy)).art.color,
+          tester.widget<TileSymbol>(symbol(canonical)).art.color);
+      expect(_rect(tester, symbol(copy)), _rect(tester, symbol(canonical)));
       expect(_effects(tester).hides('m3'), isTrue);
       await tester.pump(const Duration(milliseconds: 1));
       expect(visual, findsNothing);
@@ -668,19 +714,45 @@ void main() {
       expect(flight.opacityAt(TileFlight.arrival), 0);
       expect(burst.opacityAt(incoming, burst.reactionStart), 1);
       expect(burst.rectAt(incoming, burst.reactionStart), flight.target);
-      await tester.pump(const Duration(milliseconds: 240));
+      const h = .00001;
+      final initialCompressionSpeed =
+          (burst.rectAt(incoming, burst.reactionStart + h).height /
+                          incoming.rect.height -
+                      1)
+                  .abs() /
+              h;
+      expect(initialCompressionSpeed, lessThan(.01),
+          reason: 'The matched faces must start compressing smoothly.');
+      expect(
+          (1 - burst.opacityAt(incoming, burst.release + h)) / h, lessThan(.01),
+          reason: 'Disappearance must ease out of the hold.');
+      await tester.pump(const Duration(milliseconds: 280));
+      final travelling =
+          tester.widget<TileFlightVisual>(find.byType(TileFlightVisual));
+      expect(travelling.progress, closeTo(280 / 440, .000001));
+      expect(flight.opacityAt(travelling.progress), 1);
+      expect(flight.rectAt(travelling.progress), isNot(flight.target));
+      await tester.pump(const Duration(milliseconds: 63));
+      expect(flight.opacityAt(343 / 440), 1);
+      expect(burst.opacityAt(incoming, 343 / 640), 0);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(flight.opacityAt(344 / 440), 0);
+      expect(burst.opacityAt(incoming, 344 / 640), 1);
+      expect(find.byType(MatchedTileVisual), findsNWidgets(3));
+      await tester.pump(const Duration(milliseconds: 26));
       for (final visual in tester
           .widgetList<MatchedTileVisual>(find.byType(MatchedTileVisual))) {
-        expect(visual.progress, closeTo(.48, .000001));
+        expect(visual.progress, closeTo(370 / 640, .000001));
         expect(burst.opacityAt(visual.face, visual.progress), 1);
         expect(burst.rectAt(visual.face, visual.progress).height,
             lessThan(visual.face.rect.height));
       }
-      expect(burst.particlesAt(.48), 0, reason: 'Compression precedes release');
+      expect(burst.particlesAt(370 / 640), 0,
+          reason: 'Compression precedes release');
       await tester.pump(const Duration(milliseconds: 80));
       expect(effects.flights, isEmpty);
-      expect(burst.particlesAt(.64), greaterThan(0));
-      expect(burst.opacityAt(incoming, .64), inExclusiveRange(0, 1));
+      expect(burst.particlesAt(450 / 640), greaterThan(0));
+      expect(burst.opacityAt(incoming, 450 / 640), inExclusiveRange(0, 1));
       await tester.pumpAndSettle();
       expect(find.byType(MatchedTileVisual), findsNothing);
       expect(effects.bursts, isEmpty);
@@ -731,7 +803,7 @@ void main() {
       }
       final effects = _effects(tester);
       final oldSerial = effects.bursts.single.serial;
-      await tester.pump(const Duration(milliseconds: 240));
+      await tester.pump(const Duration(milliseconds: 370));
       if (action == 'Undo') {
         // The last selection (m2) has matched, so Undo cannot skip it to
         // restore m3. Make a legal undoable move while the burst is reacting.
@@ -788,7 +860,7 @@ void main() {
     }
     final effects = _effects(tester);
     final burst = effects.bursts.single;
-    await tester.pump(const Duration(milliseconds: 240));
+    await tester.pump(const Duration(milliseconds: 370));
     final undo = tester.widget<GameBoosterButton>(_booster('Undo'));
     expect(undo.onPressed, isNull);
     await tester.tap(_booster('Undo'));
@@ -819,7 +891,7 @@ void main() {
         .widget<TweenAnimationBuilder<double>>(
             find.byKey(ValueKey('burst_${effects.bursts.single.serial}')))
         .onEnd!;
-    await tester.pump(const Duration(milliseconds: 240));
+    await tester.pump(const Duration(milliseconds: 370));
     tester.widget<GameTileWidget>(_board('m3')).onTap!();
     await tester.pump();
     final oldFlightEnd = tester
@@ -848,9 +920,9 @@ void main() {
     expect(effects.flights.single, same(newFlight));
     final visual =
         tester.widget<TileFlightVisual>(find.byType(TileFlightVisual));
-    expect(visual.progress, closeTo(80 / 280, .000001));
+    expect(visual.progress, closeTo(80 / 440, .000001));
     expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id), ['m6']);
-    await tester.pump(const Duration(milliseconds: 201));
+    await tester.pump(const Duration(milliseconds: 361));
     expect(effects.flights, isEmpty);
     expect(effects.hides('m6'), isFalse);
     await tester.pumpAndSettle();
@@ -886,7 +958,7 @@ void main() {
               .any((t) => t.id == face.tile.id),
           isFalse);
     }
-    await tester.pump(const Duration(milliseconds: 240));
+    await tester.pump(const Duration(milliseconds: 370));
     expect(find.byType(MatchedTileVisual), findsNWidgets(3));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
@@ -912,13 +984,13 @@ void main() {
     }
     final second = effects.bursts.last.serial;
     expect(effects.bursts, hasLength(2));
-    await tester.pump(const Duration(milliseconds: 401));
+    await tester.pump(const Duration(milliseconds: 541));
     expect(effects.bursts.map((b) => b.serial), [second]);
     expect(effects.bursts.any((b) => b.serial == first), isFalse);
     for (final visual in tester
         .widgetList<MatchedTileVisual>(find.byType(MatchedTileVisual))) {
       expect(visual.burst.serial, second);
-      expect(visual.progress, closeTo(401 / 500, .000001));
+      expect(visual.progress, closeTo(541 / 640, .000001));
     }
     await tester.pump(const Duration(milliseconds: 100));
     expect(effects.bursts, isEmpty);
@@ -956,7 +1028,7 @@ void main() {
       await tester.pump();
     }
     final effects = _effects(tester);
-    await tester.pump(const Duration(milliseconds: 240));
+    await tester.pump(const Duration(milliseconds: 370));
     expect(find.byType(MatchedTileVisual), findsNWidgets(3));
     final navigator =
         Navigator.of(tester.element(find.byType(GameTileEffects)));
@@ -995,14 +1067,14 @@ void main() {
     await tester.pump();
     expect(effects.flights, hasLength(2));
     final secondSerial = effects.flights.last.serial;
-    expect(progressOf(firstSerial), closeTo(100 / 280, 0.000001),
+    expect(progressOf(firstSerial), closeTo(100 / 440, 0.000001),
         reason: 'Starting the second flight must not reset the first clock');
     expect(progressOf(secondSerial), 0);
-    await tester.pump(const Duration(milliseconds: 180));
+    await tester.pump(const Duration(milliseconds: 340));
     expect(progressOf(firstSerial), 1);
-    expect(progressOf(secondSerial), closeTo(180 / 280, 0.000001));
+    expect(progressOf(secondSerial), closeTo(340 / 440, 0.000001));
     // Flutter's interpolation simulation reports completion for elapsed >
-    // duration, not elapsed == duration. At exactly 280 ms the first flight
+    // duration, not elapsed == duration. At exactly 440 ms the first flight
     // paints its endpoint, but onEnd needs the next tick beyond that boundary.
     await tester.pump(const Duration(milliseconds: 1));
     expect(effects.flights, hasLength(1));
@@ -1012,7 +1084,7 @@ void main() {
         w.painter is FlightAccentPainter &&
         (w.painter! as FlightAccentPainter).flight.serial == secondSerial));
     expect((paint.painter! as FlightAccentPainter).progress, greaterThan(.6));
-    expect(progressOf(secondSerial), closeTo(181 / 280, 0.000001),
+    expect(progressOf(secondSerial), closeTo(341 / 440, 0.000001),
         reason: 'Removing the first flight must preserve the second clock');
     // Check prompt cleanup at the second flight's own deadline, before the
     // general settling step could conceal an unintended restart or delay.

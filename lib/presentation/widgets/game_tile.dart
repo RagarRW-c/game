@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/tile_catalog.dart';
 import '../../domain/tile.dart';
 import '../theme/game_theme.dart';
+import 'tile_face.dart';
 
 class GameTileWidget extends StatefulWidget {
   const GameTileWidget({
@@ -62,147 +63,52 @@ class _GameTileWidgetState extends State<GameTileWidget> {
     final trayAppearance = widget.trayTile && !widget.preserveBoardAppearance;
     final blend = widget.trayAppearanceBlend?.clamp(0.0, 1.0) ??
         (trayAppearance ? 1.0 : 0.0);
-    double mix(double board, double tray) => board + (tray - board) * blend;
     final art = widget.catalog[widget.tile.type] ??
         const TileArt(Icons.help_rounded, GameColors.tileFallback);
-    final topLift =
-        widget.blocked ? 0.0 : widget.depth.clamp(0.0, 1.0).toDouble();
-    final shadowOpacity =
-        mix(widget.blocked ? .18 : .24 + topLift * .06, .22 + topLift * .18);
-    final blur = mix(widget.blocked ? 3 : 6 + topLift * 2, 10 + topLift * 9);
-    final yOffset = mix(widget.blocked ? 2 : 3 + topLift, 6 + topLift * 4);
-    final radius = BorderRadius.lerp(
-        GameRadius.largeRadius, GameRadius.mediumRadius, blend)!;
 
-    return GestureDetector(
-      onTap: widget.enabled ? widget.onTap : null,
-      onTapDown: (_) => _setPressed(true),
-      onTapCancel: () => _setPressed(false),
-      onTapUp: (_) => _setPressed(false),
-      child: AnimatedOpacity(
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : GameDurations.quick,
-        curve: Curves.easeInOut,
-        opacity: widget.blocked
-            ? 0.86
-            : widget.enabled
-                ? 1
-                : 0.52,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(
-            begin: 1,
-            end: _pressed ? 0.93 : 1,
-          ),
+    return Semantics(
+      container: true,
+      label: art.label ?? widget.tile.type,
+      button: !widget.trayTile && widget.onTap != null,
+      enabled: widget.enabled && !widget.blocked,
+      hint: widget.blocked ? 'Covered tile' : null,
+      onTap: widget.enabled && !widget.blocked ? widget.onTap : null,
+      child: GestureDetector(
+        excludeFromSemantics: true,
+        onTap: widget.enabled ? widget.onTap : null,
+        onTapDown: (_) => _setPressed(true),
+        onTapCancel: () => _setPressed(false),
+        onTapUp: (_) => _setPressed(false),
+        child: AnimatedOpacity(
           duration: MediaQuery.disableAnimationsOf(context)
               ? Duration.zero
               : GameDurations.quick,
-          curve: Curves.easeOutBack,
-          builder: (context, scale, child) {
-            return Transform.scale(
-                scale: scale, transformHitTests: false, child: child);
-          },
-          child: Container(
-            foregroundDecoration: BoxDecoration(
-              color: widget.blocked
-                  ? GameColors.tileBlockedOverlay.withValues(alpha: 0.20)
-                  : null,
-              borderRadius: radius,
-              gradient: widget.blocked
-                  ? null
-                  : LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white.withValues(
-                          alpha: mix((_pressed ? .30 : .12) + topLift * .04,
-                              .42 + topLift * .10),
-                        ),
-                        Colors.white.withValues(alpha: 0.02),
-                        Colors.black.withValues(alpha: 0.04),
-                      ],
-                      stops: const [0, 0.55, 1],
-                    ),
+          curve: Curves.easeInOut,
+          opacity: widget.blocked
+              ? 0.86
+              : widget.enabled
+                  ? 1
+                  : 0.52,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(
+              begin: 1,
+              end: _pressed ? 0.93 : 1,
             ),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color.lerp(
-                      art.color,
-                      widget.blocked ? GameColors.tileBlocked : Colors.white,
-                      widget.blocked ? 0.32 : 0.18)!,
-                  Color.lerp(
-                      art.color,
-                      widget.blocked ? GameColors.tileBlocked : art.color,
-                      widget.blocked ? 0.32 : 0)!,
-                ],
-              ),
-              borderRadius: radius,
-              border: Border.all(
-                color: widget.highlighted
-                    ? GameColors.tileHighlight
-                    : Colors.white
-                        .withValues(alpha: widget.blocked ? 0.60 : 0.94),
-                width: widget.highlighted ? 4 : 3,
-              ),
-              boxShadow: [
-                if (blend < 1)
-                  BoxShadow(
-                    color: Color.lerp(art.color, Colors.black, 0.42)!
-                        .withValues(alpha: 1 - blend),
-                    blurRadius: 0,
-                    offset: Offset(0, widget.blocked ? 2 : 4),
-                  ),
-                BoxShadow(
-                  color: widget.highlighted
-                      ? GameColors.tileHighlightGlow.withValues(alpha: 0.82)
-                      : Colors.black.withValues(alpha: shadowOpacity),
-                  blurRadius: widget.highlighted ? 26 : blur,
-                  spreadRadius: widget.highlighted ? 1.5 : 0,
-                  offset: Offset(0, yOffset),
-                ),
-                if (!widget.blocked)
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: mix(.18, .34)),
-                    blurRadius: mix(2, 6),
-                    offset: Offset(mix(-1, -2), mix(-1, -2)),
-                  ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  left: 10,
-                  right: 10,
-                  top: 7,
-                  height: mix(5, 4),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white
-                          .withValues(alpha: widget.blocked ? 0.10 : 0.32),
-                      borderRadius: GameRadius.extraLargeRadius,
-                    ),
-                  ),
-                ),
-                Center(
-                  child: Icon(
-                    art.icon,
-                    color: Colors.white,
-                    size: mix(36, 30),
-                    shadows: widget.blocked
-                        ? null
-                        : const [
-                            Shadow(
-                              color: Colors.black38,
-                              blurRadius: 4,
-                              offset: Offset(0, 1.4),
-                            ),
-                          ],
-                  ),
-                ),
-              ],
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : Duration(milliseconds: _pressed ? 70 : 110),
+            curve: Curves.easeOutCubic,
+            builder: (context, scale, child) {
+              return Transform.scale(
+                  scale: scale, transformHitTests: false, child: child);
+            },
+            child: TileFace(
+              art: art,
+              blocked: widget.blocked,
+              highlighted: widget.highlighted,
+              pressed: _pressed,
+              depth: widget.depth,
+              trayBlend: blend,
             ),
           ),
         ),
