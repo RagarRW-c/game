@@ -208,7 +208,7 @@ void main() {
     expect(() => GameMusic.campaignAsset(101), throwsRangeError);
   });
 
-  test('all 16 approved assets are bundled as nonempty MP3s', () async {
+  test('all 18 approved assets are bundled as nonempty MP3s', () async {
     final paths = [
       GameMusic.menuA,
       GameMusic.menuB,
@@ -218,11 +218,13 @@ void main() {
         'tile_tap_b',
         'triple_match_c',
         'wheel_tick_a',
-        'wheel_prize_coins'
+        'wheel_stop_b',
+        'wheel_prize_coins',
+        'reward_ok_d'
       ])
         'audio/triotrek/sfx/$name.mp3',
     ];
-    expect(paths.toSet(), hasLength(16));
+    expect(paths.toSet(), hasLength(18));
     for (final path in paths) {
       final data = await rootBundle.load('assets/$path');
       expect(data.lengthInBytes, greaterThan(3), reason: path);

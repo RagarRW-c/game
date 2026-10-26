@@ -90,7 +90,10 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
     _audio = AppScope.of(context).audioService;
     _reducedMotion = MediaQuery.disableAnimationsOf(context) ||
         MediaQuery.accessibleNavigationOf(context);
+    // The wheel's own reward dialog opens after _spinning becomes false. Its
+    // appearance must not invalidate reduced-motion cues still being prepared.
     if (_spinning && !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      _audio.cancelPendingWheelFeedback();
       _presentationInterrupted = true;
       _finishMotion();
     }
@@ -102,6 +105,7 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
     _foreground = state == AppLifecycleState.resumed;
     // Finish presentation only. Never cancel or repeat a repository claim.
     if (!_foreground) {
+      _audio.cancelPendingWheelFeedback();
       if (_spinning) _presentationInterrupted = true;
       _finishMotion();
     }
@@ -233,8 +237,8 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
       await motion;
       if (!mounted) return;
       setState(() => _settled = true);
+      // STOP B is the complete landing/reveal cue; do not layer the old chime.
       unawaited(_sound(_audio.playWheelStop));
-      unawaited(_sound(_audio.playWheelReveal));
       await _animate(_celebration);
       if (!mounted) return;
       setState(() {
@@ -242,10 +246,14 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
         _coins = claim.coinsAfter;
       });
       if (!_visible || _presentationInterrupted) return;
-      await _showRewardDialog(claim.reward);
+      final acknowledged = await _showRewardDialog(claim.reward);
       if (!mounted || !_visible) return;
+      // Explicit confirmation has its own cue. Keep earned popups, without
+      // layering the legacy achievement chime over that button's piano sound.
       await showPendingAchievementPopups(context, repository,
-          onPopup: () => _sound(_audio.playAchievementUnlocked));
+          onPopup: acknowledged == true
+              ? null
+              : () => _sound(_audio.playAchievementUnlocked));
     } catch (_) {
       if (!mounted) return;
       _cancelUnconfirmedMotion();
@@ -258,27 +266,47 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
     }
   }
 
-  Future<void> _showRewardDialog(DailyWheelReward reward) => showDialog<void>(
-        context: context,
-        builder: (dialogContext) => GameDialogFrame(
-          title: 'Reward',
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            GameRewardEmblem(icon: reward.icon),
-            const SizedBox(height: GameSpacing.md),
-            Text(reward.label, style: GameTextStyles.h2),
-            const SizedBox(height: GameSpacing.xl),
-            GameButton(
-                label: 'Nice',
-                icon: Icons.check_rounded,
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                variant: GameButtonVariant.success),
-          ]),
-        ),
-      );
+  Future<bool?> _showRewardDialog(DailyWheelReward reward) {
+    // Outside the builder so a rebuild cannot reset the rapid-tap guard.
+    var acknowledged = false;
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GameDialogFrame(
+        title: 'Reward',
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          GameRewardEmblem(icon: reward.icon),
+          const SizedBox(height: GameSpacing.md),
+          Text(reward.label, style: GameTextStyles.h2),
+          const SizedBox(height: GameSpacing.xl),
+          GameButton(
+              label: 'Nice',
+              icon: Icons.check_rounded,
+              onPressed: () {
+                if (acknowledged ||
+                    !mounted ||
+                    !dialogContext.mounted ||
+                    !_foreground ||
+                    !(ModalRoute.of(dialogContext)?.isCurrent ?? false)) {
+                  return;
+                }
+                acknowledged = true;
+                // The dialog is current; the underlying wheel is not. Do
+                // not use _sound's wheel-route visibility guard here.
+                unawaited(_audio.playWheelRewardOk().catchError((Object _) {
+                  // Optional audio must never block dismissal or a reward.
+                }));
+                Navigator.of(dialogContext).pop(true);
+              },
+              variant: GameButtonVariant.success),
+        ]),
+      ),
+    );
+  }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _audio.cancelPendingWheelFeedback();
     _controller.dispose();
     _celebration.dispose();
     super.dispose();
@@ -331,7 +359,11 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => PopScope<Object?>(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _audio.cancelPendingWheelFeedback();
+      },
+      child: Scaffold(
         body: GameBackground(
             child: SafeArea(
                 child: Stack(children: [
@@ -481,7 +513,7 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
                       coins: _claim!.reward.coins != null)),
             ))),
         ]))),
-      );
+      ));
 }
 
 class _WheelLoadingState extends StatelessWidget {

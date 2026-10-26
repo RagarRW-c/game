@@ -37,6 +37,12 @@ class _SelectedRandom implements Random {
 
 class _Audio implements GameAudioService {
   final calls = <String>[];
+  int wheelCancellations = 0;
+  @override
+  void cancelPendingWheelFeedback() {
+    wheelCancellations++;
+  }
+
   @override
   Future<void> playLuckyWheelSpin() async {
     calls.add('spin');
@@ -63,6 +69,16 @@ class _Audio implements GameAudioService {
   }
 
   @override
+  Future<void> playWheelRewardOk() async {
+    calls.add('reward_ok');
+  }
+
+  @override
+  Future<void> playAchievementUnlocked() async {
+    calls.add('achievement');
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => Future<void>.value();
 }
 
@@ -73,6 +89,16 @@ class _DelayedClaim extends ProgressRepository {
       {required DailyWheelReward reward}) async {
     await gate.future;
     return super.claimDailySpin(now, reward: reward);
+  }
+}
+
+class _PendingRewardOkAudio extends _Audio {
+  final gate = Completer<void>();
+
+  @override
+  Future<void> playWheelRewardOk() async {
+    calls.add('reward_ok');
+    await gate.future;
   }
 }
 
@@ -119,6 +145,8 @@ class _FailingAudio extends _Audio {
   @override
   Future<void> playWheelCollection() async =>
       throw StateError('No audio device');
+  @override
+  Future<void> playWheelRewardOk() async => throw StateError('No audio device');
 }
 
 Future<void> _mount(
@@ -259,7 +287,8 @@ void main() {
     testWidgets('visible landing and reveal agree with selected segment $index',
         (tester) async {
       final random = _SelectedRandom(index);
-      await _mount(tester, random: random);
+      final audio = _Audio();
+      await _mount(tester, random: random, audio: audio);
       await _tapSpin(tester);
       // Selection and persistence happen before the 4.6-second visual finish.
       expect(await ProgressRepository().dailySpinAvailable(DateTime.now()),
@@ -267,6 +296,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 4599));
       expect(find.text('Spinning...'), findsOneWidget);
       expect(find.byKey(const ValueKey('wheel_result')), findsNothing);
+      expect(audio.calls.where((call) => call == 'stop'), isEmpty);
+      expect(audio.calls.where((call) => call == 'collect'), isEmpty);
       await tester.pump(const Duration(milliseconds: 1));
       // At exactly 4600 ms the angle is final. This SDK's interpolation
       // simulation completes only when elapsed time is GREATER than duration.
@@ -278,9 +309,15 @@ void main() {
       expect(sin(angle + index * 2 * pi / 9), closeTo(0, 1e-8));
       expect(cos(angle + index * 2 * pi / 9), closeTo(1, 1e-8));
       expect(find.byKey(const ValueKey('wheel_result')), findsNothing);
+      expect(audio.calls.where((call) => call == 'stop'), isEmpty,
+          reason: 'The stop cue must wait for animation completion.');
       await tester.pump(const Duration(milliseconds: 1)); // 4601 ms: complete.
       await tester
           .pump(); // Build the reveal scheduled by the completed future.
+      expect(audio.calls.where((call) => call == 'stop'), hasLength(1));
+      expect(audio.calls.where((call) => call == 'reveal'), isEmpty,
+          reason: 'STOP B must replace the old overlapping reveal chime.');
+      expect(audio.calls.where((call) => call == 'collect'), isEmpty);
       final landed = tester
           .widget<Transform>(find.byKey(const ValueKey('wheel_rotation')));
       expect(
@@ -378,6 +415,11 @@ void main() {
               matching: find.text(labels[index])),
           findsOneWidget);
       expect(random.selections, 1);
+      expect(audio.calls.where((call) => call == 'stop'), hasLength(1));
+      expect(audio.calls.where((call) => call == 'reveal'), isEmpty);
+      expect(audio.calls.where((call) => call == 'collect'),
+          hasLength(index < 6 ? 1 : 0),
+          reason: 'Only coin rewards dispatch the separate collection cue.');
       await tester.tap(find.text('Nice'));
       await tester.pumpAndSettle();
       final button = tester.widget<GameButton>(
@@ -542,7 +584,8 @@ void main() {
   testWidgets('two callbacks before a rebuild still select and claim once',
       (tester) async {
     final random = _SelectedRandom(1);
-    await _mount(tester, random: random);
+    final audio = _Audio();
+    await _mount(tester, random: random, audio: audio);
     final action = tester
         .widget<GameButton>(find.widgetWithText(GameButton, 'Daily Spin'))
         .onPressed!;
@@ -554,6 +597,9 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getInt('stats_lucky_wheel_spins'), 1);
     expect(find.text('Reward'), findsOneWidget);
+    expect(audio.calls.where((call) => call == 'stop'), hasLength(1));
+    expect(audio.calls.where((call) => call == 'reveal'), isEmpty);
+    expect(audio.calls.where((call) => call == 'collect'), hasLength(1));
   });
 
   testWidgets(
@@ -568,9 +614,13 @@ void main() {
         of: find.byType(GameHeader),
         matching: find.byIcon(Icons.arrow_back_rounded));
     expect(backIcon, findsOneWidget);
+    final cancellations = audio.wheelCancellations;
     await tester.tap(backIcon);
     await tester.pumpAndSettle();
     expect(find.byType(LuckyWheelScreen), findsNothing);
+    expect(audio.wheelCancellations, greaterThan(cancellations),
+        reason: 'Leaving the route must invalidate native audio setup.');
+    expect(audio.calls.where((call) => call == 'stop'), isEmpty);
     expect(tester.binding.transientCallbackCount, 0);
     final soundsAfterDisposal = audio.calls.length;
     repository.gate.complete();
@@ -596,6 +646,7 @@ void main() {
     await _mount(tester, random: _SelectedRandom(2), audio: audio);
     await _tapSpin(tester);
     await tester.pump(const Duration(milliseconds: 400));
+    final cancellations = audio.wheelCancellations;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     final sounds = audio.calls.length;
@@ -604,6 +655,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(await ProgressRepository().coins(), 1075);
     expect(audio.calls.length, sounds);
+    expect(audio.wheelCancellations, greaterThan(cancellations));
+    expect(audio.calls.where((call) => call == 'stop'), isEmpty);
     expect(find.text('Reward'), findsNothing);
     expect(find.byKey(const ValueKey('wheel_result')), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(const ValueKey('wheel_coins'))).data,
@@ -629,12 +682,85 @@ void main() {
     expect(after.dx, closeTo(pointer.dx, .01));
     final ticks = audio.calls.where((call) => call == 'tick').length;
     expect(ticks, inInclusiveRange(15, 56));
+    // 287 frames put us at 4592 ms. Preserve the actual completion boundary.
+    await tester.pump(const Duration(milliseconds: 7));
+    expect(audio.calls.where((call) => call == 'stop'), isEmpty);
+    await tester.pump(const Duration(milliseconds: 1)); // 4600 ms.
+    expect(audio.calls.where((call) => call == 'stop'), isEmpty);
+    await tester.pump(const Duration(milliseconds: 1)); // Completed landing.
+    await tester.pump(); // Start the celebration's frame clock.
+    expect(find.byKey(const ValueKey('wheel_result')), findsOneWidget);
+    expect(audio.calls.where((call) => call == 'stop'), hasLength(1));
+    expect(audio.calls.where((call) => call == 'reveal'), isEmpty);
+    expect(audio.calls.where((call) => call == 'collect'), isEmpty);
+    await tester.pump(const Duration(milliseconds: 759));
+    expect(audio.calls.where((call) => call == 'collect'), isEmpty);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(audio.calls.where((call) => call == 'collect'), hasLength(1),
+        reason: 'Prize Coins still starts at 76% of the 1000 ms celebration.');
     await tester.pumpAndSettle();
+    expect(audio.calls.where((call) => call == 'stop'), hasLength(1));
+    expect(audio.calls.where((call) => call == 'reveal'), isEmpty);
     expect(audio.calls.where((call) => call == 'collect'), hasLength(1));
     await tester.tap(find.text('Nice'));
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(find.byKey(const ValueKey('wheel_coins'))).data,
         '1030');
+  });
+
+  testWidgets('covering the wheel cancels cues without losing the claim',
+      (tester) async {
+    final audio = _Audio();
+    await _mount(tester, random: _SelectedRandom(1), audio: audio);
+    await _tapSpin(tester);
+    await tester.pump(const Duration(milliseconds: 400));
+    final cancellations = audio.wheelCancellations;
+    final sounds = audio.calls.length;
+    final navigator =
+        Navigator.of(tester.element(find.byType(LuckyWheelScreen)));
+    final covered = navigator.push<void>(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Covering route'))));
+    await tester.pumpAndSettle();
+    expect(find.text('Covering route'), findsOneWidget);
+    expect(audio.wheelCancellations, greaterThan(cancellations));
+    expect(audio.calls.length, sounds);
+    expect(audio.calls.where((call) => call == 'stop'), isEmpty);
+    expect(audio.calls.where((call) => call == 'collect'), isEmpty);
+    expect(await ProgressRepository().coins(), 1050);
+    navigator.pop();
+    await covered;
+    await tester.pumpAndSettle();
+    expect(audio.calls.length, sounds,
+        reason: 'Returning must not replay cues.');
+    expect(find.text('Come Back Tomorrow'), findsOneWidget);
+    expect(find.text('Reward'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reduced-motion coins keep one landing and one collection cue',
+      (tester) async {
+    final audio = _Audio();
+    await _mount(tester,
+        random: _SelectedRandom(0), audio: audio, reducedMotion: true);
+    final cancellations = audio.wheelCancellations;
+    await _tapSpin(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('Reward'), findsOneWidget);
+    expect(audio.wheelCancellations, cancellations,
+        reason: 'The reward dialog must allow pending reduced-motion cues.');
+    expect(await ProgressRepository().coins(), 1030);
+    expect(audio.calls.where((call) => call == 'tick'), isEmpty);
+    expect(audio.calls.where((call) => call == 'reveal'), isEmpty);
+    expect(audio.calls.where((call) => call == 'stop'), hasLength(1));
+    expect(audio.calls.where((call) => call == 'collect'), hasLength(1));
+    expect(
+        audio.calls.indexOf('stop'), lessThan(audio.calls.indexOf('collect')));
+    await tester.tap(find.text('Nice'));
+    await tester.pumpAndSettle();
+    expect(audio.calls.where((call) => call == 'stop'), hasLength(1));
+    expect(audio.calls.where((call) => call == 'collect'), hasLength(1));
+    expect(find.text('Come Back Tomorrow'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -646,6 +772,157 @@ void main() {
     expect(find.text('Try Again'), findsOneWidget);
     expect(random.selections, 0);
     expect(await ProgressRepository().coins(), 1000);
+  });
+
+  for (final reducedMotion in [false, true]) {
+    testWidgets(
+        'reward confirmation plays once without blocking dismissal, reduced=$reducedMotion',
+        (tester) async {
+      final audio = _PendingRewardOkAudio();
+      try {
+        await _mount(tester,
+            random: _SelectedRandom(1),
+            audio: audio,
+            reducedMotion: reducedMotion);
+        await _tapSpin(tester);
+        await tester.pumpAndSettle();
+        expect(find.text('Reward'), findsOneWidget);
+        expect(audio.calls.where((call) => call == 'reward_ok'), isEmpty);
+        expect(audio.calls.where((call) => call == 'stop'), hasLength(1));
+        expect(audio.calls.where((call) => call == 'collect'), hasLength(1));
+        final confirm = tester
+            .widget<GameButton>(find.widgetWithText(GameButton, 'Nice'))
+            .onPressed!;
+        final beforeConfirmation = audio.wheelCancellations;
+        confirm();
+        confirm(); // Both callbacks arrive before a rebuild or pop animation.
+        await tester.pumpAndSettle();
+        expect(audio.gate.isCompleted, isFalse);
+        expect(audio.wheelCancellations, beforeConfirmation,
+            reason: 'Dismissing this popup must not cancel its own OK cue.');
+        expect(audio.calls.where((call) => call == 'reward_ok'), hasLength(1));
+        expect(audio.calls.where((call) => call == 'achievement'), isEmpty);
+        expect(find.text('Reward'), findsNothing);
+        expect(find.byType(LuckyWheelScreen), findsOneWidget,
+            reason: 'A second callback must not pop the wheel itself.');
+        expect(await ProgressRepository().coins(), 1050);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getInt('stats_lucky_wheel_spins'), 1);
+
+        final cancellations = audio.wheelCancellations;
+        final wheelContext = tester.element(find.byType(LuckyWheelScreen));
+        Navigator.of(wheelContext).pop();
+        expect(audio.wheelCancellations, greaterThan(cancellations),
+            reason: 'Pop must invalidate pending audio before route disposal.');
+        await tester.pumpAndSettle();
+        expect(find.byType(LuckyWheelScreen), findsNothing);
+        confirm(); // A retained callback must be inert after disposal too.
+        audio.gate.complete();
+        await tester.pump();
+        expect(audio.calls.where((call) => call == 'reward_ok'), hasLength(1));
+        expect(await ProgressRepository().coins(), 1050);
+        expect(tester.takeException(), isNull);
+      } finally {
+        if (!audio.gate.isCompleted) audio.gate.complete();
+        await tester.pump();
+      }
+    });
+  }
+
+  for (final acknowledged in [false, true]) {
+    testWidgets('wheel achievement after dismissal, acknowledged=$acknowledged',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(
+          {'coins': 1000, 'stats_lucky_wheel_spins': 6});
+      final audio = _Audio();
+      await _mount(tester,
+          random: _SelectedRandom(1), audio: audio, reducedMotion: true);
+      await _tapSpin(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Reward'), findsOneWidget);
+      expect(await ProgressRepository().coins(), 1300);
+      expect(audio.calls.where((call) => call == 'reward_ok'), isEmpty);
+      expect(audio.calls.where((call) => call == 'achievement'), isEmpty);
+      if (acknowledged) {
+        await tester.tap(find.widgetWithText(GameButton, 'Nice'));
+      } else {
+        Navigator.of(tester.element(find.text('Reward'))).pop();
+      }
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('achievement_name')), findsOneWidget);
+      expect(find.text('Lucky Player'), findsOneWidget,
+          reason: 'Replacing the sound must not suppress an earned popup.');
+      expect(audio.calls.where((call) => call == 'reward_ok'),
+          hasLength(acknowledged ? 1 : 0));
+      expect(audio.calls.where((call) => call == 'achievement'),
+          hasLength(acknowledged ? 0 : 1),
+          reason: 'Only explicit wheel confirmation replaces the old chime.');
+      expect(await ProgressRepository().coins(), 1300);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getInt('stats_lucky_wheel_spins'), 7);
+      expect(prefs.getInt('stats_coins_earned'), 300);
+      expect(prefs.getInt('total_xp'), 75);
+      await tester.tap(find.byKey(const ValueKey('achievement_close')));
+      await tester.pumpAndSettle();
+      expect(await ProgressRepository().consumePendingAchievementPopups(),
+          isEmpty);
+      expect(audio.calls.where((call) => call == 'reward_ok'),
+          hasLength(acknowledged ? 1 : 0));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('background and stale dialog callbacks cannot acknowledge twice',
+      (tester) async {
+    final audio = _Audio();
+    await _mount(tester,
+        random: _SelectedRandom(0), audio: audio, reducedMotion: true);
+    await _tapSpin(tester);
+    await tester.pumpAndSettle();
+    final confirm = tester
+        .widget<GameButton>(find.widgetWithText(GameButton, 'Nice'))
+        .onPressed!;
+    try {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      confirm();
+      await tester.pump();
+      expect(audio.calls.where((call) => call == 'reward_ok'), isEmpty);
+      expect(find.text('Reward'), findsOneWidget);
+    } finally {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    }
+    await tester.tap(find.widgetWithText(GameButton, 'Nice'));
+    await tester.pumpAndSettle();
+    expect(audio.calls.where((call) => call == 'reward_ok'), hasLength(1));
+    confirm();
+    await tester.pump();
+    expect(audio.calls.where((call) => call == 'reward_ok'), hasLength(1));
+    expect(await ProgressRepository().coins(), 1030);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('back dismissal and disposal never synthesize an OK tap',
+      (tester) async {
+    final audio = _Audio();
+    await _mount(tester,
+        random: _SelectedRandom(0), audio: audio, reducedMotion: true);
+    await _tapSpin(tester);
+    await tester.pumpAndSettle();
+    final confirm = tester
+        .widget<GameButton>(find.widgetWithText(GameButton, 'Nice'))
+        .onPressed!;
+    Navigator.of(tester.element(find.text('Reward'))).pop();
+    await tester.pumpAndSettle();
+    confirm(); // Never pressed before dismissal; exercise the context guard.
+    expect(audio.calls.where((call) => call == 'reward_ok'), isEmpty);
+    expect(find.byType(LuckyWheelScreen), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    confirm();
+    await tester.pump();
+    expect(audio.calls.where((call) => call == 'reward_ok'), isEmpty);
+    expect(await ProgressRepository().coins(), 1030);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -677,6 +954,12 @@ void main() {
     expect(await ProgressRepository().coins(), 1030);
     expect(find.text('Reward'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.tap(find.widgetWithText(GameButton, 'Nice'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reward'), findsNothing);
+    expect(find.text('Come Back Tomorrow'), findsOneWidget);
+    expect(await ProgressRepository().coins(), 1030);
+    expect(tester.takeException(), isNull);
   });
 
   for (final size in [
@@ -702,6 +985,10 @@ void main() {
         expect(find.text('Reward'), findsOneWidget);
         expect(find.text('+1 Shuffle booster'), findsWidgets);
         expect(audio.calls.where((call) => call == 'tick'), isEmpty);
+        expect(audio.calls.where((call) => call == 'stop'), hasLength(1));
+        expect(audio.calls.where((call) => call == 'reveal'), isEmpty);
+        expect(audio.calls.where((call) => call == 'collect'), isEmpty,
+            reason: 'Reduced motion must not give boosters a coin sound.');
         expect(await ProgressRepository().extraShuffleBoosters(), 1);
         expect(tester.takeException(), isNull,
             reason: 'The scaled reward dialog must fit its scroll viewport.');

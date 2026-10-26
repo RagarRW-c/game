@@ -216,4 +216,149 @@ void main() {
     await audio.playMatch();
     expect(voices[2].played, hasLength(1));
   });
+
+  test('STOP B uses one approved asset voice, distinct from Prize Coins',
+      () async {
+    final voices = List.generate(4, (_) => _Player());
+    final audio = GameAudioService(musicPlayer: _Player(), sfxPlayers: voices);
+    addTearDown(audio.dispose);
+    await audio.playWheelStop();
+    expect(voices[0].played, hasLength(1));
+    expect((voices[0].played.single as AssetSource).path,
+        'audio/triotrek/sfx/wheel_stop_b.mp3');
+    expect(voices[0].volume, .55);
+    expect(voices.skip(1).expand((p) => p.played), isEmpty,
+        reason: 'Landing must not layer a second synthesized cue.');
+
+    await audio.playWheelCollection();
+    expect(voices[1].played, hasLength(1));
+    expect((voices[1].played.single as AssetSource).path,
+        'audio/triotrek/sfx/wheel_prize_coins.mp3');
+    expect(voices[1].volume, .65);
+    expect(voices.expand((p) => p.played), hasLength(2));
+    expect(voices.expand((p) => p.played), everyElement(isA<AssetSource>()));
+
+    final stops = voices.map((p) => p.stops).toList();
+    audio.sfxEnabled = false;
+    await audio.playWheelStop();
+    expect(voices.expand((p) => p.played), hasLength(2));
+    for (var i = 0; i < voices.length; i++) {
+      expect(voices[i].stops, stops[i] + 1);
+    }
+    audio.sfxEnabled = true;
+    await audio.playWheelStop();
+    expect((voices[2].played.single as AssetSource).path,
+        'audio/triotrek/sfx/wheel_stop_b.mp3');
+    expect(voices.expand((p) => p.played), hasLength(3));
+    for (final player in voices) {
+      expect(player.configured, [PlayerMode.lowLatency]);
+    }
+  });
+
+  test(
+      'Reward OK D has its own asset and honors mute without replacing wheel cues',
+      () async {
+    final voices = List.generate(4, (_) => _Player());
+    final audio = GameAudioService(musicPlayer: _Player(), sfxPlayers: voices);
+    addTearDown(audio.dispose);
+    await audio.playWheelTick();
+    expect((voices[0].played.single as AssetSource).path,
+        'audio/triotrek/sfx/wheel_tick_a.mp3');
+    expect(voices[0].volume, .25);
+    await audio.playWheelStop();
+    expect((voices[0].played.last as AssetSource).path,
+        'audio/triotrek/sfx/wheel_stop_b.mp3');
+    expect(voices[0].volume, .55);
+    await audio.playWheelCollection();
+    expect((voices[1].played.single as AssetSource).path,
+        'audio/triotrek/sfx/wheel_prize_coins.mp3');
+    expect(voices[1].volume, .65);
+    await audio.playWheelRewardOk();
+    expect((voices[2].played.single as AssetSource).path,
+        'audio/triotrek/sfx/reward_ok_d.mp3');
+    expect(voices[2].volume, .65);
+    expect(voices[3].played, isEmpty);
+    expect(voices.expand((p) => p.played), hasLength(4));
+    expect(voices.expand((p) => p.played), everyElement(isA<AssetSource>()),
+        reason: 'Confirmation must not add a legacy synthesized cue.');
+
+    final stops = voices.map((p) => p.stops).toList();
+    audio.sfxEnabled = false;
+    await audio.playWheelRewardOk();
+    expect(voices.expand((p) => p.played), hasLength(4));
+    for (var i = 0; i < voices.length; i++) {
+      expect(voices[i].stops, stops[i] + 1);
+    }
+    audio.sfxEnabled = true;
+    await audio.playWheelRewardOk();
+    expect((voices[3].played.single as AssetSource).path,
+        'audio/triotrek/sfx/reward_ok_d.mp3');
+    expect(voices.expand((p) => p.played), hasLength(5));
+    for (final player in voices) {
+      expect(player.configured, [PlayerMode.lowLatency]);
+    }
+  });
+
+  for (final rewardOk in [false, true]) {
+    final cue = rewardOk ? 'Reward OK D' : 'STOP B';
+    final asset = rewardOk ? 'reward_ok_d.mp3' : 'wheel_stop_b.mp3';
+    for (final cancellation in [
+      'route',
+      'mute',
+      'mute_toggle',
+      'background',
+      'background_resume',
+      'dispose',
+    ]) {
+      test('$cancellation rejects $cue awaiting native asset preparation',
+          () async {
+        final voices = List.generate(4, (_) => _Player());
+        final audio =
+            GameAudioService(musicPlayer: _Player(), sfxPlayers: voices);
+        addTearDown(audio.dispose);
+        await audio.prepareTileFeedback();
+        voices[0].sourceGate = Completer<void>();
+        voices[0].sourceEntered = Completer<void>();
+        final playCue =
+            rewardOk ? audio.playWheelRewardOk : audio.playWheelStop;
+        final pending = playCue();
+        try {
+          await voices[0].sourceEntered!.future;
+          expect((voices[0].loadedSource! as AssetSource).path,
+              'audio/triotrek/sfx/$asset');
+          switch (cancellation) {
+            case 'route':
+              audio.cancelPendingWheelFeedback();
+            case 'mute':
+              audio.sfxEnabled = false;
+            case 'mute_toggle':
+              audio.sfxEnabled = false;
+              audio.sfxEnabled = true;
+            case 'background':
+              await audio.pauseMusicForBackground();
+            case 'background_resume':
+              await audio.pauseMusicForBackground();
+              await audio.resumeMusicFromBackground();
+            case 'dispose':
+              await audio.dispose();
+          }
+        } finally {
+          voices[0].sourceGate!.complete();
+          await pending;
+        }
+        expect(voices.expand((p) => p.played), isEmpty,
+            reason: 'The invalidated $cue cue must never start or replay.');
+        if (cancellation == 'background') {
+          await audio.resumeMusicFromBackground();
+        }
+        audio.sfxEnabled = true;
+        if (cancellation != 'dispose') {
+          await playCue();
+          expect((voices[1].played.single as AssetSource).path,
+              'audio/triotrek/sfx/$asset');
+          expect(voices[0].played, isEmpty);
+        }
+      });
+    }
+  }
 }

@@ -16,6 +16,9 @@ import 'package:triple_tile_adventure/presentation/widgets/game_ui.dart';
 
 class _SilentAudio implements GameAudioService {
   @override
+  void cancelPendingWheelFeedback() {}
+
+  @override
   Future<void> playChestOpen() async {}
 
   @override

@@ -53,6 +53,7 @@ class GameAudioService {
   bool _disposed = false;
   bool _sfxSuspended = false;
   int _tileEpoch = 0;
+  int _wheelEpoch = 0;
   int _nextMatchPlayer = 1;
   int _nextSfxPlayer = 0;
 
@@ -121,6 +122,9 @@ class GameAudioService {
   /// Invalidates asynchronous setup already dispatched by an outgoing board.
   /// Already-playing short cues may finish; no stale pending cue may start.
   void cancelPendingTileFeedback() => _tileEpoch++;
+
+  /// Rejects pending wheel cues after navigation or presentation interruption.
+  void cancelPendingWheelFeedback() => _wheelEpoch++;
   Future<void> playWin() => _play('win');
   Future<void> playLose() => _play('lose');
   Future<void> playBooster() => _play('booster');
@@ -132,6 +136,7 @@ class GameAudioService {
   Future<void> playWheelStop() => _play('wheel_stop');
   Future<void> playWheelReveal() => _play('wheel_reveal');
   Future<void> playWheelCollection() => _play('wheel_collection');
+  Future<void> playWheelRewardOk() => _play('wheel_reward_ok');
   Future<void> playAchievementUnlocked() => _play('achievement');
   Future<void> playWorldUnlocked() => _play('world_unlock');
 
@@ -139,6 +144,8 @@ class GameAudioService {
     if (!sfxEnabled || _disposed || _sfxSuspended) return;
     final tileCue = cue.startsWith('tap') || cue == 'match';
     final epoch = _tileEpoch;
+    final wheelCue = cue.startsWith('wheel_');
+    final wheelEpoch = _wheelEpoch;
     // One replaceable tap voice, three match voices: a tap cannot steal the
     // main burst cue, and the three retained visual bursts can sound together.
     final int index;
@@ -160,7 +167,8 @@ class GameAudioService {
         !_sfxSuspended &&
         sfxEnabled &&
         _sfxRequests[index] == request &&
-        (!tileCue || epoch == _tileEpoch);
+        (!tileCue || epoch == _tileEpoch) &&
+        (!wheelCue || wheelEpoch == _wheelEpoch);
     await _configureSfx();
     if (!current()) return;
     final asset = _approvedSfx(cue);
@@ -173,7 +181,7 @@ class GameAudioService {
     if (!current()) return;
     await player.setVolume(_volumeForCue(cue));
     if (!current()) return;
-    // AssetSource resolves/caches the bundled MP3 asynchronously. Recheck board
+    // AssetSource resolves/caches the bundled MP3 asynchronously. Recheck cue
     // ownership after that gap instead of allowing play() to resume internally.
     await player.setSource(source);
     if (!current()) return;
@@ -218,9 +226,10 @@ class GameAudioService {
     return switch (cue) {
       'match' => '${base}triple_match_c.mp3',
       'wheel_tick' => '${base}wheel_tick_a.mp3',
+      'wheel_stop' => '${base}wheel_stop_b.mp3',
       'wheel_collection' => '${base}wheel_prize_coins.mp3',
-      _ =>
-        null, // Preserve all other existing cues, including wheel start/stop.
+      'wheel_reward_ok' => '${base}reward_ok_d.mp3',
+      _ => null, // Preserve all other existing cues, including wheel start.
     };
   }
 
@@ -332,8 +341,6 @@ class GameAudioService {
       // Original synthesized cues; no reference audio or external assets.
       case 'wheel_tick':
         return [(frequency: 1100, seconds: 0.018)];
-      case 'wheel_stop':
-        return [(frequency: 440, seconds: 0.045)];
       case 'wheel_reveal':
         return [
           (frequency: 659, seconds: 0.07),
@@ -372,6 +379,7 @@ class GameAudioService {
   double _volumeForCue(String cue) {
     if (cue == 'wheel_tick') return .25;
     if (cue == 'wheel_stop') return .55;
+    if (cue == 'wheel_reward_ok') return .65;
     if (cue == 'wheel_reveal' || cue == 'wheel_collection') return .65;
     if (cue.startsWith('tap')) return 0.58;
     if (cue == 'match') return 0.78;

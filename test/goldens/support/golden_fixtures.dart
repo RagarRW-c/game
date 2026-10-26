@@ -155,6 +155,8 @@ class GoldenAudio implements GameAudioService {
   Future<void> prepareTileFeedback() async {}
   @override
   void cancelPendingTileFeedback() {}
+  @override
+  void cancelPendingWheelFeedback() {}
 
   // Match the deterministic default preferences and exercise the SFX dispatch
   // path. Enabling either setting never starts real audio in this test double.
@@ -206,6 +208,8 @@ class GoldenAudio implements GameAudioService {
   Future<void> playWheelReveal() async {}
   @override
   Future<void> playWheelCollection() async {}
+  @override
+  Future<void> playWheelRewardOk() async {}
   @override
   Future<void> playAchievementUnlocked() async {}
   @override
