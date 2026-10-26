@@ -224,7 +224,7 @@ void main() {
       callback();
       await tester.pump(const Duration(milliseconds: 20));
     }
-    expect(audio.calls, ['tap', 'tap', 'tap', 'match']);
+    expect(audio.calls, ['tap', 'tap', 'tap', 'tap']);
     expect(haptics, hasLength(4));
     expect(effects.bursts, hasLength(1));
     expect(effects.bursts.single.rects, hasLength(3));
@@ -238,6 +238,7 @@ void main() {
     expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
         ['m3', 'm6']);
     await tester.pumpAndSettle();
+    expect(audio.calls, ['tap', 'tap', 'tap', 'tap', 'tap', 'match']);
     expect(effects.flights, isEmpty);
     expect(effects.bursts, isEmpty);
     expect(tester.takeException(), isNull);
@@ -384,6 +385,9 @@ void main() {
       for (var i = 0; i < count; i++) {
         tester.widget<GameTileWidget>(_board().last).onTap!();
         await tester.pump(const Duration(milliseconds: 20));
+        if (_tray(tester).feedback!.matched) {
+          await tester.pump(const Duration(milliseconds: 414));
+        }
         expect(effects.flights.length,
             lessThanOrEqualTo(TileEffectsController.maxFlights));
         expect(effects.bursts.length,
@@ -510,7 +514,7 @@ void main() {
       await tester.pump();
       await tester.tap(_board('m2'));
       await tester.pump();
-      expect(audio.calls, ['tap', 'tap', 'match']);
+      expect(audio.calls, ['tap', 'tap', 'tap']);
       expect(haptics, hasLength(3));
       expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
       expect(_board(), findsNWidgets(9));
@@ -522,6 +526,7 @@ void main() {
               .duration,
           const Duration(milliseconds: 640));
       await tester.pumpAndSettle();
+      expect(audio.calls, ['tap', 'tap', 'tap', 'match']);
       expect(accents, findsNothing);
       expect(effects.flights, isEmpty);
       expect(effects.bursts, isEmpty);
@@ -555,13 +560,15 @@ void main() {
       await tester.pump();
       expect(_tray(tester).trayTiles.whereType<Tile>(), hasLength(4));
       expect(warning, findsNothing);
-      expect(audio.calls.where((v) => v == 'match'), hasLength(1));
+      expect(
+          audio.calls.where((v) => v == 'match'), hasLength(reduced ? 1 : 0));
       expect(audio.calls.where((v) => v == 'lost'), isEmpty);
       if (reduced) {
         expect(_effects(tester).flights, isEmpty);
         expect(_effects(tester).bursts, isEmpty);
       }
       await tester.pumpAndSettle();
+      expect(audio.calls.where((v) => v == 'match'), hasLength(1));
       expect(tester.binding.transientCallbackCount, 0);
       expect(tester.takeException(), isNull);
     });
@@ -704,7 +711,7 @@ void main() {
       expect(burst.incomingId, 'm2');
       expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
       expect(_board(), findsNWidgets(9));
-      expect(audio.calls, ['tap', 'tap', 'match']);
+      expect(audio.calls, ['tap', 'tap', 'tap']);
       expect(haptics, hasLength(3));
       expect(find.byType(MatchedTileVisual), findsNWidgets(3));
       final incoming = burst.snapshots.last;
@@ -756,7 +763,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(MatchedTileVisual), findsNothing);
       expect(effects.bursts, isEmpty);
-      expect(audio.calls, ['tap', 'tap', 'match']);
+      expect(audio.calls, ['tap', 'tap', 'tap', 'match']);
       expect(haptics, hasLength(3));
       expect(tester.binding.transientCallbackCount, 0);
       expect(tester.takeException(), isNull);
@@ -871,8 +878,9 @@ void main() {
     expect(_board(), findsNWidgets(8));
     expect(
         tester.widget<GameBoosterButton>(_booster('Undo')).badge, undo.badge);
-    expect(audio.calls, ['tap', 'tap', 'tap', 'match']);
+    expect(audio.calls, ['tap', 'tap', 'tap', 'tap']);
     await tester.pumpAndSettle();
+    expect(audio.calls, ['tap', 'tap', 'tap', 'tap', 'match']);
     expect(effects.bursts, isEmpty);
     expect(find.byType(MatchedTileVisual), findsNothing);
     expect(tester.binding.transientCallbackCount, 0);
@@ -945,7 +953,7 @@ void main() {
     expect(effects.bursts, hasLength(1));
     final burst = effects.bursts.single;
     expect(burst.snapshots, hasLength(3));
-    expect(audio.calls.where((c) => c == 'match'), hasLength(1));
+    expect(audio.calls.where((c) => c == 'match'), isEmpty);
     for (final face in burst.snapshots) {
       expect(face.tile.type, selected[face.tile.id]!.tile.type);
       expect(burst.catalog[face.tile.type]!.icon,
@@ -962,6 +970,7 @@ void main() {
     expect(find.byType(MatchedTileVisual), findsNWidgets(3));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
+    expect(audio.calls.where((c) => c == 'match'), isEmpty);
     expect(effects.bursts, isEmpty);
     expect(effects.flights, isEmpty);
     expect(tester.binding.transientCallbackCount, 0);

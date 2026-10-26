@@ -72,6 +72,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _scope = AppScope.of(context);
+    safelyPlayFeedback(_scope.audioService.prepareTileFeedback);
     _navigator = Navigator.of(context);
     final route = ModalRoute.of(context);
     if (_route == null && route is PageRoute<dynamic>) {
@@ -281,7 +282,9 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
           collected: collected,
           matchedIds: matchedIds);
     });
-    _tileEffects.accepted(
+    final audio = _scope.audioService;
+    _tileEffects.cancelPendingAudio = audio.cancelPendingTileFeedback;
+    final deferredMatch = _tileEffects.accepted(
         source: source,
         slot: before.length,
         tray: engine.tray,
@@ -292,10 +295,15 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
               engine.tileById(id)!,
         ],
         matchedSlots: _trayFeedback!.slots,
-        placement: trayPlacementForRound(widget.level));
+        placement: trayPlacementForRound(widget.level),
+        onMatchBurst: engine.result == GameResult.playing
+            ? () => dispatchTileMatch(audio)
+            : null);
     dispatchTileFeedback(
         audio: _scope.audioService,
         matched: matchedIds.isNotEmpty,
+        deferMatch: deferredMatch,
+        tapped: source != null || !deferredMatch,
         vibrationEnabled: _vibrationEnabled,
         terminal: engine.result != GameResult.playing);
   }

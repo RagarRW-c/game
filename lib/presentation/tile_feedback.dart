@@ -10,15 +10,25 @@ void dispatchTileFeedback(
     {required GameAudioService audio,
     required bool matched,
     required bool vibrationEnabled,
+    bool deferMatch = false,
+    bool tapped = true,
     bool terminal = false}) {
   if (audio.sfxEnabled) {
-    safelyPlayFeedback(matched ? audio.playMatch : audio.playTap);
+    if (matched && !deferMatch) {
+      safelyPlayFeedback(audio.playMatch);
+    } else if (tapped) {
+      safelyPlayFeedback(audio.playTap);
+    }
   }
   // Terminal screens already own their result feedback.
   if (vibrationEnabled && !terminal) {
     safelyPlayFeedback(
         matched ? HapticFeedback.lightImpact : HapticFeedback.selectionClick);
   }
+}
+
+void dispatchTileMatch(GameAudioService audio) {
+  if (audio.sfxEnabled) safelyPlayFeedback(audio.playMatch);
 }
 
 void safelyPlayFeedback(Future<void> Function() effect) {

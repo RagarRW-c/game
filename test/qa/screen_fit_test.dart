@@ -23,6 +23,11 @@ import 'support/geometry.dart';
 // create native AudioPlayers. No platform channels, disk audio or real prefs.
 class _SilentAudio implements GameAudioService {
   @override
+  Future<void> prepareTileFeedback() async {}
+  @override
+  void cancelPendingTileFeedback() {}
+
+  @override
   Future<void> startGameplayMusic() async {}
   @override
   Future<void> stopGameplayMusic() async {}

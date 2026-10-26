@@ -143,6 +143,41 @@ class TileEffectsController extends ChangeNotifier {
   int _serial = 0;
   bool _disposed = false;
   bool reducedMotion = false;
+  bool _audioActive = true;
+  VoidCallback? cancelPendingAudio;
+  final Map<int, _BurstAudio> _burstAudio = {};
+
+  void setAudioActive(bool active) {
+    if (_disposed || _audioActive == active) return;
+    _audioActive = active;
+    if (!active) _cancelAudio();
+  }
+
+  void _cancelAudio() {
+    _burstAudio.clear();
+    cancelPendingAudio?.call();
+  }
+
+  /// Observe the existing visual clock. Dispatch after this frame paints, once
+  /// per retained burst; never notify listeners or call audio during build.
+  void observeBurst(TrayBurst burst, double progress) {
+    final cue = _burstAudio[burst.serial];
+    if (_disposed ||
+        !_audioActive ||
+        cue == null ||
+        cue.queued ||
+        progress < burst.release ||
+        progress >= 1) return;
+    cue.queued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_disposed ||
+          !_audioActive ||
+          !identical(_burstAudio[burst.serial], cue)) return;
+      _burstAudio.remove(burst.serial);
+      cue.play();
+    });
+  }
+
   // Refreshed by the tray with its actual world palette, including Hint moves
   // that have no tapped board source. No notification or animation is started.
   Map<String, TileArt> catalog = tileCatalog;
@@ -180,19 +215,21 @@ class TileEffectsController extends ChangeNotifier {
             (context.findRenderObject()! as RenderBox).size);
   }
 
-  void accepted(
+  bool accepted(
       {required TileFlightSource? source,
       required int slot,
       required List<String> tray,
       required Set<String> matchedIds,
       List<Tile> matchedTiles = const [],
       required List<int> matchedSlots,
-      required TrayPlacement placement}) {
-    if (_disposed) return;
+      required TrayPlacement placement,
+      VoidCallback? onMatchBurst}) {
+    if (_disposed) return false;
     if (reducedMotion) {
       clear();
-      return;
+      return false;
     }
+    var deferred = false;
     // A match compacts tray indices. Cancel earlier flights rather than letting
     // them land in obsolete slots or replay already matched tile faces.
     if (matchedIds.isNotEmpty) {
@@ -225,16 +262,23 @@ class TileEffectsController extends ChangeNotifier {
           if (rect != null)
             snapshots.add(MatchedTileSnapshot(matchedTiles[i], rect));
         }
-        if (_bursts.length == maxBursts) _bursts.removeAt(0);
+        if (_bursts.length == maxBursts) {
+          _burstAudio.remove(_bursts.removeAt(0).serial);
+        }
         _bursts.add(TrayBurst(
             ++_serial, rects, placement == TrayPlacement.top ? 1 : -1,
             snapshots: List.unmodifiable(snapshots),
             catalog: source?.catalog ?? catalog,
             incomingId:
                 _flights.any((f) => f.matched) ? source?.tile.id : null));
+        if (_audioActive && onMatchBurst != null) {
+          _burstAudio[_bursts.last.serial] = _BurstAudio(onMatchBurst);
+          deferred = true;
+        }
       }
     }
     notifyListeners();
+    return deferred;
   }
 
   void finishFlight(int serial) {
@@ -245,12 +289,15 @@ class TileEffectsController extends ChangeNotifier {
 
   void finishBurst(int serial) {
     if (_disposed) return;
+    _burstAudio.remove(serial);
     _bursts.removeWhere((b) => b.serial == serial);
     notifyListeners();
   }
 
   void clear({bool notify = true}) {
-    if (_disposed || (_flights.isEmpty && _bursts.isEmpty)) return;
+    if (_disposed) return;
+    _cancelAudio();
+    if (_flights.isEmpty && _bursts.isEmpty) return;
     _flights.clear();
     _bursts.clear();
     if (notify) notifyListeners();
@@ -258,11 +305,19 @@ class TileEffectsController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _cancelAudio();
+    cancelPendingAudio = null;
     _disposed = true;
     _flights.clear();
     _bursts.clear();
     super.dispose();
   }
+}
+
+class _BurstAudio {
+  _BurstAudio(this.play);
+  final VoidCallback play;
+  bool queued = false;
 }
 
 /// Finite, framework-owned implicit animations; bounded to this screen. The
@@ -280,11 +335,50 @@ class GameTileEffects extends StatefulWidget {
   State<GameTileEffects> createState() => _GameTileEffectsState();
 }
 
-class _GameTileEffectsState extends State<GameTileEffects> {
+class _GameTileEffectsState extends State<GameTileEffects>
+    with WidgetsBindingObserver {
   Object? _geometry;
+  bool _foreground = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _updateAudioActivity() {
+    widget.controller.setAudioActive(_foreground &&
+        TickerMode.of(context) &&
+        (ModalRoute.of(context)?.isCurrent ?? true));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateAudioActivity();
+  }
+
+  @override
+  void didUpdateWidget(GameTileEffects oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.clear(notify: false);
+      _geometry = null;
+      _updateAudioActivity();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (mounted) _updateAudioActivity();
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.controller.clear(notify: false);
     super.dispose();
   }
@@ -359,20 +453,24 @@ class _GameTileEffectsState extends State<GameTileEffects> {
                             duration: TrayBurst.duration,
                             onEnd: () =>
                                 widget.controller.finishBurst(burst.serial),
-                            builder: (context, progress, _) => Stack(children: [
-                              for (final face in burst.snapshots)
-                                Positioned.fromRect(
-                                    rect: burst.rectAt(face, progress),
-                                    child: MatchedTileVisual(
-                                        key: ValueKey(
-                                            'match_${burst.serial}_${face.tile.id}'),
-                                        burst: burst,
-                                        face: face,
-                                        progress: progress)),
-                              Positioned.fill(
-                                  child: CustomPaint(
-                                      painter: _BurstPainter(burst, progress))),
-                            ]),
+                            builder: (context, progress, _) {
+                              widget.controller.observeBurst(burst, progress);
+                              return Stack(children: [
+                                for (final face in burst.snapshots)
+                                  Positioned.fromRect(
+                                      rect: burst.rectAt(face, progress),
+                                      child: MatchedTileVisual(
+                                          key: ValueKey(
+                                              'match_${burst.serial}_${face.tile.id}'),
+                                          burst: burst,
+                                          face: face,
+                                          progress: progress)),
+                                Positioned.fill(
+                                    child: CustomPaint(
+                                        painter:
+                                            _BurstPainter(burst, progress))),
+                              ]);
+                            },
                           )),
                   ],
                 ))),

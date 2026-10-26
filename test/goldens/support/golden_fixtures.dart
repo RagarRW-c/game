@@ -151,6 +151,11 @@ class _FrozenChest extends TreasureChest {
 // native players. Implement the entire public interface explicitly so future
 // API additions are compile errors instead of runtime noSuchMethod failures.
 class GoldenAudio implements GameAudioService {
+  @override
+  Future<void> prepareTileFeedback() async {}
+  @override
+  void cancelPendingTileFeedback() {}
+
   // Match the deterministic default preferences and exercise the SFX dispatch
   // path. Enabling either setting never starts real audio in this test double.
   @override

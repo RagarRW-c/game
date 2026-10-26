@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +22,7 @@ import 'package:triple_tile_adventure/presentation/widgets/game_over_dialog.dart
 import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tile.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tray.dart';
+import 'package:triple_tile_adventure/presentation/widgets/tile_effects.dart';
 
 import 'support/geometry.dart';
 
@@ -151,8 +154,123 @@ void main() {
       .instance.defaultBinaryMessenger
       .setMockMethodCallHandler(SystemChannels.platform, null));
 
+  testWidgets('overlapping triples retain separate release clocks',
+      (tester) async {
+    final audio = _Audio();
+    await _mount(tester, audio);
+    Future<void> triple(int first) async {
+      for (var i = first; i < first + 3; i++) {
+        final tap = tester.widget<GameTileWidget>(_board('t$i')).onTap!;
+        tap();
+        tap();
+        await tester.pump();
+      }
+    }
+
+    await triple(0);
+    await tester.pump(const Duration(milliseconds: 100));
+    await triple(3);
+    expect(_board(), findsNWidgets(3));
+    expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+    expect(audio.calls, List.filled(6, 'tap'));
+    await tester.pump(const Duration(milliseconds: 313));
+    expect(audio.calls.where((c) => c == 'match'), isEmpty);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(audio.calls.where((c) => c == 'match'), hasLength(1));
+    tester.element(find.byType(GameTileEffects)).markNeedsBuild();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 99));
+    expect(audio.calls.where((c) => c == 'match'), hasLength(1));
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(audio.calls.where((c) => c == 'match'), hasLength(2));
+    await tester.pumpAndSettle();
+    expect(audio.calls, [...List.filled(6, 'tap'), 'match', 'match']);
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final interruption in [
+    'dispose',
+    'background',
+    'route',
+    'mute',
+    'clear'
+  ]) {
+    testWidgets('$interruption cancels pending match audio without replay',
+        (tester) async {
+      final audio = _Audio();
+      await _mount(tester, audio);
+      for (var i = 0; i < 3; i++) {
+        tester.widget<GameTileWidget>(_board('t$i')).onTap!();
+        await tester.pump();
+      }
+      final effects = tester
+          .widget<GameTileEffects>(find.byType(GameTileEffects))
+          .controller;
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(audio.calls, ['tap', 'tap', 'tap']);
+      NavigatorState? navigator;
+      if (interruption == 'dispose') {
+        await tester.pumpWidget(const SizedBox.shrink());
+      } else if (interruption == 'background') {
+        addTearDown(() {
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        });
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      } else if (interruption == 'route') {
+        navigator = Navigator.of(tester.element(find.byType(GameTileEffects)));
+        unawaited(navigator.push<void>(MaterialPageRoute(
+            builder: (_) => const Scaffold(body: Text('Away')))));
+        await tester.pump();
+      } else if (interruption == 'mute') {
+        audio.sfxEnabled = false;
+      } else {
+        // Even an already queued post-frame cue must be invalidated.
+        final burst = effects.bursts.single;
+        effects.observeBurst(burst, burst.release);
+        effects.clear();
+      }
+      await tester.pump(const Duration(milliseconds: 20));
+      if (interruption == 'background') {
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      }
+      audio.sfxEnabled = true;
+      navigator?.pop();
+      await tester.pumpAndSettle();
+      expect(audio.calls, ['tap', 'tap', 'tap']);
+      if (interruption != 'dispose') {
+        expect(_board(), findsNWidgets(6));
+        expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+      }
+      expect(tester.binding.transientCallbackCount, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('Hint matches sound at their 70 ms release without a flight',
+      (tester) async {
+    final audio = _Audio();
+    await _mount(tester, audio);
+    await tester.tap(_booster('Hint'));
+    await tester.pump();
+    expect(audio.calls.where((c) => c == 'match'), isEmpty);
+    expect(_board(), findsNWidgets(6));
+    await tester.pump(const Duration(milliseconds: 69));
+    expect(audio.calls.where((c) => c == 'match'), isEmpty);
+    await tester.pump(const Duration(milliseconds: 2));
+    expect(audio.calls.where((c) => c == 'match'), hasLength(1));
+    expect(audio.calls.where((c) => c == 'tap'), isEmpty);
+    await tester.pumpAndSettle();
+    expect(audio.calls.where((c) => c == 'match'), hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
-      'accepted moves emit once, matches are immediate and rebuilds are silent',
+      'accepted taps are immediate, matches follow burst release and rebuilds are silent',
       (tester) async {
     final audio = _Audio();
     await _mount(tester, audio);
@@ -167,14 +285,24 @@ void main() {
     expect(_tray(tester).feedback!.slots, [0]);
     tester.widget<GameTileWidget>(_board('t1')).onTap!();
     tester.widget<GameTileWidget>(_board('t2')).onTap!();
-    expect(audio.calls, ['tap', 'tap', 'match'],
-        reason: 'Match feedback must not wait for repository or popup futures');
+    expect(audio.calls, ['tap', 'tap', 'tap'],
+        reason: 'Acceptance feedback must not wait for repository futures');
     await tester.pump();
     expect(_tray(tester).feedback!.matched, isTrue);
     expect(_tray(tester).feedback!.serial, 3);
     expect(_tray(tester).feedback!.slots, [0, 1, 2]);
     expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
     expect(_board(), findsNWidgets(6));
+    await tester.pump(const Duration(milliseconds: 343));
+    expect(audio.calls.where((c) => c == 'match'), isEmpty);
+    await tester.pump(const Duration(milliseconds: 70));
+    expect(audio.calls.where((c) => c == 'match'), isEmpty);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(audio.calls, ['tap', 'tap', 'tap', 'match']);
+    final burstVisual = tester
+        .widgetList<MatchedTileVisual>(find.byType(MatchedTileVisual))
+        .first;
+    expect(burstVisual.burst.particlesAt(burstVisual.progress), greaterThan(0));
     await tester.pumpAndSettle();
     expect(haptics, [
       'HapticFeedbackType.selectionClick',
@@ -183,7 +311,7 @@ void main() {
     ]);
     tester.element(find.byType(GameScreen)).markNeedsBuild();
     await tester.pumpAndSettle();
-    expect(audio.calls, ['tap', 'tap', 'match']);
+    expect(audio.calls, ['tap', 'tap', 'tap', 'match']);
     expect(_board(), findsNWidgets(6));
     tester.widget<GameTileWidget>(_board('t3')).onTap!();
     await tester.pump(const Duration(milliseconds: 20));
@@ -335,6 +463,8 @@ void main() {
       await _mount(tester, audio, endless: true, reduced: reduced);
       var accepted = 0;
       var matches = 0;
+      final burstStarts = <DateTime>[];
+      var audibleMatches = 0;
       final initialCount = _board().evaluate().length;
       // The generator guarantees this reverse paint order is tray-safe.
       for (var i = 0; i < initialCount && matches < 2; i++) {
@@ -343,11 +473,24 @@ void main() {
         callback(); // Same ID cannot be accepted twice before rebuilding.
         accepted++;
         await tester.pump(const Duration(milliseconds: 20));
+        // pump advances the test's FakeAsync clock. Sample after the frame:
+        // a newly mounted burst starts its animation on this first frame.
+        final now = tester.binding.clock.now();
         final event = _tray(tester).feedback!;
-        if (event.matched) matches++;
+        if (event.matched) {
+          matches++;
+          burstStarts.add(now);
+        }
+        audibleMatches = reduced
+            ? matches
+            : burstStarts
+                .where((start) => now.difference(start).inMicroseconds >= 413200)
+                .length;
         expect(event.serial, accepted);
-        expect(audio.calls, hasLength(accepted));
-        expect(audio.calls.where((cue) => cue == 'match'), hasLength(matches));
+        expect(
+            audio.calls, hasLength(accepted + (reduced ? 0 : audibleMatches)));
+        expect(audio.calls.where((cue) => cue == 'match'),
+            hasLength(audibleMatches));
         expect(_board().evaluate().length, initialCount - accepted);
         expect(_tray(tester).trayTiles.whereType<Tile>(),
             hasLength(accepted - 3 * matches));
@@ -363,6 +506,8 @@ void main() {
       // Remove the actual screen while the last match glow is still running.
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
+      expect(audio.calls.where((cue) => cue == 'match'),
+          hasLength(audibleMatches));
       expect(tester.binding.transientCallbackCount, 0);
       expect(tester.binding.hasScheduledFrame, isFalse);
       expect(tester.takeException(), isNull);
@@ -442,9 +587,11 @@ void main() {
             .byKey(ValueKey('tray_feedback_${_tray(tester).feedback!.serial}'));
         expect(tester.widget<TweenAnimationBuilder<double>>(effect).duration,
             reduced ? Duration.zero : const Duration(milliseconds: 280));
-        expect(audio.calls.where((cue) => cue == 'match'), hasLength(2));
+        expect(audio.calls.where((cue) => cue == 'match'),
+            hasLength(reduced ? 2 : 0));
         expect(_board(), findsNWidgets(3));
         await tester.pumpAndSettle();
+        expect(audio.calls.where((cue) => cue == 'match'), hasLength(2));
         expect(tester.binding.hasScheduledFrame, isFalse);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpAndSettle();

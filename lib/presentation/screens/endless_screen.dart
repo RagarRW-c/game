@@ -89,6 +89,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _scope = AppScope.of(context);
+    safelyPlayFeedback(_scope.audioService.prepareTileFeedback);
     if (_loading) unawaited(_startRun());
   }
 
@@ -254,7 +255,9 @@ class _EndlessScreenState extends State<EndlessScreen> {
           collected: collected,
           matchedIds: matchedIds);
     });
-    _tileEffects.accepted(
+    final audio = _scope.audioService;
+    _tileEffects.cancelPendingAudio = audio.cancelPendingTileFeedback;
+    final deferredMatch = _tileEffects.accepted(
         source: source,
         slot: before.length,
         tray: engine.tray,
@@ -265,10 +268,15 @@ class _EndlessScreenState extends State<EndlessScreen> {
               engine.tileById(id)!,
         ],
         matchedSlots: _trayFeedback!.slots,
-        placement: trayPlacementForRound(_round));
+        placement: trayPlacementForRound(_round),
+        onMatchBurst: engine.result == GameResult.playing
+            ? () => dispatchTileMatch(audio)
+            : null);
     dispatchTileFeedback(
         audio: _scope.audioService,
         matched: matchedIds.isNotEmpty,
+        deferMatch: deferredMatch,
+        tapped: source != null || !deferredMatch,
         vibrationEnabled: _vibrationEnabled,
         // Board completion has no separate result haptic in Endless.
         terminal: engine.result == GameResult.lost);
