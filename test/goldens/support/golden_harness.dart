@@ -13,6 +13,7 @@ import 'package:triple_tile_adventure/main.dart';
 import 'package:triple_tile_adventure/presentation/theme/game_theme.dart';
 
 import 'golden_fixtures.dart';
+import '../../qa/support/tile_asset_images.dart';
 
 class GoldenViewport {
   const GoldenViewport(this.size, {this.textScale = 1});
@@ -92,6 +93,7 @@ Future<void> settleGolden(WidgetTester tester) async {
   // of silently capturing an arbitrary frame. Reduced motion is harness-only.
   await tester.pumpAndSettle(const Duration(milliseconds: 50),
       EnginePhase.sendSemanticsUpdate, const Duration(seconds: 3));
+  await loadVisibleTileImages(tester);
   expect(tester.takeException(), isNull);
   expect(find.byType(CircularProgressIndicator), findsNothing,
       reason: 'Never approve a loading screen as the requested UI.');

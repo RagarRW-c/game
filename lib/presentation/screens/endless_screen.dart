@@ -262,6 +262,10 @@ class _EndlessScreenState extends State<EndlessScreen> {
         slot: before.length,
         tray: engine.tray,
         matchedIds: matchedIds,
+        beforeTiles: [
+          for (final id in before)
+            if (engine.tileById(id) != null) engine.tileById(id)!,
+        ],
         matchedTiles: [
           for (final id in [...before, ...collected])
             if (matchedIds.contains(id) && engine.tileById(id) != null)

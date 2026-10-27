@@ -11,11 +11,13 @@ dependencies:
     sdk: flutter
   audioplayers: ^6.1.0
   shared_preferences: ^2.3.2
+  video_player: 2.11.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  video_player_platform_interface: ^6.6.0
 
 flutter:
   uses-material-design: true
@@ -24,3 +26,5 @@ flutter:
     - assets/audio/
     - assets/audio/triotrek/music/
     - assets/audio/triotrek/sfx/
+    - assets/tiles/approved/
+    - assets/video/triotrek/cat_victory_android_audio.mp4

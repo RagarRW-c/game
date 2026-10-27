@@ -75,7 +75,7 @@ class _GameTileWidgetState extends State<GameTileWidget> {
       onTap: widget.enabled && !widget.blocked ? widget.onTap : null,
       child: GestureDetector(
         excludeFromSemantics: true,
-        onTap: widget.enabled ? widget.onTap : null,
+        onTap: widget.enabled && !widget.blocked ? widget.onTap : null,
         onTapDown: (_) => _setPressed(true),
         onTapCancel: () => _setPressed(false),
         onTapUp: (_) => _setPressed(false),

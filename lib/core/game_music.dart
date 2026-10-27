@@ -32,13 +32,15 @@ class GameMusic {
   int _active = 0;
   bool _enabled = true;
   bool _foreground = true;
+  bool _presentationPaused = false;
   bool _disposed = false;
   bool _failed = false;
   bool _advancing = false;
   String? _wanted;
   String _menuAsset = menuA;
 
-  bool get _allowed => !_disposed && _enabled && _foreground;
+  bool get _allowed =>
+      !_disposed && _enabled && _foreground && !_presentationPaused;
   bool _current(int generation) => _allowed && generation == _generation;
   bool _isMenu(String? asset) => asset == menuA || asset == menuB;
 
@@ -65,6 +67,15 @@ class GameMusic {
   Future<void> setForeground(bool foreground) {
     if (_disposed || _foreground == foreground) return _queue;
     _foreground = foreground;
+    final generation = _invalidate();
+    return _enqueue(() => _reconcile(generation));
+  }
+
+  /// A result screen can be silent without changing the player's music setting
+  /// or pretending that the whole application has gone into the background.
+  Future<void> setPresentationPaused(bool paused) {
+    if (_disposed || _presentationPaused == paused) return _queue;
+    _presentationPaused = paused;
     final generation = _invalidate();
     return _enqueue(() => _reconcile(generation));
   }

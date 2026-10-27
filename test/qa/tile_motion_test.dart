@@ -10,6 +10,7 @@ import 'package:triple_tile_adventure/data/level_repository.dart';
 import 'package:triple_tile_adventure/data/progress_repository.dart';
 import 'package:triple_tile_adventure/domain/level.dart';
 import 'package:triple_tile_adventure/domain/tile.dart';
+import 'package:triple_tile_adventure/domain/endless_board_generator.dart';
 import 'package:triple_tile_adventure/main.dart';
 import 'package:triple_tile_adventure/presentation/screens/game_screen.dart';
 import 'package:triple_tile_adventure/presentation/screens/endless_screen.dart';
@@ -23,6 +24,7 @@ import 'package:triple_tile_adventure/presentation/widgets/tile_effects.dart';
 import 'package:triple_tile_adventure/presentation/widgets/tile_face.dart';
 
 import 'support/geometry.dart';
+import 'support/tile_asset_images.dart';
 
 class _Audio implements GameAudioService {
   final calls = <String>[];
@@ -70,15 +72,23 @@ class _Levels extends LevelRepository {
         level: level,
         name: 'Motion fixture',
         timeBonusSeconds: 60,
-        tiles: List.generate(
-            count,
-            (i) => Tile(
-                id: 'm$i',
-                type: tileCatalog.keys.elementAt(unique ? i : i ~/ 3),
-                x: (i % 3) * .3,
-                y: (i ~/ 3) * .22,
-                layer: 0)),
+        tiles: fixture(count, unique),
       );
+
+  static List<Tile> fixture(int count, bool unique) => List.generate(
+      count,
+      (i) => Tile(
+          id: 'm$i',
+          type: tileCatalog.keys.elementAt(unique ? i : i ~/ 3),
+          x: (i % 3) * .3,
+          y: (i ~/ 3) * .22,
+          layer: 0));
+}
+
+class _FixedBoards extends EndlessBoardGenerator {
+  @override
+  List<Tile> generate({required int round, required TileVisualTheme theme}) =>
+      _Levels.fixture(12, false);
 }
 
 Finder _board([String? id]) => find.byWidgetPredicate((w) =>
@@ -94,12 +104,28 @@ Rect _rect(WidgetTester tester, Finder finder) {
       box.getTransformTo(null), Offset.zero & box.size);
 }
 
+// Absolute logical pixels: separate FittedBox/Stack transform chains may round
+// differently. This remains far below even a 0.000001-pixel alignment error.
+const _geometryTolerance = 1e-9;
+
+void _expectAlignedRects(Rect actual, Rect expected, String description) {
+  expect(actual.left, closeTo(expected.left, _geometryTolerance),
+      reason: '$description: left');
+  expect(actual.top, closeTo(expected.top, _geometryTolerance),
+      reason: '$description: top');
+  expect(actual.right, closeTo(expected.right, _geometryTolerance),
+      reason: '$description: right');
+  expect(actual.bottom, closeTo(expected.bottom, _geometryTolerance),
+      reason: '$description: bottom');
+}
+
 Finder _booster(String label) =>
     find.byWidgetPredicate((w) => w is GameBoosterButton && w.label == label);
 
 Future<_Audio> _mount(WidgetTester tester,
     {int level = 1,
     bool endless = false,
+    bool fixedEndless = false,
     bool reduced = false,
     int count = 12,
     bool unique = false,
@@ -125,7 +151,12 @@ Future<_Audio> _mount(WidgetTester tester,
                 viewPadding: EdgeInsets.only(top: screen.safeTop, bottom: 24),
                 disableAnimations: reduced),
             child: child!),
-        home: endless ? const EndlessScreen() : GameScreen(level: level)),
+        home: endless
+            ? (fixedEndless
+                ? EndlessScreen.forTesting(
+                    initialRound: level, boardGenerator: _FixedBoards())
+                : const EndlessScreen())
+            : GameScreen(level: level)),
   ));
   await tester.pumpAndSettle();
   return audio;
@@ -231,10 +262,17 @@ void main() {
     expect(effects.flights, hasLength(1));
     expect(effects.flights.single.matched, isTrue);
     expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id), ['m3']);
-    expect(effects.hides('m3'), isFalse);
+    expect(effects.hides('m3'), isTrue);
+    expect(effects.bursts.single.shifts.map((s) => s.tile.id), ['m3'],
+        reason: 'The survivor has one presentation copy during tray reflow.');
+    expect(find.byType(TrayShiftVisual), findsOneWidget);
+    final superseded = effects.bursts.single;
     tester.widget<GameTileWidget>(_board('m6')).onTap!();
     await tester.pump();
     expect(effects.flights.single.slot, 1);
+    expect(effects.presents(superseded), isFalse,
+        reason: 'Old match faces must not cover a newly reused slot.');
+    expect(effects.hides('m3'), isFalse);
     expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
         ['m3', 'm6']);
     await tester.pumpAndSettle();
@@ -271,6 +309,92 @@ void main() {
     });
   }
 
+  for (final endless in [false, true]) {
+    for (final level in [1, 2]) {
+      testWidgets(
+          'mode endless=$endless round $level: separated pair lands as an adjacent triple',
+          (tester) async {
+        final audio = await _mount(tester,
+            level: level, endless: endless, fixedEndless: true);
+        for (final id in ['m0', 'm3', 'm1', 'm6']) {
+          tester.widget<GameTileWidget>(_board(id)).onTap!();
+          await tester.pumpAndSettle();
+        }
+        final effects = _effects(tester);
+        final slots = [
+          for (final key in effects.slotKeys)
+            effects.rectFor(key.currentContext)!
+        ];
+        expect(slots, hasLength(7));
+        expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
+            ['m0', 'm3', 'm1', 'm6']);
+        tester.widget<GameTileWidget>(_board('m2')).onTap!();
+        await tester.pump();
+        final burst = effects.bursts.single;
+        final flight = effects.flights.single;
+        expect(flight.slot, 4);
+        _expectAlignedRects(flight.target, slots[4], 'Third tile target');
+        expect(burst.snapshots.map((s) => s.tile.id), ['m0', 'm1', 'm2']);
+        expect(burst.rects, [slots[2], slots[3], slots[4]]);
+        _expectAlignedRects(
+            burst.rectAt(burst.snapshots[0], 0), slots[0], 'First pair origin');
+        _expectAlignedRects(burst.rectAt(burst.snapshots[1], 0), slots[2],
+            'Second pair origin');
+        expect(burst.shifts.map((s) => s.tile.id), ['m3', 'm6']);
+        expect(effects.hides('m3'), isTrue);
+        expect(effects.hides('m6'), isTrue);
+        expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
+            ['m3', 'm6'],
+            reason:
+                'Presentation must not defer or reorder canonical match resolution.');
+
+        await tester.pump(const Duration(microseconds: 343100));
+        expect(flight.opacityAt(343100 / 440000), 1);
+        expect(burst.opacityAt(burst.snapshots.last, 343100 / 640000), 0);
+        expect(audio.calls.where((c) => c == 'match'), isEmpty);
+        await tester.pump(const Duration(microseconds: 100));
+        final origin = _rect(tester, find.byKey(effects.layerKey)).topLeft;
+        for (var i = 0; i < 3; i++) {
+          final face = burst.snapshots[i];
+          expect(burst.opacityAt(face, burst.reactionStart), 1);
+          _expectAlignedRects(burst.rectAt(face, burst.reactionStart),
+              slots[i + 2], 'Aligned match model');
+          _expectAlignedRects(
+              _rect(
+                  tester,
+                  find.byKey(
+                      ValueKey('match_${burst.serial}_${face.tile.id}'))),
+              slots[i + 2].shift(origin),
+              'Visible match landing');
+        }
+        for (var i = 0; i < 2; i++) {
+          _expectAlignedRects(
+              burst.shiftRectAt(burst.shifts[i], burst.reactionStart),
+              slots[i],
+              'Survivor canonical destination');
+        }
+        expect(burst.particlesAt(burst.reactionStart), 0);
+        expect(flight.opacityAt(TileFlight.arrival), 0,
+            reason: 'Incoming face has exactly one owner at arrival.');
+        await tester.pump(const Duration(microseconds: 69999));
+        expect(audio.calls.where((c) => c == 'match'), isEmpty);
+        expect(burst.opacityAt(burst.snapshots.last, 413199 / 640000), 1);
+        await tester.pump(const Duration(microseconds: 2));
+        expect(audio.calls.where((c) => c == 'match'), hasLength(1));
+        await tester.pumpAndSettle();
+        expect(effects.flights, isEmpty);
+        expect(effects.bursts, isEmpty);
+        expect(find.byType(TrayShiftVisual), findsNothing);
+        expect(effects.hides('m3'), isFalse);
+        expect(effects.hides('m6'), isFalse);
+        expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
+            ['m3', 'm6']);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+  }
+
   testWidgets('seventh unmatched tile opens Game Over before flights finish',
       (tester) async {
     final audio = await _mount(tester, unique: true);
@@ -301,7 +425,8 @@ void main() {
     await tester.pump(); // Flush persistence futures, not the 640 ms effect.
     expect(_effects(tester).bursts, hasLength(1));
     expect(audio.calls.where((v) => v == 'match'), hasLength(1));
-    expect(audio.calls.where((v) => v == 'won'), hasLength(1));
+    expect(audio.calls.where((v) => v == 'won'), isEmpty,
+        reason: 'Campaign completion must not play the retired synthetic chime');
     expect(find.byType(WinScreen), findsOneWidget);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -648,51 +773,73 @@ void main() {
   });
 
   for (final level in [1, 2]) {
-    testWidgets(
-        'level $level: landing face equals canonical tray before handoff',
-        (tester) async {
-      await _mount(tester, level: level);
-      tester.widget<GameTileWidget>(_board('m3')).onTap!();
-      await tester.pump();
-      await tester.pump(TileFlight.duration);
-      final visual = find.byType(TileFlightVisual);
-      expect(visual, findsOneWidget);
-      final copy =
-          find.descendant(of: visual, matching: find.byType(GameTileWidget));
-      final canonical = find.descendant(
-          of: find.byType(GameTray),
-          matching: find.byWidgetPredicate(
-              (w) => w is GameTileWidget && w.tile.id == 'm3'));
-      expect(_rect(tester, copy), _rect(tester, canonical));
-      final copyTile = tester.widget<GameTileWidget>(copy);
-      final trayTile = tester.widget<GameTileWidget>(canonical);
-      expect(copyTile.tile.id, trayTile.tile.id);
-      expect(copyTile.depth, trayTile.depth);
-      expect(copyTile.catalog, trayTile.catalog);
-      expect(copyTile.trayAppearanceBlend, 1);
-      TileFace surface(Finder parent) => tester.widget<TileFace>(
-          find.descendant(of: parent, matching: find.byType(TileFace)));
-      expect(surface(copy).art, surface(canonical).art);
-      expect(surface(copy).blocked, surface(canonical).blocked);
-      expect(surface(copy).highlighted, surface(canonical).highlighted);
-      expect(surface(copy).pressed, surface(canonical).pressed);
-      expect(surface(copy).depth, surface(canonical).depth);
-      expect(surface(copy).trayBlend, surface(canonical).trayBlend);
-      Finder symbol(Finder parent) =>
-          find.descendant(of: parent, matching: find.byType(TileSymbol));
-      expect(tester.widget<TileSymbol>(symbol(copy)).art.icon,
-          tester.widget<TileSymbol>(symbol(canonical)).art.icon);
-      expect(tester.widget<TileSymbol>(symbol(copy)).art.color,
-          tester.widget<TileSymbol>(symbol(canonical)).art.color);
-      expect(_rect(tester, symbol(copy)), _rect(tester, symbol(canonical)));
-      expect(_effects(tester).hides('m3'), isTrue);
-      await tester.pump(const Duration(milliseconds: 1));
-      expect(visual, findsNothing);
-      expect(_effects(tester).hides('m3'), isFalse);
-      expect(_tray(tester).trayTiles.first!.id, 'm3');
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-    });
+    for (final movingId in ['m3', 'm6']) {
+      testWidgets(
+          'level $level / $movingId: landing face equals canonical tray before handoff',
+          (tester) async {
+        await _mount(tester, level: level);
+        await loadVisibleTileImages(tester);
+        tester.widget<GameTileWidget>(_board(movingId)).onTap!();
+        await tester.pump();
+        await tester.pump(TileFlight.duration);
+        final visual = find.byType(TileFlightVisual);
+        expect(visual, findsOneWidget);
+        final copy =
+            find.descendant(of: visual, matching: find.byType(GameTileWidget));
+        final canonical = find.descendant(
+            of: find.byType(GameTray),
+            matching: find.byWidgetPredicate(
+                (w) => w is GameTileWidget && w.tile.id == movingId));
+        _expectAlignedRects(_rect(tester, copy), _rect(tester, canonical),
+            'Landed tile must align with its canonical tray tile');
+        final copyTile = tester.widget<GameTileWidget>(copy);
+        final trayTile = tester.widget<GameTileWidget>(canonical);
+        expect(copyTile.tile.id, trayTile.tile.id);
+        expect(copyTile.depth, trayTile.depth);
+        expect(copyTile.catalog, trayTile.catalog);
+        expect(copyTile.trayAppearanceBlend, 1);
+        TileFace surface(Finder parent) => tester.widget<TileFace>(
+            find.descendant(of: parent, matching: find.byType(TileFace)));
+        expect(surface(copy).art, surface(canonical).art);
+        expect(surface(copy).art.assetPath, surface(canonical).art.assetPath);
+        if (movingId == 'm6') {
+          expect(
+              surface(copy).art.assetPath, 'assets/tiles/approved/chili.png');
+          for (final parent in [copy, canonical]) {
+            final image = tester.widget<Image>(
+                find.descendant(of: parent, matching: find.byType(Image)));
+            expect((image.image as AssetImage).assetName,
+                'assets/tiles/approved/chili.png');
+            final pixels = tester.widget<RawImage>(
+                find.descendant(of: parent, matching: find.byType(RawImage)));
+            expect(pixels.image, isNotNull,
+                reason: 'Both faces must render the decoded approved artwork.');
+          }
+        }
+        expect(surface(copy).blocked, surface(canonical).blocked);
+        expect(surface(copy).highlighted, surface(canonical).highlighted);
+        expect(surface(copy).pressed, surface(canonical).pressed);
+        expect(surface(copy).depth, surface(canonical).depth);
+        expect(surface(copy).trayBlend, surface(canonical).trayBlend);
+        Finder symbol(Finder parent) =>
+            find.descendant(of: parent, matching: find.byType(TileSymbol));
+        expect(tester.widget<TileSymbol>(symbol(copy)).art.icon,
+            tester.widget<TileSymbol>(symbol(canonical)).art.icon);
+        expect(tester.widget<TileSymbol>(symbol(copy)).art.color,
+            tester.widget<TileSymbol>(symbol(canonical)).art.color);
+        _expectAlignedRects(
+            _rect(tester, symbol(copy)),
+            _rect(tester, symbol(canonical)),
+            'Landed artwork must align with its canonical tray artwork');
+        expect(_effects(tester).hides(movingId), isTrue);
+        await tester.pump(const Duration(milliseconds: 1));
+        expect(visual, findsNothing);
+        expect(_effects(tester).hides(movingId), isFalse);
+        expect(_tray(tester).trayTiles.first!.id, movingId);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('level $level: matched snapshots react together after arrival',
         (tester) async {
@@ -789,6 +936,15 @@ void main() {
         .toList();
     expect(visuals, hasLength(9));
     expect(visuals.first.progress, greaterThan(visuals.last.progress));
+    expect(effects.bursts.where(effects.presents), [effects.bursts.last],
+        reason:
+            'Retired snapshots retain clocks, never ownership of reused slots.');
+    for (final burst in effects.bursts) {
+      final layer = find.byKey(ValueKey('burst_layer_${burst.serial}'));
+      final opacity = tester.widget<Opacity>(
+          find.descendant(of: layer, matching: find.byType(Opacity)).first);
+      expect(opacity.opacity, effects.presents(burst) ? 1 : 0);
+    }
     expect(_board(), findsNWidgets(6));
     expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -797,6 +953,39 @@ void main() {
     expect(effects.flights, isEmpty);
     expect(tester.binding.transientCallbackCount, 0);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'rapid third tap starts pair reflow at the currently painted flights',
+      (tester) async {
+    await _mount(tester);
+    final effects = _effects(tester);
+    tester.widget<GameTileWidget>(_board('m0')).onTap!();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    tester.widget<GameTileWidget>(_board('m1')).onTap!();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final positions = {
+      for (final visual
+          in tester.widgetList<TileFlightVisual>(find.byType(TileFlightVisual)))
+        visual.flight.source.tile.id: visual.flight.rectAt(visual.progress),
+    };
+    expect(positions.keys, unorderedEquals(['m0', 'm1']));
+    tester.widget<GameTileWidget>(_board('m2')).onTap!();
+    await tester.pump();
+    final burst = effects.bursts.single;
+    for (final face in burst.snapshots.take(2)) {
+      _expectAlignedRects(burst.rectAt(face, 0), positions[face.tile.id]!,
+          'Rapid pair must not teleport from an obsolete tray position');
+    }
+    expect(effects.flights.single.source.tile.id, 'm2');
+    expect(effects.flights.single.slot, 2);
+    await tester.pumpAndSettle();
+    expect(effects.flights, isEmpty);
+    expect(effects.bursts, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   for (final action in ['Undo', 'Shuffle', 'Hint']) {

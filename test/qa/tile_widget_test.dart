@@ -4,10 +4,54 @@ import 'package:triple_tile_adventure/core/tile_catalog.dart';
 import 'package:triple_tile_adventure/domain/tile.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tile.dart';
 import 'package:triple_tile_adventure/presentation/widgets/tile_face.dart';
+import 'package:triple_tile_adventure/presentation/widgets/globe_tile_symbol.dart';
+import 'package:triple_tile_adventure/presentation/widgets/premium_tile_symbol.dart';
+
+import 'support/tile_asset_images.dart';
 
 void main() {
+  testWidgets('covered flag rejects pointer taps even if enabled is stale',
+      (tester) async {
+    var taps = 0;
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: Center(
+                  child: SizedBox(
+        width: 60,
+        height: 60,
+        child: GameTileWidget(
+          tile: const Tile(id: 'covered', type: 'apple', x: 0, y: 0, layer: 0),
+          enabled: true,
+          blocked: true,
+          highlighted: false,
+          onTap: () => taps++,
+        ),
+      )))));
+      await loadVisibleTileImages(tester);
+      expect(
+          tester.getSemantics(find.bySemanticsLabel('Kiwi')),
+          matchesSemantics(
+              label: 'Kiwi',
+              hint: 'Covered tile',
+              isButton: true,
+              hasEnabledState: true,
+              isEnabled: false,
+              hasTapAction: false));
+      await tester.tap(find.byType(GameTileWidget));
+      await tester.pumpAndSettle();
+      expect(taps, 0);
+      expect(tester.widget<TileFace>(find.byType(TileFace)).pressed, isFalse);
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   for (final theme in TileVisualTheme.values) {
-    testWidgets('$theme: enamel symbols fit narrow tray and board faces',
+    testWidgets('$theme: tile artwork fits narrow tray and board faces',
         (tester) async {
       final catalog = tileCatalogForTheme(theme);
       for (final size in [
@@ -47,6 +91,7 @@ void main() {
             ),
           ));
           await tester.pumpAndSettle();
+          await loadVisibleTileImages(tester);
           for (final entry in catalog.entries) {
             final tile = find.byKey(ValueKey(entry.key));
             expect(tester.getSize(tile), size);
@@ -54,11 +99,16 @@ void main() {
                 find.descendant(of: tile, matching: find.byType(TileSymbol));
             expect(symbol, findsOneWidget);
             expect(tester.widget<TileSymbol>(symbol).art, same(entry.value));
-            final visibleFace =
-                TileFacePainter.faceRect(size).shift(tester.getTopLeft(tile));
+            final hasAsset = entry.value.assetPath != null;
+            final visibleFace = (hasAsset
+                    ? TileFace.artworkRect(size)
+                    : TileFacePainter.faceRect(size))
+                .shift(tester.getTopLeft(tile));
             final bounds = tester.getRect(symbol);
             expect(visibleFace.contains(bounds.topLeft), isTrue);
-            expect(visibleFace.contains(bounds.bottomRight), isTrue);
+            // Rect.contains excludes the exact right/bottom edge.
+            expect(bounds.right, lessThanOrEqualTo(visibleFace.right));
+            expect(bounds.bottom, lessThanOrEqualTo(visibleFace.bottom));
             expect(bounds.width, greaterThan(size.shortestSide * .6));
             expect((bounds.center - visibleFace.center).distance,
                 closeTo(0, .000001));
@@ -66,6 +116,38 @@ void main() {
                 find.descendant(of: tile, matching: find.byType(TileFace)));
             expect(face.blocked, blocked);
             expect(face.highlighted, entry.key == catalog.keys.first);
+            if (hasAsset) {
+              expect(bounds.width, bounds.height,
+                  reason: 'Approved square artwork must never be stretched.');
+              final image = tester.widget<Image>(
+                  find.descendant(of: symbol, matching: find.byType(Image)));
+              expect(
+                  (image.image as AssetImage).assetName, entry.value.assetPath);
+              expect(image.fit, BoxFit.contain);
+              expect(image.excludeFromSemantics, isTrue);
+              expect(image.color, blocked ? const Color(0xFF9DAFB5) : null);
+            } else {
+              expect(entry.value.illustration, isNotNull);
+              expect(find.descendant(of: symbol, matching: find.byType(Text)),
+                  findsNothing,
+                  reason: 'Saved tiles must never render icon-font glyphs.');
+              expect(find.descendant(of: symbol, matching: find.byType(Icon)),
+                  findsNothing);
+              final painter = tester
+                  .widget<CustomPaint>(find.descendant(
+                      of: symbol, matching: find.byType(CustomPaint)))
+                  .painter!;
+              if (entry.value.illustration == TileIllustration.lagoon) {
+                expect(painter, isA<GlobeTilePainter>());
+                expect((painter as GlobeTilePainter).blocked, blocked);
+              } else {
+                expect(painter, isA<PremiumTilePainter>());
+                final premium = painter as PremiumTilePainter;
+                expect(premium.illustration, entry.value.illustration);
+                expect(premium.color, entry.value.color);
+                expect(premium.blocked, blocked);
+              }
+            }
           }
           expect(tester.takeException(), isNull);
           expect(tester.binding.transientCallbackCount, 0);
@@ -80,7 +162,8 @@ void main() {
     // Flutter verifies outstanding handles before package:test tearDown runs.
     try {
       var taps = 0;
-      Future<void> show({required bool covered}) => tester.pumpWidget(MaterialApp(
+      Future<void> show({required bool covered}) =>
+          tester.pumpWidget(MaterialApp(
             home: Scaffold(
                 body: Center(
                     child: SizedBox(
@@ -97,9 +180,9 @@ void main() {
           ));
       await show(covered: false);
       expect(
-          tester.getSemantics(find.bySemanticsLabel('apple')),
+          tester.getSemantics(find.bySemanticsLabel('Kiwi')),
           matchesSemantics(
-              label: 'apple',
+              label: 'Kiwi',
               isButton: true,
               hasEnabledState: true,
               isEnabled: true,
@@ -109,9 +192,9 @@ void main() {
       expect(taps, 1);
       await show(covered: true);
       expect(
-          tester.getSemantics(find.bySemanticsLabel('apple')),
+          tester.getSemantics(find.bySemanticsLabel('Kiwi')),
           matchesSemantics(
-              label: 'apple',
+              label: 'Kiwi',
               hint: 'Covered tile',
               isButton: true,
               hasEnabledState: true,

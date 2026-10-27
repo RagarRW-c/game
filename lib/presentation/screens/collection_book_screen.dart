@@ -5,6 +5,7 @@ import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
 import '../widgets/game_ui.dart';
+import '../widgets/tile_face.dart';
 
 class CollectionBookScreen extends StatefulWidget {
   const CollectionBookScreen({super.key});
@@ -259,11 +260,17 @@ class _CollectionEntryTile extends StatelessWidget {
                 boxShadow:
                     unlocked ? GameShadows.medium() : GameShadows.light(),
               ),
-              child: Icon(
-                unlocked ? art?.icon ?? Icons.help_rounded : Icons.help_rounded,
-                color: unlocked ? art?.color ?? GameColors.ink : Colors.white,
-                size: 28,
-              ),
+              child: unlocked && (art?.hasIllustratedSymbol ?? false)
+                  ? TileSymbol(art: art!, blocked: false)
+                  : Icon(
+                      unlocked
+                          ? art?.icon ?? Icons.help_rounded
+                          : Icons.help_rounded,
+                      color: unlocked
+                          ? art?.color ?? GameColors.ink
+                          : Colors.white,
+                      size: 28,
+                    ),
             ),
           ),
           const SizedBox(height: GameSpacing.xs),

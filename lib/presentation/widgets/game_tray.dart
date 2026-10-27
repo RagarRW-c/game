@@ -36,6 +36,9 @@ class TrayFeedback {
 /// Same geometry in both modes. Engine-owned slots are hidden only while their
 /// visual copies travel in the screen-local, non-interactive effects layer.
 class GameTray extends StatelessWidget {
+  // Recover unused slot gutters, without changing tray capacity or its frame.
+  // 8.3–12.1% wider slots at 412–320 logical-pixel phone widths.
+  static const slotInset = 2.25;
   const GameTray(
       {super.key,
       required this.trayTiles,
@@ -75,8 +78,7 @@ class GameTray extends StatelessWidget {
               for (var index = 0; index < GameEngine.trayLimit; index++)
                 Expanded(
                     child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: GameSpacing.xs),
+                  padding: const EdgeInsets.symmetric(horizontal: slotInset),
                   child: SizedBox(
                     key: effects?.slotKeys[index],
                     child: index >= trayTiles.length || trayTiles[index] == null
@@ -195,8 +197,8 @@ class _TrayLightPainter extends CustomPainter {
     final opacity = full ? .85 : (1 - progress);
     final width = size.width / GameEngine.trayLimit;
     for (final slot in slots) {
-      final rect = Rect.fromLTWH(slot * width + GameSpacing.xs, 1,
-          math.max(0, width - GameSpacing.xs * 2), size.height - 2);
+      final rect = Rect.fromLTWH(slot * width + GameTray.slotInset, 1,
+          math.max(0, width - GameTray.slotInset * 2), size.height - 2);
       final border = RRect.fromRectAndRadius(rect, const Radius.circular(12));
       canvas.drawRRect(
           border,

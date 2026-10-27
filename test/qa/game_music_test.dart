@@ -355,6 +355,72 @@ void main() {
     }
   });
 
+  testWidgets(
+      'victory pause survives lifecycle and mute; only current owner controls it',
+      (tester) async {
+    final a = _Deck();
+    final b = _Deck();
+    final sfx = List.generate(4, (_) => _Deck());
+    final audio = GameAudioService(
+        musicPlayer: a, createMusicDeck: () => b, sfxPlayers: sfx);
+    final route = Object();
+    final nextRoute = Object();
+    final preferences = <bool>[];
+    void recordPreference() => preferences.add(audio.musicPreference.value);
+    audio.musicPreference.addListener(recordPreference);
+    try {
+      final start = audio.startGameplayMusic(level: 1, owner: route);
+      await _fade(tester);
+      await _finish(tester, start, 'Campaign startup');
+      expect(a.playing, isTrue);
+      await _finish(tester, audio.pauseGameplayMusicForVictory(owner: route),
+          'victory music suspension');
+      expect(a.playing || b.playing, isFalse);
+      expect(audio.musicEnabled, isTrue,
+          reason: 'Victory must not change the saved music preference');
+      final resumes = a.resumes.length;
+      await _finish(
+          tester, audio.pauseMusicForBackground(), 'victory background');
+      await _finish(
+          tester, audio.resumeMusicFromBackground(), 'victory foreground');
+      await _finish(tester, audio.setMusicEnabled(false), 'victory mute');
+      expect(audio.musicPreference.value, isFalse);
+      await _finish(tester, audio.setMusicEnabled(true), 'victory unmute');
+      expect(audio.musicPreference.value, isTrue);
+      expect(preferences, [false, true]);
+      await _finish(tester, audio.startMusic(), 'late startup during victory');
+      expect(a.playing || b.playing, isFalse);
+      expect(a.resumes, hasLength(resumes));
+
+      final replay = audio.startGameplayMusic(level: 1, owner: route);
+      await _fade(tester);
+      await _finish(tester, replay, 'Replay resumes the existing world');
+      expect(a.playing, isTrue);
+      expect(a.sources, [GameMusic.campaignAsset(1)]);
+      await _finish(tester, audio.pauseGameplayMusicForVictory(owner: route),
+          'second victory');
+      final next = audio.startGameplayMusic(level: 11, owner: nextRoute);
+      await _fade(tester);
+      await _finish(tester, next, 'next world after victory');
+      await _finish(tester, audio.pauseGameplayMusicForVictory(owner: route),
+          'stale victory callback');
+      await _finish(tester, audio.stopGameplayMusic(owner: route),
+          'outgoing game disposal');
+      expect(b.playing, isTrue);
+      expect(a.playing, isFalse);
+      expect(b.resumes, [GameMusic.campaignAsset(11)]);
+      final back = audio.stopGameplayMusic(owner: nextRoute);
+      await _fade(tester);
+      await _finish(tester, back, 'return to menu music');
+      expect(a.playing, isTrue);
+      expect(a.resumes.last, GameMusic.menuA);
+    } finally {
+      audio.musicPreference.removeListener(recordPreference);
+      await _finish(tester, audio.dispose(), 'victory music cleanup');
+      _verifyDisposed([a, b, ...sfx]);
+    }
+  });
+
   testWidgets('mute, background and rapid requests cannot restart stale tracks',
       (tester) async {
     final a = _Deck();

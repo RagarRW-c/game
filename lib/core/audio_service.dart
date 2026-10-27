@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 
 import 'game_music.dart';
 
@@ -24,10 +25,13 @@ class GameAudioService {
   bool _campaignRequested = false;
   final List<AudioPlayer> _sfxPlayers;
   final Map<String, String> _generatedAudioPaths = <String, String>{};
+  final ValueNotifier<bool> _musicPreference = ValueNotifier(true);
+  ValueListenable<bool> get musicPreference => _musicPreference;
   bool _musicEnabled = true;
   bool get musicEnabled => _musicEnabled;
   set musicEnabled(bool enabled) {
     _musicEnabled = enabled;
+    if (!_disposed) _musicPreference.value = enabled;
     unawaited(_music.setEnabled(enabled));
   }
 
@@ -60,13 +64,22 @@ class GameAudioService {
   Future<void> startMenuMusic() {
     _campaignRequested = false;
     _campaignOwner = null;
+    unawaited(_music.setPresentationPaused(false));
     return _music.menu();
   }
 
   Future<void> startGameplayMusic({int level = 1, Object? owner}) {
     _campaignRequested = true;
     _campaignOwner = owner;
+    unawaited(_music.setPresentationPaused(false));
     return _music.campaign(level);
+  }
+
+  Future<void> pauseGameplayMusicForVictory({required Object owner}) {
+    if (!_campaignRequested || !identical(owner, _campaignOwner)) {
+      return Future<void>.value();
+    }
+    return _music.setPresentationPaused(true);
   }
 
   Future<void> startMusic() => _music.start();
@@ -100,6 +113,7 @@ class GameAudioService {
 
   Future<void> setMusicEnabled(bool enabled) {
     _musicEnabled = enabled;
+    if (!_disposed) _musicPreference.value = enabled;
     return _music.setEnabled(enabled);
   }
 
@@ -398,6 +412,7 @@ class GameAudioService {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    _musicPreference.dispose();
     cancelPendingTileFeedback();
     // Cancel music deadlines/fades immediately, even if SFX setup is pending.
     final musicDisposal = _music.dispose();

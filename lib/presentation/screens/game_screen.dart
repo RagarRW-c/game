@@ -21,17 +21,24 @@ import '../widgets/game_over_dialog.dart';
 import '../widgets/game_tile.dart';
 import '../widgets/game_tray.dart';
 import '../widgets/tile_effects.dart';
+import '../widgets/tile_face.dart';
 import '../widgets/game_surfaces.dart';
 import '../widgets/game_ui.dart';
+import '../widgets/victory_video.dart';
 import 'final_code_screen.dart';
+import 'map_screen.dart';
+import 'world_selection_screen.dart';
 import 'settings_screen.dart';
 import 'win_screen.dart';
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, required this.level});
+  const GameScreen(
+      {super.key, required this.level, this.victoryVideoControllerFactory});
 
   static const route = '/game';
   final int level;
+  @visibleForTesting
+  final VictoryVideoControllerFactory? victoryVideoControllerFactory;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -97,7 +104,9 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   void _startLevelMusic() {
     // An outgoing route may rebuild when isCurrent changes. It must not reclaim
     // music ownership from the level that was just pushed/replaced above it.
-    if (_route?.isCurrent ?? true) {
+    if (!_winDialogShowing &&
+        _engine?.result != GameResult.won &&
+        (_route?.isCurrent ?? true)) {
       unawaited(_scope.audioService
           .startGameplayMusic(level: widget.level, owner: this));
     }
@@ -116,7 +125,6 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   void didUpdateWidget(covariant GameScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.level != widget.level) {
-      _startLevelMusic();
       _levelFuture = _scope.levelRepository.loadLevel(widget.level);
       _engine = null;
       _resetAnimationState();
@@ -124,6 +132,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
       _gameOverDialogShowing = false;
       _winDialogShowing = false;
       _tutorialQueued = false;
+      _startLevelMusic();
       unawaited(_loadPlayerState());
     }
   }
@@ -299,6 +308,10 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         slot: before.length,
         tray: engine.tray,
         matchedIds: matchedIds,
+        beforeTiles: [
+          for (final id in before)
+            if (engine.tileById(id) != null) engine.tileById(id)!,
+        ],
         matchedTiles: [
           for (final id in [...before, ...collected])
             if (matchedIds.contains(id) && engine.tileById(id) != null)
@@ -629,6 +642,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     if (_winDialogShowing || !mounted) return;
     _winDialogShowing = true;
     final scope = _scope;
+    unawaited(scope.audioService.pauseGameplayMusicForVictory(owner: this));
     final bossInfo = _BossLevelInfo.forLevel(widget.level);
     final undoUsed = _undoUsedThisLevel;
     final hintUsed = _hintUsedThisLevel;
@@ -669,7 +683,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         SnackBar(content: Text('${chestGrant.chest!.title} added')),
       );
     }
-    _playSfx(scope.audioService.playLevelComplete, 'level_complete');
+    // Campaign completion stays silent until the victory track is approved.
     _haptic(HapticFeedback.heavyImpact);
     await showPendingAchievementPopups(
       context,
@@ -681,58 +695,90 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     if (bossInfo != null) {
       _playSfx(scope.audioService.playWorldUnlocked, 'world_unlock');
     }
+    // A double tap during the dialog's reverse transition must not pop the
+    // gameplay route or request the next level twice.
+    var resultActionTaken = false;
+    bool takeResultAction() {
+      if (!mounted || resultActionTaken) return false;
+      resultActionTaken = true;
+      return true;
+    }
+
+    void returnToMap() {
+      if (!takeResultAction()) return;
+      final rootGame = _route?.isFirst ?? true;
+      _navigator.pop(); // Victory dialog.
+      if (rootGame) {
+        // A directly opened game has no map underneath. Replace it rather
+        // than popping the last route or leaving the completed board reachable.
+        final world = gameWorlds.firstWhere((world) =>
+            widget.level >= world.startLevel && widget.level <= world.endLevel);
+        unawaited(_navigator.pushReplacement(MaterialPageRoute<void>(
+            settings: const RouteSettings(name: MapScreen.route),
+            builder: (_) => MapScreen(world: world))));
+      } else {
+        _navigator.pop(); // Existing campaign map/caller.
+      }
+    }
+
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => WinScreen(
-        level: widget.level,
-        isFinalLevel: widget.level == LevelRepository.levelCount,
-        tilesCleared: _engine?.tiles.length ?? 0,
-        undoUsed: undoUsed,
-        hintUsed: hintUsed,
-        shuffleUsed: shuffleUsed,
-        starsEarned: starsEarned,
-        coinsEarned: coinsEarned,
-        xpEarned: xpEarned,
-        chestLabel:
-            chestGrant.slotsFull ? 'Chest slots full' : chestGrant.chest?.title,
-        isBossLevel: bossInfo != null,
-        bossTitle: bossInfo?.bossTitle,
-        emblemIcon: bossInfo?.icon,
-        milestoneTitle: bossInfo?.completeTitle,
-        milestoneMessage: bossInfo?.subtitle,
-        onRestart: () {
-          if (!mounted) return;
-          _navigator.pop();
-          _safeSetState(() {
-            _engine = null;
-            _resetAnimationState();
-            _resetBoosterUses();
-          });
-        },
-        onMap: () {
-          if (!mounted) return;
-          _navigator.pop();
-          _navigator.pop();
-        },
-        onNext: () async {
-          if (!mounted) return;
-          _navigator.pop();
-          if (!mounted) return;
-          if (widget.level == LevelRepository.levelCount) {
-            await _navigator.pushReplacement(MaterialPageRoute<void>(
-              builder: (_) => const FinalCodeScreen(),
-            ));
-            return;
-          }
-          await _navigator.pushReplacementNamed(
-            GameScreen.route,
-            arguments: widget.level + 1,
-          );
-        },
-      ),
+      builder: (_) => PopScope<void>(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) returnToMap();
+          },
+          child: WinScreen(
+            videoControllerFactory: widget.victoryVideoControllerFactory,
+            level: widget.level,
+            isFinalLevel: widget.level == LevelRepository.levelCount,
+            tilesCleared: _engine?.tiles.length ?? 0,
+            undoUsed: undoUsed,
+            hintUsed: hintUsed,
+            shuffleUsed: shuffleUsed,
+            starsEarned: starsEarned,
+            coinsEarned: coinsEarned,
+            xpEarned: xpEarned,
+            chestLabel: chestGrant.slotsFull
+                ? 'Chest slots full'
+                : chestGrant.chest?.title,
+            isBossLevel: bossInfo != null,
+            bossTitle: bossInfo?.bossTitle,
+            emblemIcon: bossInfo?.icon,
+            milestoneTitle: bossInfo?.completeTitle,
+            milestoneMessage: bossInfo?.subtitle,
+            onRestart: () {
+              if (!takeResultAction()) return;
+              _navigator.pop();
+              _safeSetState(() {
+                _engine = null;
+                _resetAnimationState();
+                _resetBoosterUses();
+              });
+            },
+            onMap: returnToMap,
+            onNext: () async {
+              if (!takeResultAction()) return;
+              _navigator.pop();
+              if (!mounted) return;
+              if (widget.level == LevelRepository.levelCount) {
+                await _navigator.pushReplacement(MaterialPageRoute<void>(
+                  builder: (_) => const FinalCodeScreen(),
+                ));
+                return;
+              }
+              await _navigator.pushReplacementNamed(
+                GameScreen.route,
+                arguments: widget.level + 1,
+              );
+            },
+          )),
     );
-    if (mounted) _winDialogShowing = false;
+    if (mounted) {
+      _winDialogShowing = false;
+      _startLevelMusic(); // Replay only; a completed board cannot reclaim music.
+    }
   }
 
   int _starsForBoostersUsed({
@@ -878,76 +924,99 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                       child: SafeArea(
                         child: Column(
                           children: [
-                            GameHeader(
-                              title: _gameHeaderTitle(level),
-                              worldTheme: worldTheme,
-                              onBack: () => Navigator.of(context).maybePop(),
-                              trailing: GameRoundIconButton(
-                                icon: Icons.pause_rounded,
-                                onPressed: () => _showPauseMenu(level),
+                            // Scaled titles and wrapped counters can exceed the
+                            // entire short-screen height. Bound only the HUD;
+                            // scroll its full-size content instead of letting
+                            // it overflow the tray/boosters or collapse the board.
+                            // Ordinary HUDs retain their natural height.
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxHeight: (constraints.maxHeight -
+                                        MediaQuery.paddingOf(context)
+                                            .vertical) *
+                                    .4,
                               ),
-                            ),
-                            // The header Row measures non-flex actions at their
-                            // full width. Give statistics their own bounded Wrap
-                            // so long counters cannot crowd out the title/actions.
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                GameSpacing.lg,
-                                0,
-                                GameSpacing.lg,
-                                GameSpacing.sm,
-                              ),
-                              child: Wrap(
-                                spacing: GameSpacing.sm,
-                                runSpacing: GameSpacing.sm,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  GameBadge(
-                                    icon: Icons.monetization_on_rounded,
-                                    gradient: worldTheme.hudGradient,
-                                    child: Text(
-                                      '$_coins',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w900,
+                              child: SingleChildScrollView(
+                                key: const ValueKey('game_hud_scroll'),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    GameHeader(
+                                      title: _gameHeaderTitle(level),
+                                      worldTheme: worldTheme,
+                                      onBack: () =>
+                                          Navigator.of(context).maybePop(),
+                                      trailing: GameRoundIconButton(
+                                        icon: Icons.pause_rounded,
+                                        onPressed: () => _showPauseMenu(level),
                                       ),
                                     ),
-                                  ),
-                                  GameBadge(
-                                    icon: Icons.track_changes_rounded,
-                                    gradient: worldTheme.hudGradient,
-                                    child: Text(
-                                      '$boardCount left',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w900,
+                                    // The header Row measures non-flex actions at their
+                                    // full width. Give statistics their own bounded Wrap
+                                    // so long counters cannot crowd out the title/actions.
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        GameSpacing.lg,
+                                        0,
+                                        GameSpacing.lg,
+                                        GameSpacing.sm,
+                                      ),
+                                      child: Wrap(
+                                        spacing: GameSpacing.sm,
+                                        runSpacing: GameSpacing.sm,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: [
+                                          GameBadge(
+                                            icon: Icons.monetization_on_rounded,
+                                            gradient: worldTheme.hudGradient,
+                                            child: Text(
+                                              '$_coins',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                          GameBadge(
+                                            icon: Icons.track_changes_rounded,
+                                            gradient: worldTheme.hudGradient,
+                                            child: Text(
+                                              '$boardCount left',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                  ),
-                                ],
+                                    if (level.objective != null) ...[
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          GameSpacing.lg,
+                                          0,
+                                          GameSpacing.lg,
+                                          GameSpacing.sm,
+                                        ),
+                                        child: Align(
+                                          alignment: Alignment.centerRight,
+                                          child: _ObjectiveBadge(
+                                            objective: level.objective!,
+                                            progress: engine.objectiveProgress,
+                                            catalog: visualCatalog,
+                                            theme: visualTheme,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
                             ),
-                            if (level.objective != null) ...[
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  GameSpacing.lg,
-                                  0,
-                                  GameSpacing.lg,
-                                  GameSpacing.sm,
-                                ),
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: _ObjectiveBadge(
-                                    objective: level.objective!,
-                                    progress: engine.objectiveProgress,
-                                    catalog: visualCatalog,
-                                    theme: visualTheme,
-                                  ),
-                                ),
-                              ),
-                            ],
                             if (trayPlacementForRound(widget.level) ==
                                 TrayPlacement.top)
                               GameTray(
@@ -1379,6 +1448,7 @@ class _ObjectiveBadge extends StatelessWidget {
     final label = tileLabelForTheme(theme, objective.type);
 
     return Container(
+      key: const ValueKey('game_objective'),
       padding: const EdgeInsets.symmetric(
         horizontal: GameSpacing.md,
         vertical: GameSpacing.sm,
@@ -1403,21 +1473,27 @@ class _ObjectiveBadge extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: GameShadows.light(),
             ),
-            child: Icon(
-              isComplete
-                  ? Icons.check_rounded
-                  : art?.icon ?? Icons.flag_rounded,
-              color: isComplete ? Colors.white : art?.color ?? Colors.white,
-              size: 19,
-            ),
+            child: !isComplete && (art?.hasIllustratedSymbol ?? false)
+                ? TileSymbol(art: art!, blocked: false)
+                : Icon(
+                    isComplete
+                        ? Icons.check_rounded
+                        : art?.icon ?? Icons.flag_rounded,
+                    color:
+                        isComplete ? Colors.white : art?.color ?? Colors.white,
+                    size: 19,
+                  ),
           ),
           const SizedBox(width: GameSpacing.sm),
-          Text(
-            '$label $visibleProgress/${objective.target}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
+          Flexible(
+            child: Text(
+              '$label $visibleProgress/${objective.target}',
+              key: const ValueKey('game_objective_label'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],

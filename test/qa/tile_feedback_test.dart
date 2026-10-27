@@ -451,7 +451,8 @@ void main() {
     callbacks.last(); // Terminal stale input must not replay match or victory.
     await tester.pumpAndSettle();
     expect(audio.calls.where((cue) => cue == 'match'), hasLength(3));
-    expect(audio.calls.where((cue) => cue == 'won'), hasLength(1));
+    expect(audio.calls.where((cue) => cue == 'won'), isEmpty,
+        reason: 'Campaign completion must not play the retired synthetic chime');
     expect(find.byType(WinScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

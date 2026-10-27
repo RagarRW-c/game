@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:triple_tile_adventure/core/audio_service.dart';
@@ -52,7 +53,8 @@ Rect globalRect(WidgetTester tester, Finder finder) {
       box.localToGlobal(Offset(box.size.width, box.size.height)));
 }
 
-Future<void> mount(WidgetTester tester, QaScreen screen, Widget child) async {
+Future<void> mount(WidgetTester tester, QaScreen screen, Widget child,
+    {double textScale = 1}) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = screen.size;
   addTearDown(tester.view.resetPhysicalSize);
@@ -71,7 +73,7 @@ Future<void> mount(WidgetTester tester, QaScreen screen, Widget child) async {
         data: MediaQuery.of(context).copyWith(
           padding: EdgeInsets.only(top: screen.safeTop, bottom: 24),
           viewPadding: EdgeInsets.only(top: screen.safeTop, bottom: 24),
-          textScaler: TextScaler.noScaling,
+          textScaler: TextScaler.linear(textScale),
         ),
         child: content!,
       ),
@@ -213,6 +215,47 @@ void main() {
       'checks': rows,
     }));
   });
+
+  for (final id in [27, 50, 65, 80, 95]) {
+    for (final screen in qaScreens) {
+      for (final scale in [1.0, 1.6, 2.0]) {
+        testWidgets(
+            'L$id objective wraps inside HUD at ${screen.name} / $scale',
+            (tester) async {
+          try {
+            await mount(tester, screen, GameScreen(level: id),
+                textScale: scale);
+            expect(tester.takeException(), isNull);
+            final badge = find.byKey(const ValueKey('game_objective'));
+            final label = find.byKey(const ValueKey('game_objective_label'));
+            final target = readLevel(id).objective!.target;
+            expect(tester.widget<Text>(label).data, 'Burlap Sack 0/$target');
+            final paragraph = tester.renderObject<RenderParagraph>(
+                find.descendant(of: label, matching: find.byType(RichText)));
+            expect(paragraph.didExceedMaxLines, isFalse);
+            await tester.ensureVisible(badge);
+            await tester.pumpAndSettle();
+            final textBounds = globalRect(tester, label);
+            final badgeBounds = globalRect(tester, badge).inflate(.01);
+            final hudBounds = globalRect(
+                    tester, find.byKey(const ValueKey('game_hud_scroll')))
+                .inflate(.01);
+            for (final bounds in [badgeBounds, hudBounds]) {
+              expect(bounds.contains(textBounds.topLeft), isTrue);
+              expect(bounds.contains(textBounds.bottomRight), isTrue);
+            }
+            // Scrolling the objective cannot displace the gameplay controls.
+            for (final text in ['Undo x2', 'Hint x2', 'Shuffle x2']) {
+              expect(find.text(text).hitTestable(), findsOneWidget);
+            }
+            expect(tester.takeException(), isNull);
+          } finally {
+            await tester.pumpWidget(const SizedBox.shrink());
+          }
+        });
+      }
+    }
+  }
 
   for (final screen in qaScreens) {
     for (var id = 1; id <= LevelRepository.levelCount; id++) {

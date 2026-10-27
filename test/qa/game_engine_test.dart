@@ -113,15 +113,106 @@ void main() {
     });
   }
 
-  test('coverage threshold is three percent and edge contact is not overlap',
+  test('coverage retains the logical 3% rule regardless of transparent artwork',
       () {
     const base = Tile(id: 'a', type: 'apple', x: 0, y: 0, layer: 0);
     Tile above(double x) => Tile(id: 'b', type: 'berry', x: x, y: 0, layer: 1);
     const size = Size(100, 100);
     const tile = Size(10, 10);
-    expect(base.overlaps(above(0.098), size, tile), isFalse); // 2%
-    expect(base.overlaps(above(0.096), size, tile), isTrue); // 4%
-    expect(base.overlaps(above(0.1), size, tile), isFalse); // edge
+    double offsetForRatio(double ratio) => .1 * (1 - ratio);
+    expect(base.overlaps(above(offsetForRatio(.02)), size, tile), isFalse);
+    expect(base.overlaps(above(offsetForRatio(.04)), size, tile), isTrue);
+    expect(
+        base.overlaps(above(0.09), size, tile), isTrue); // 10% logical overlap
+    expect(base.overlaps(above(0.096), size, tile), isTrue,
+        reason: 'Artwork margins must not remove an authored 4% dependency.');
+    expect(base.overlaps(above(0.096), size, tile, minimumCoveredRatio: .05),
+        isFalse);
+    expect(base.overlaps(above(0.1), size, tile), isFalse); // layout edge
+    // Integer pixel coordinates avoid rounding the inclusive 3% boundary.
+    expect(base.overlaps(above(.97), size, size), isTrue);
+    expect(base.overlaps(above(.98), size, size), isFalse);
+  });
+
+  for (final sameLayer in [false, true]) {
+    for (final scenario in [
+      (
+        name: 'logical margin overlap',
+        offset: const Offset(48, 0),
+        covered: true
+      ),
+      (
+        name: 'logical corner overlap',
+        offset: const Offset(40, 40),
+        covered: true
+      ),
+      (name: 'physical body', offset: const Offset(30, 0), covered: true),
+      (name: 'sub-threshold edge', offset: const Offset(49, 0), covered: false),
+      (
+        name: 'sub-threshold corner',
+        offset: const Offset(42, 42),
+        covered: false
+      ),
+      (name: 'touching edge', offset: const Offset(50, 0), covered: false),
+    ]) {
+      test('${scenario.name}: coverage and taps agree, same layer $sameLayer',
+          () {
+        const lower = Tile(id: 'lower', type: 'apple', x: .1, y: .1, layer: 0);
+        final upper = Tile(
+            id: 'upper',
+            type: 'berry',
+            x: .1 + scenario.offset.dx / board.width,
+            y: .1 + scenario.offset.dy / board.height,
+            layer: sameLayer ? 0 : 1);
+        // Gameplay coverage is measured on the authored logical footprint.
+        final intersection = lower
+            .boardRect(board, tileSize)
+            .intersect(upper.boardRect(board, tileSize));
+        expect(intersection.width * intersection.height / 2500 >= .03,
+            scenario.covered);
+        final engine = GameEngine([lower, upper])
+          ..updateBoardGeometry(board, tileSize);
+        expect(engine.isTileCovered(lower), scenario.covered);
+        expect(engine.isTileCovered(upper), isFalse);
+        expect(engine.isUncovered(lower, board, tileSize), !scenario.covered);
+        expect(engine.tapTile(lower.id, board, tileSize), !scenario.covered);
+        if (scenario.covered) {
+          expect(engine.tray, isEmpty);
+          expect(engine.tapTile(upper.id, board, tileSize), isTrue);
+          expect(engine.isTileCovered(lower), isFalse,
+              reason: 'A tray tile cannot continue covering a board tile.');
+          expect(engine.tapTile(lower.id, board, tileSize), isTrue);
+        } else {
+          expect(engine.tray, [lower.id]);
+        }
+      });
+    }
+  }
+
+  test('Shuffle cannot change coverage by exchanging PNG and painted symbols',
+      () {
+    final engine = GameEngine([
+      const Tile(id: 'a', type: 'apple', x: 0, y: 0, layer: 0),
+      // 4% logical overlap: the regressed artwork rule discarded this edge.
+      Tile(
+          id: 'b',
+          type: 'sun',
+          x: tileSize.width * .96 / board.width,
+          y: 0,
+          layer: 1),
+      const Tile(id: 'c', type: 'drop', x: .5, y: .5, layer: 0),
+    ])
+      ..updateBoardGeometry(board, tileSize);
+    for (var i = 0; i < 10; i++) {
+      expect(engine.isTileCovered(engine.tileById('a')!), isTrue);
+      expect(engine.isTileCovered(engine.tileById('b')!), isFalse);
+      expect(engine.isTileCovered(engine.tileById('c')!), isFalse);
+      expect(engine.findBestHintTileIds(), isNot(contains('a')));
+      expect(engine.tapTile('a', board, tileSize), isFalse);
+      expect(engine.tray, isEmpty);
+      expect(engine.shuffleBoard(), isTrue);
+    }
+    expect(engine.isTileCovered(engine.tileById('a')!), isTrue);
   });
 
   test('Undo restores the last unmatched tile and its blocking relationship',

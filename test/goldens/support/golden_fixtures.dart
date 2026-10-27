@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:triple_tile_adventure/core/audio_service.dart';
 import 'package:triple_tile_adventure/data/level_repository.dart';
 import 'package:triple_tile_adventure/data/progress_repository.dart';
@@ -160,8 +162,13 @@ class GoldenAudio implements GameAudioService {
 
   // Match the deterministic default preferences and exercise the SFX dispatch
   // path. Enabling either setting never starts real audio in this test double.
+  final ValueNotifier<bool> _musicPreference = ValueNotifier(true);
   @override
-  bool musicEnabled = true;
+  ValueListenable<bool> get musicPreference => _musicPreference;
+  @override
+  bool get musicEnabled => _musicPreference.value;
+  @override
+  set musicEnabled(bool value) => _musicPreference.value = value;
   @override
   bool sfxEnabled = true;
 
@@ -176,6 +183,8 @@ class GoldenAudio implements GameAudioService {
   Future<void> startMenuMusic() async {}
   @override
   Future<void> startGameplayMusic({int level = 1, Object? owner}) async {}
+  @override
+  Future<void> pauseGameplayMusicForVictory({required Object owner}) async {}
   @override
   Future<void> stopGameplayMusic({Object? owner}) async {}
   @override

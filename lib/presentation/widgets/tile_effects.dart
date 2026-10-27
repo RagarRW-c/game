@@ -77,9 +77,10 @@ class TileFlight {
 
 /// Immutable, bounded copies of faces already removed by the engine.
 class MatchedTileSnapshot {
-  const MatchedTileSnapshot(this.tile, this.rect);
+  const MatchedTileSnapshot(this.tile, this.rect, {this.sourceRect});
   final Tile tile;
   final Rect rect;
+  final Rect? sourceRect;
 }
 
 class TrayBurst {
@@ -88,11 +89,18 @@ class TrayBurst {
   static const fadeDuration = Duration(milliseconds: 80);
   static const particlesPerSlot = 12;
   const TrayBurst(this.serial, this.rects, this.direction,
-      {this.snapshots = const [], this.catalog = tileCatalog, this.incomingId});
+      {this.snapshots = const [],
+      this.shifts = const [],
+      this.catalog = tileCatalog,
+      this.incomingId});
   final int serial;
   final List<Rect> rects;
   final double direction;
   final List<MatchedTileSnapshot> snapshots;
+
+  /// Unmatched survivors move to their already-committed canonical slots while
+  /// the matching pair moves beside the incoming tile. No engine reordering.
+  final List<MatchedTileSnapshot> shifts;
   final Map<String, TileArt> catalog;
   final String? incomingId;
 
@@ -117,7 +125,7 @@ class TrayBurst {
   }
 
   Rect rectAt(MatchedTileSnapshot face, double p) {
-    if (p <= reactionStart) return face.rect;
+    if (p <= reactionStart) return shiftRectAt(face, p);
     final squeeze = _smoothStep(reactionAt(p));
     final clearing = _smoothStep(((p - release) / _fade).clamp(0.0, 1.0));
     final scale = 1 - clearing * .24;
@@ -125,6 +133,12 @@ class TrayBurst {
         center: face.rect.center,
         width: face.rect.width * (1 + squeeze * .07) * scale,
         height: face.rect.height * (1 - squeeze * .13) * scale);
+  }
+
+  Rect shiftRectAt(MatchedTileSnapshot face, double p) {
+    if (reactionStart == 0 || p >= reactionStart) return face.rect;
+    return Rect.lerp(face.sourceRect ?? face.rect, face.rect,
+        _smootherStep((p / reactionStart).clamp(0.0, 1.0)))!;
   }
 }
 
@@ -140,6 +154,8 @@ class TileEffectsController extends ChangeNotifier {
   final slotKeys = List.generate(7, (_) => GlobalKey());
   final List<TileFlight> _flights = [];
   final List<TrayBurst> _bursts = [];
+  final Map<String, Rect> _presentedRects = {};
+  int? _presentationBurst;
   int _serial = 0;
   bool _disposed = false;
   bool reducedMotion = false;
@@ -161,6 +177,11 @@ class TileEffectsController extends ChangeNotifier {
   /// Observe the existing visual clock. Dispatch after this frame paints, once
   /// per retained burst; never notify listeners or call audio during build.
   void observeBurst(TrayBurst burst, double progress) {
+    if (!_disposed && presents(burst)) {
+      for (final shift in burst.shifts) {
+        _presentedRects[shift.tile.id] = burst.shiftRectAt(shift, progress);
+      }
+    }
     final cue = _burstAudio[burst.serial];
     if (_disposed ||
         !_audioActive ||
@@ -184,8 +205,18 @@ class TileEffectsController extends ChangeNotifier {
 
   List<TileFlight> get flights => List.unmodifiable(_flights);
   List<TrayBurst> get bursts => List.unmodifiable(_bursts);
+  bool presents(TrayBurst burst) => burst.serial == _presentationBurst;
   bool hides(String id) =>
-      _flights.any((f) => !f.matched && f.source.tile.id == id);
+      _flights.any((f) => !f.matched && f.source.tile.id == id) ||
+      _bursts.any((b) => presents(b) && b.shifts.any((s) => s.tile.id == id));
+
+  void observeFlight(TileFlight flight, double progress) {
+    if (!_disposed &&
+        !flight.matched &&
+        _flights.any((active) => active.serial == flight.serial)) {
+      _presentedRects[flight.source.tile.id] = flight.rectAt(progress);
+    }
+  }
 
   Rect? rectFor(BuildContext? context) {
     if (_disposed || context == null || !context.mounted) return null;
@@ -221,6 +252,7 @@ class TileEffectsController extends ChangeNotifier {
       required List<String> tray,
       required Set<String> matchedIds,
       List<Tile> matchedTiles = const [],
+      List<Tile> beforeTiles = const [],
       required List<int> matchedSlots,
       required TrayPlacement placement,
       VoidCallback? onMatchBurst}) {
@@ -230,12 +262,26 @@ class TileEffectsController extends ChangeNotifier {
       return false;
     }
     var deferred = false;
+    final previousRects = Map<String, Rect>.of(_presentedRects);
+    for (final flight in _flights) {
+      previousRects.putIfAbsent(
+          flight.source.tile.id, () => flight.source.rect);
+    }
+    // A new accepted move supersedes the old transient arrangement. Retain
+    // each burst's audio clock, but never draw old faces over newly reused
+    // canonical slots. Input and engine state are never queued behind VFX.
+    _presentationBurst = null;
+    _presentedRects.clear();
     // A match compacts tray indices. Cancel earlier flights rather than letting
     // them land in obsolete slots or replay already matched tile faces.
     if (matchedIds.isNotEmpty) {
       _flights.clear();
     } else {
       _flights.removeWhere((f) => !tray.contains(f.source.tile.id));
+      for (final flight in _flights) {
+        final rect = previousRects[flight.source.tile.id];
+        if (rect != null) _presentedRects[flight.source.tile.id] = rect;
+      }
     }
     if (source != null && slot >= 0 && slot < slotKeys.length) {
       final target = rectFor(slotKeys[slot].currentContext);
@@ -246,8 +292,16 @@ class TileEffectsController extends ChangeNotifier {
       }
     }
     if (matchedIds.isNotEmpty) {
+      final hasIncoming = _flights.any((f) => f.matched);
+      final group = hasIncoming &&
+          matchedSlots.length == 3 &&
+          matchedTiles.length == 3 &&
+          slot >= 2;
+      // Keep the engine's append/compact order. Visually place the triple in
+      // the three adjacent slots ending at the incoming tile's measured target.
+      final targets = group ? [slot - 2, slot - 1, slot] : matchedSlots;
       final rects = [
-        for (final slot in matchedSlots)
+        for (final slot in targets)
           if (slot >= 0 && slot < slotKeys.length)
             rectFor(slotKeys[slot].currentContext)
       ].whereType<Rect>().toList();
@@ -256,11 +310,34 @@ class TileEffectsController extends ChangeNotifier {
         for (var i = 0;
             i < matchedSlots.length && i < matchedTiles.length && i < 3;
             i++) {
-          final index = matchedSlots[i];
+          final index = targets[i];
           if (index < 0 || index >= slotKeys.length) continue;
           final rect = rectFor(slotKeys[index].currentContext);
-          if (rect != null)
-            snapshots.add(MatchedTileSnapshot(matchedTiles[i], rect));
+          if (rect != null) {
+            final oldIndex = matchedSlots[i];
+            final origin = previousRects[matchedTiles[i].id] ??
+                (oldIndex >= 0 && oldIndex < slotKeys.length
+                    ? rectFor(slotKeys[oldIndex].currentContext)
+                    : null);
+            snapshots.add(MatchedTileSnapshot(matchedTiles[i], rect,
+                sourceRect: group ? origin : null));
+          }
+        }
+        final shifts = <MatchedTileSnapshot>[];
+        if (group) {
+          for (var i = 0; i < beforeTiles.length; i++) {
+            final tile = beforeTiles[i];
+            final destination = tray.indexOf(tile.id);
+            if (destination < 0 ||
+                destination >= slotKeys.length ||
+                i >= slotKeys.length) continue;
+            final target = rectFor(slotKeys[destination].currentContext);
+            final origin =
+                previousRects[tile.id] ?? rectFor(slotKeys[i].currentContext);
+            if (target != null && origin != null) {
+              shifts.add(MatchedTileSnapshot(tile, target, sourceRect: origin));
+            }
+          }
         }
         if (_bursts.length == maxBursts) {
           _burstAudio.remove(_bursts.removeAt(0).serial);
@@ -268,9 +345,10 @@ class TileEffectsController extends ChangeNotifier {
         _bursts.add(TrayBurst(
             ++_serial, rects, placement == TrayPlacement.top ? 1 : -1,
             snapshots: List.unmodifiable(snapshots),
+            shifts: List.unmodifiable(shifts),
             catalog: source?.catalog ?? catalog,
-            incomingId:
-                _flights.any((f) => f.matched) ? source?.tile.id : null));
+            incomingId: hasIncoming ? source?.tile.id : null));
+        _presentationBurst = _bursts.last.serial;
         if (_audioActive && onMatchBurst != null) {
           _burstAudio[_bursts.last.serial] = _BurstAudio(onMatchBurst);
           deferred = true;
@@ -283,6 +361,9 @@ class TileEffectsController extends ChangeNotifier {
 
   void finishFlight(int serial) {
     if (_disposed) return;
+    for (final flight in _flights.where((f) => f.serial == serial)) {
+      _presentedRects.remove(flight.source.tile.id);
+    }
     _flights.removeWhere((f) => f.serial == serial);
     notifyListeners();
   }
@@ -291,12 +372,18 @@ class TileEffectsController extends ChangeNotifier {
     if (_disposed) return;
     _burstAudio.remove(serial);
     _bursts.removeWhere((b) => b.serial == serial);
+    if (_presentationBurst == serial) {
+      _presentationBurst = null;
+      _presentedRects.clear();
+    }
     notifyListeners();
   }
 
   void clear({bool notify = true}) {
     if (_disposed) return;
     _cancelAudio();
+    _presentationBurst = null;
+    _presentedRects.clear();
     if (_flights.isEmpty && _bursts.isEmpty) return;
     _flights.clear();
     _bursts.clear();
@@ -308,6 +395,8 @@ class TileEffectsController extends ChangeNotifier {
     _cancelAudio();
     cancelPendingAudio = null;
     _disposed = true;
+    _presentationBurst = null;
+    _presentedRects.clear();
     _flights.clear();
     _bursts.clear();
     super.dispose();
@@ -430,19 +519,22 @@ class _GameTileEffectsState extends State<GameTileEffects>
                             duration: TileFlight.duration,
                             onEnd: () =>
                                 widget.controller.finishFlight(flight.serial),
-                            builder: (context, progress, _) => Stack(children: [
-                              Positioned.fill(
-                                  child: CustomPaint(
-                                      painter: FlightAccentPainter(
-                                          flight, progress))),
-                              Positioned.fromRect(
-                                rect: flight.rectAt(progress),
-                                child: Opacity(
-                                    opacity: flight.opacityAt(progress),
-                                    child: TileFlightVisual(
-                                        flight: flight, progress: progress)),
-                              ),
-                            ]),
+                            builder: (context, progress, _) {
+                              widget.controller.observeFlight(flight, progress);
+                              return Stack(children: [
+                                Positioned.fill(
+                                    child: CustomPaint(
+                                        painter: FlightAccentPainter(
+                                            flight, progress))),
+                                Positioned.fromRect(
+                                  rect: flight.rectAt(progress),
+                                  child: Opacity(
+                                      opacity: flight.opacityAt(progress),
+                                      child: TileFlightVisual(
+                                          flight: flight, progress: progress)),
+                                ),
+                              ]);
+                            },
                           )),
                     for (final burst in widget.controller.bursts)
                       Positioned.fill(
@@ -455,21 +547,31 @@ class _GameTileEffectsState extends State<GameTileEffects>
                                 widget.controller.finishBurst(burst.serial),
                             builder: (context, progress, _) {
                               widget.controller.observeBurst(burst, progress);
-                              return Stack(children: [
-                                for (final face in burst.snapshots)
-                                  Positioned.fromRect(
-                                      rect: burst.rectAt(face, progress),
-                                      child: MatchedTileVisual(
-                                          key: ValueKey(
-                                              'match_${burst.serial}_${face.tile.id}'),
-                                          burst: burst,
-                                          face: face,
-                                          progress: progress)),
-                                Positioned.fill(
-                                    child: CustomPaint(
-                                        painter:
-                                            _BurstPainter(burst, progress))),
-                              ]);
+                              return Opacity(
+                                  opacity:
+                                      widget.controller.presents(burst) ? 1 : 0,
+                                  child: Stack(children: [
+                                    for (final shift in burst.shifts)
+                                      Positioned.fromRect(
+                                          rect: burst.shiftRectAt(
+                                              shift, progress),
+                                          child: TrayShiftVisual(
+                                              tile: shift.tile,
+                                              catalog: burst.catalog)),
+                                    for (final face in burst.snapshots)
+                                      Positioned.fromRect(
+                                          rect: burst.rectAt(face, progress),
+                                          child: MatchedTileVisual(
+                                              key: ValueKey(
+                                                  'match_${burst.serial}_${face.tile.id}'),
+                                              burst: burst,
+                                              face: face,
+                                              progress: progress)),
+                                    Positioned.fill(
+                                        child: CustomPaint(
+                                            painter: _BurstPainter(
+                                                burst, progress))),
+                                  ]));
                             },
                           )),
                   ],
@@ -531,6 +633,22 @@ class MatchedTileVisual extends StatelessWidget {
                   enabled: true,
                   highlighted: false,
                   trayTile: true))));
+}
+
+/// A survivor of an already-committed match, shown exactly once while its
+/// canonical tray slot is hidden. Uses the same face as a settled tray tile.
+class TrayShiftVisual extends StatelessWidget {
+  const TrayShiftVisual({super.key, required this.tile, required this.catalog});
+  final Tile tile;
+  final Map<String, TileArt> catalog;
+
+  @override
+  Widget build(BuildContext context) => GameTileWidget(
+      tile: tile,
+      catalog: catalog,
+      enabled: true,
+      highlighted: false,
+      trayTile: true);
 }
 
 /// Shares the flight's existing clock. Three outline samples form a short
