@@ -25,18 +25,22 @@ import 'main_menu_screen.dart';
 class EndlessScreen extends StatefulWidget {
   const EndlessScreen({super.key})
       : initialRound = 1,
+        initialScore = 0,
         boardGenerator = null;
 
-  /// Mounts the real screen with controlled input, without playing earlier
-  /// rounds. Normal routes always use the default constructor above.
+  /// Mounts the real screen with controlled input and an optional score near a
+  /// milestone. Normal routes always use the default constructor above.
   @visibleForTesting
   const EndlessScreen.forTesting({
     super.key,
     required this.boardGenerator,
     this.initialRound = 1,
-  }) : assert(initialRound > 0);
+    this.initialScore = 0,
+  }) : assert(initialRound > 0),
+        assert(initialScore >= 0);
 
   final int initialRound;
+  final int initialScore;
   final EndlessBoardGenerator? boardGenerator;
 
   static const route = '/endless';
@@ -65,6 +69,8 @@ class _EndlessScreenState extends State<EndlessScreen> {
   int _coinsEarned = 0;
   int _nextCoinReward = 1000;
   int _nextChestReward = 5000;
+  Future<void>? _rewardDrain;
+  bool _hasStartedRun = false;
   int _undoUsesRemaining = _maxBoosterUses;
   int _hintUsesRemaining = _maxBoosterUses;
   int _shuffleUsesRemaining = _maxBoosterUses;
@@ -94,6 +100,10 @@ class _EndlessScreenState extends State<EndlessScreen> {
   }
 
   Future<void> _startRun() async {
+    // A prior run's earned grants must finish before a restart reads coins or
+    // resets its in-memory milestone counters.
+    final priorRewards = _rewardDrain;
+    if (priorRewards != null) await priorRewards;
     final repository = _scope.progressRepository;
     final cosmetics = await repository.playerCosmetics();
     final bestScore = await repository.bestEndlessScore();
@@ -104,18 +114,20 @@ class _EndlessScreenState extends State<EndlessScreen> {
     final extraUndoBoosters = await repository.extraUndoBoosters();
     if (!mounted) return;
     _selectedTheme = _themeFromCosmetics(cosmetics);
+    final startingScore = _hasStartedRun ? 0 : widget.initialScore;
     setState(() {
+      _hasStartedRun = true;
       _round = widget.initialRound;
       _trayFeedback = null;
       _tileEffects.clear();
-      _score = 0;
+      _score = startingScore;
       _bestScore = bestScore;
       _boardsCleared = 0;
       _tilesMatched = 0;
       _coins = coins;
       _coinsEarned = 0;
-      _nextCoinReward = 1000;
-      _nextChestReward = 5000;
+      _nextCoinReward = (startingScore ~/ 1000 + 1) * 1000;
+      _nextChestReward = (startingScore ~/ 5000 + 1) * 5000;
       _extraHintBoosters = extraHintBoosters;
       _extraShuffleBoosters = extraShuffleBoosters;
       _extraUndoBoosters = extraUndoBoosters;
@@ -230,16 +242,72 @@ class _EndlessScreenState extends State<EndlessScreen> {
     _score += amount * _multiplier;
   }
 
-  Future<void> _handleScoreRewards() async {
-    while (_score >= _nextCoinReward) {
-      _coins = await _scope.progressRepository.addCoins(25);
-      _coinsEarned += 25;
-      _nextCoinReward += 1000;
+  Future<void> _handleScoreRewards() {
+    // Accepted moves may score while an earlier persistence call is pending.
+    // They share one drain, which rechecks the latest score after every grant.
+    // SharedPreferences writes are not transactional with a milestone receipt;
+    // an exception after a write may still leave its commit outcome ambiguous.
+    final pending = _rewardDrain;
+    if (pending != null) return pending;
+    final completion = Completer<void>();
+    _rewardDrain = completion.future;
+    unawaited(() async {
+      try {
+        // A second tap can raise the score after a no-reward drain returns but
+        // before its Future clears. Recheck while this single flight owns work.
+        while (await _drainScoreRewards()) {
+          if (_score < _nextCoinReward && _score < _nextChestReward) break;
+        }
+      } catch (error, stackTrace) {
+        _reportRewardFailure(error, stackTrace);
+      } finally {
+        _rewardDrain = null;
+        completion.complete();
+      }
+    }());
+    return completion.future;
+  }
+
+  /// Returns false after a failed write, so a due threshold is not retried in
+  /// a tight loop. Another scoring action can retry it.
+  Future<bool> _drainScoreRewards() async {
+    while (true) {
+      if (_score >= _nextCoinReward) {
+        int balance;
+        try {
+          balance = await _scope.progressRepository.addCoins(25);
+        } catch (error, stackTrace) {
+          _reportRewardFailure(error, stackTrace);
+          return false; // Keep this milestone due for a later scoring action.
+        }
+        _coins = balance;
+        _coinsEarned += 25;
+        _nextCoinReward += 1000;
+        continue;
+      }
+      if (_score >= _nextChestReward) {
+        try {
+          // A full inventory remains an existing, successful no-grant result.
+          await _scope.progressRepository.grantEndlessSilverChest();
+        } catch (error, stackTrace) {
+          _reportRewardFailure(error, stackTrace);
+          return false;
+        }
+        _nextChestReward += 5000;
+        continue;
+      }
+      return true;
     }
-    while (_score >= _nextChestReward) {
-      await _scope.progressRepository.grantEndlessSilverChest();
-      _nextChestReward += 5000;
+  }
+
+  void _reportRewardFailure(Object error, StackTrace stackTrace) {
+    if (kDebugMode) {
+      debugPrint('Endless reward persistence failed: $error\n$stackTrace');
     }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Could not save reward. It will retry on your next move.'),
+    ));
   }
 
   void _showMoveFeedback(
@@ -320,7 +388,9 @@ class _EndlessScreenState extends State<EndlessScreen> {
     }
     await _handleScoreRewards();
     if (!mounted) return;
-    if (engine.result == GameResult.won) await _handleBoardCleared();
+    if (identical(engine, _engine) && engine.result == GameResult.won) {
+      await _handleBoardCleared(engine);
+    }
     if (!mounted) return;
     if (engine.result == GameResult.lost) await _handleGameOver();
   }
@@ -343,7 +413,8 @@ class _EndlessScreenState extends State<EndlessScreen> {
         .toSet();
   }
 
-  Future<void> _handleBoardCleared() async {
+  Future<void> _handleBoardCleared(GameEngine engine) async {
+    if (!mounted || !identical(engine, _engine)) return;
     // Cancel outgoing visuals before changing the round's tray placement.
     _tileEffects.clear();
     setState(() {
@@ -410,7 +481,9 @@ class _EndlessScreenState extends State<EndlessScreen> {
     unawaited(_scope.progressRepository.recordBoosterUsed(BoosterKind.hint));
     await _handleScoreRewards();
     if (!mounted) return;
-    if (engine.result == GameResult.won) await _handleBoardCleared();
+    if (identical(engine, _engine) && engine.result == GameResult.won) {
+      await _handleBoardCleared(engine);
+    }
     if (!mounted) return;
     if (engine.result == GameResult.lost) await _handleGameOver();
   }
