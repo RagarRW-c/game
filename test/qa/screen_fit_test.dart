@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
+import 'package:triple_tile_adventure/presentation/widgets/game_tray.dart';
 import 'package:triple_tile_adventure/core/audio_service.dart';
 import 'package:triple_tile_adventure/core/tile_catalog.dart';
 import 'package:triple_tile_adventure/data/level_repository.dart';
@@ -184,11 +186,38 @@ List<String> inspectBoard(WidgetTester tester, QaScreen screen,
   // Verify the actual seven-slot tray and controls exist on screen as well.
   check(find.byType(EmptyTraySlot).evaluate().length == GameEngine.trayLimit,
       'Initial tray must have seven slots');
+  check(find.byType(GameBoosterButton).evaluate().length == 3,
+      'Exactly three shared circular boosters');
+  final trayRect = globalRect(tester, find.byType(GameTray));
+  final frameRect = canvasRect.inflate(2 * scaleX);
+  final expectedActions = [
+    BoosterAction.undo,
+    BoosterAction.hint,
+    BoosterAction.shuffle
+  ];
+  check(
+      tester
+              .widgetList<GameBoosterButton>(find.byType(GameBoosterButton))
+              .map((w) => w.action)
+              .toList()
+              .toString() ==
+          expectedActions.toString(),
+      'Campaign and Endless must use Undo, wand Hint and crossed Shuffle');
   for (final label in ['Undo x2', 'Hint x2', 'Shuffle x2']) {
-    final finder = find.text(label);
+    final finder = find.byWidgetPredicate(
+        (w) => w is GameBoosterButton && '${w.label} ${w.badge}' == label);
     check(finder.evaluate().length == 1, 'Missing booster $label');
     if (finder.evaluate().length == 1) {
       final rect = globalRect(tester, finder);
+      check(!rect.overlaps(trayRect), 'Booster $label overlaps tray');
+      check(!rect.overlaps(frameRect), 'Booster $label overlaps board frame');
+      check(
+          find
+                  .descendant(of: finder, matching: find.text('x2'))
+                  .evaluate()
+                  .length ==
+              1,
+          'Booster $label must render its actual free quantity');
       check(
           screenRect.contains(rect.topLeft) &&
               screenRect.contains(rect.bottomRight),
@@ -246,7 +275,13 @@ void main() {
             }
             // Scrolling the objective cannot displace the gameplay controls.
             for (final text in ['Undo x2', 'Hint x2', 'Shuffle x2']) {
-              expect(find.text(text).hitTestable(), findsOneWidget);
+              expect(
+                  find
+                      .byWidgetPredicate((w) =>
+                          w is GameBoosterButton &&
+                          '${w.label} ${w.badge}' == text)
+                      .hitTestable(),
+                  findsOneWidget);
             }
             expect(tester.takeException(), isNull);
           } finally {

@@ -719,6 +719,13 @@ class ProgressRepository {
     return true;
   }
 
+  /// Compensation for an unused paid booster; this is not earned income.
+  /// SharedPreferences cannot atomically pair this with the original debit.
+  Future<void> refundBoosterCoins(int amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_coinsKey, (prefs.getInt(_coinsKey) ?? 0) + amount);
+  }
+
   Future<int> bestEndlessScore() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_bestEndlessScoreKey) ?? 0;

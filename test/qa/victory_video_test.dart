@@ -23,8 +23,10 @@ import 'package:triple_tile_adventure/presentation/widgets/game_tile.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_ui.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
 import 'package:triple_tile_adventure/presentation/widgets/victory_video.dart';
+import 'package:triple_tile_adventure/presentation/widgets/victory_premium.dart';
 
 import 'support/tile_asset_images.dart';
+import 'support/result_layout.dart';
 
 /// Counts subscriptions through ChangeNotifier's public listener methods.
 /// The victory widget must release its music preference listener on disposal.
@@ -419,6 +421,75 @@ void _expectInitialVideoBounds(WidgetTester tester) {
           .getRect(find.byKey(const ValueKey('victory_next')))
           .overlaps(frame),
       isFalse);
+
+  // Before and after decoder initialization, the full normal-text result must
+  // fit together. Enlarging the cat cannot hide rewards or push actions away.
+  final victory = find.byType(WinScreen);
+  if (MediaQuery.textScalerOf(tester.element(victory)).scale(1) <= 1.2) {
+    expect(position.maxScrollExtent, closeTo(0, .01));
+    final result = tester.widget<WinScreen>(victory);
+    for (final entry in {
+      'Coins': result.coinsEarned,
+      'XP': result.xpEarned,
+    }.entries) {
+      final key = 'victory_reward_${entry.key}';
+      expect(tester.widget<Text>(find.byKey(ValueKey(key))).data,
+          '+${entry.value}');
+      expectResultTextVisible(tester, key, 'victory_scroll');
+    }
+    // The approved static heading is lettering in the banner. Check the real
+    // asset and its complete painted bounds; rewards remain live text.
+    final banner = find.byKey(const ValueKey('victory_title'));
+    expect(tester.widget(banner), isA<PremiumVictoryBanner>());
+    final bannerImage = tester.widget<Image>(
+        find.descendant(of: banner, matching: find.byType(Image)));
+    expect((bannerImage.image as AssetImage).assetName,
+        VictoryPremiumAssets.banner);
+    final bannerBounds = resultGlobalRect(tester, banner);
+    expect(bannerBounds.width / bannerBounds.height, closeTo(1240 / 317, 1e-9));
+    expectResultInside(viewport, bannerBounds,
+        'All illustrated lettering must remain visible');
+    expect(find.byKey(const ValueKey('victory_world')), findsNothing);
+    expect(find.byKey(const ValueKey('victory_description')), findsNothing);
+    if (result.chestLabel != null) {
+      expectResultTextVisible(tester, 'victory_chest', 'victory_scroll');
+    }
+    final regions = <String, Rect>{
+      'cat': frame,
+      'stars': resultGlobalRect(tester, find.byType(VictoryStars)),
+      for (final key in [
+        'victory_title',
+        'victory_rewards',
+        'victory_next',
+        'victory_replay',
+        'victory_map',
+      ])
+        key: resultGlobalRect(tester, find.byKey(ValueKey(key))),
+    };
+    final entries = regions.entries.toList();
+    for (var i = 0; i < entries.length; i++) {
+      expectResultInside(viewport, entries[i].value,
+          '${entries[i].key} must be fully visible initially');
+      for (var j = i + 1; j < entries.length; j++) {
+        final intersection = entries[i].value.intersect(entries[j].value);
+        // Only ignore subpixel roundoff at shared transformed edges.
+        expect(intersection.width > .01 && intersection.height > .01, isFalse,
+            reason: '${entries[i].key} must not overlap ${entries[j].key}');
+      }
+    }
+    for (final key in ['victory_next', 'victory_replay', 'victory_map']) {
+      final button = find.byKey(ValueKey(key));
+      expect(button.hitTestable(), findsOneWidget);
+      expect(regions[key]!.height, greaterThanOrEqualTo(48));
+      final label = find.descendant(of: button, matching: find.byType(Text));
+      final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(of: label, matching: find.byType(RichText)));
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expectResultInside(regions[key]!, resultGlobalRect(tester, label),
+          '$key must contain its complete label');
+    }
+    expect(tester.takeException(), isNull);
+  }
 }
 
 Future<void> _cleanupCampaign(
@@ -1011,6 +1082,18 @@ void main() {
       expect(find.byType(WinScreen), findsOneWidget);
       expect(find.byType(VictoryVideo), findsOneWidget);
       expect(progress.completionCalls, 1);
+      // Keep this test's default 800x600 viewport: unlike the portrait fixtures,
+      // it exposes width-scaled artwork starving the vertical hero at h == 600.
+      // Verify the result BEFORE navigation, so a layout error cannot be hidden
+      // behind route replacement or a zero-height but mounted video widget.
+      expect(tester.takeException(), isNull,
+          reason: 'The settled victory layout must fit before Continue');
+      final content = tester.renderObject<RenderFlex>(
+          find.byKey(const ValueKey('victory_content')));
+      expect(content.constraints.maxWidth, 496); // 520 cap minus 2x12 padding.
+      expect(content.constraints.minHeight, 600);
+      expect(content.constraints.maxHeight, 600);
+      _expectInitialVideoBounds(tester);
       final coins = await progress.coins();
       expect(
           tester

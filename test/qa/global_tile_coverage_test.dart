@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
 import 'package:triple_tile_adventure/core/audio_service.dart';
 import 'package:triple_tile_adventure/core/tile_body_geometry.dart';
 import 'package:triple_tile_adventure/core/tile_catalog.dart';
@@ -310,7 +311,11 @@ void main() {
                 firstHint
                     .every((id) => !oracle.isTileCovered(oracle.tileById(id)!)),
                 isTrue);
-            await tester.tap(find.text('Hint x2'));
+            await tester.tap(find.byWidgetPredicate((w) =>
+                w is GameBoosterButton &&
+                w.action == BoosterAction.hint &&
+                w.label == 'Hint' &&
+                w.badge == 'x2'));
             expect(oracle.collectHintTileIds(firstHint), isTrue);
             await _settle(tester);
             _expectBoard(tester, oracle, theme, covered: {'base'});
@@ -323,7 +328,11 @@ void main() {
                 secondHint
                     .every((id) => !oracle.isTileCovered(oracle.tileById(id)!)),
                 isTrue);
-            await tester.tap(find.text('Hint x1'));
+            await tester.tap(find.byWidgetPredicate((w) =>
+                w is GameBoosterButton &&
+                w.action == BoosterAction.hint &&
+                w.label == 'Hint' &&
+                w.badge == 'x1'));
             expect(oracle.collectHintTileIds(secondHint), isTrue);
             await _settle(tester);
             _expectBoard(tester, oracle, theme, covered: {});

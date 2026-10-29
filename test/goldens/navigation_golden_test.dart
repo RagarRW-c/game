@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:triple_tile_adventure/presentation/screens/main_menu_screen.dart';
 import 'package:triple_tile_adventure/presentation/screens/map_screen.dart';
@@ -5,6 +6,39 @@ import 'package:triple_tile_adventure/presentation/screens/world_selection_scree
 import 'package:triple_tile_adventure/presentation/widgets/adventure_level_node.dart';
 
 import 'support/golden_harness.dart';
+
+void _expectMenuFits(WidgetTester tester) {
+  final scroll = find.byKey(const ValueKey('main_menu_scroll'));
+  final position = tester
+      .state<ScrollableState>(
+          find.descendant(of: scroll, matching: find.byType(Scrollable)))
+      .position;
+  expect(position.maxScrollExtent, closeTo(0, .01));
+  for (final label in [
+    'Adventure',
+    'Endless Mode',
+    'Claim Daily Reward',
+    'Daily Spin',
+    'Booster Shop',
+    'Profile',
+    'Chests',
+    'Daily Challenges',
+    'Collection Book',
+    'Achievements',
+    'Statistics',
+    'Settings'
+  ]) {
+    final action = find.byKey(ValueKey('menu_action_$label'));
+    expect(action.hitTestable(), findsOneWidget,
+        reason: '$label must be reachable before scrolling');
+    final bounds = goldenGlobalRect(tester, scroll).inflate(.01);
+    final button = goldenGlobalRect(tester, action);
+    expect(
+        bounds.contains(button.topLeft) && bounds.contains(button.bottomRight),
+        isTrue,
+        reason: '$label must be fully visible');
+  }
+}
 
 void main() {
   configureGoldens();
@@ -16,6 +50,7 @@ void main() {
     expect(find.text('1250'), findsOneWidget);
     expect(find.text('Adventure'), findsOneWidget);
     expect(find.text('Endless Mode'), findsOneWidget);
+    _expectMenuFits(tester);
     await expectGolden(tester, 'home', phone);
 
     await revealGolden(tester, find.text('Booster Shop'));
@@ -31,6 +66,7 @@ void main() {
   for (final viewport in [smallPhone, largePhone]) {
     goldenTest('golden home ${viewport.suffix}', (tester) async {
       await pumpGolden(tester, const MainMenuScreen(), viewport: viewport);
+      _expectMenuFits(tester);
       await expectGolden(tester, 'home', viewport);
     });
   }

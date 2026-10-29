@@ -29,6 +29,54 @@ Future<void> _openResult(
 void main() {
   configureGoldens();
 
+  for (final viewport in [smallPhone, phone, largePhone]) {
+    goldenTest('golden compact Campaign victory ${viewport.suffix}',
+        (tester) async {
+      await _openResult(
+          tester,
+          WinScreen(
+            level: 7,
+            isFinalLevel: false,
+            tilesCleared: 42,
+            undoUsed: 0,
+            hintUsed: 1,
+            shuffleUsed: 0,
+            starsEarned: 3,
+            coinsEarned: 50,
+            xpEarned: 150,
+            chestLabel: 'Silver Chest',
+            onNext: () {},
+            onRestart: () {},
+            onMap: () {},
+          ),
+          viewport);
+      final scroll = find.byKey(const ValueKey('victory_scroll'));
+      final position = tester
+          .state<ScrollableState>(
+              find.descendant(of: scroll, matching: find.byType(Scrollable)))
+          .position;
+      expect(position.maxScrollExtent, closeTo(0, .01));
+      for (final key in [
+        'victory_cat_frame',
+        'victory_title',
+        'victory_reward_Coins',
+        'victory_reward_XP',
+        'victory_chest',
+        'victory_next',
+        'victory_replay',
+        'victory_map'
+      ]) {
+        expectResultInside(
+            resultGlobalRect(tester, scroll),
+            resultGlobalRect(tester, find.byKey(ValueKey(key))),
+            '$key must be visible together with the celebration');
+      }
+      // Desktop/reduced-motion uses the existing deterministic trophy fallback.
+      // Native cat playback is covered by victory_video_test's fake platform.
+      await expectGolden(tester, 'victory_campaign_compact', viewport);
+    });
+  }
+
   for (final viewport in [phone, smallLargeText]) {
     goldenTest('golden victory rewards ${viewport.suffix}', (tester) async {
       await _openResult(

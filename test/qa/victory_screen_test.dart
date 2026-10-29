@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:triple_tile_adventure/core/tile_catalog.dart';
 import 'package:triple_tile_adventure/presentation/screens/win_screen.dart';
 import 'package:triple_tile_adventure/presentation/theme/game_theme.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_ui.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
-import 'package:triple_tile_adventure/presentation/widgets/world_atmosphere.dart';
+import 'package:triple_tile_adventure/presentation/widgets/coastal_ui.dart';
+import 'package:triple_tile_adventure/presentation/widgets/victory_premium.dart';
+import 'package:triple_tile_adventure/presentation/theme/world_theme.dart';
 
 import 'support/geometry.dart';
 import 'support/result_layout.dart';
@@ -106,14 +108,42 @@ void main() {
             map: () => map++);
         await tester.pumpAndSettle();
 
-        expect(
-            find.text(finalLevel ? 'Adventure Complete!' : 'Level Complete!'),
-            findsOneWidget);
+        if (boss) {
+          expect(find.text('108 tiles cleared'), findsOneWidget,
+              reason: 'Boss and final result statistics remain unchanged');
+        } else {
+          expect(find.textContaining('tiles cleared'), findsNothing,
+              reason: 'Ordinary Campaign results no longer show statistics');
+        }
+
+        if (boss) {
+          expect(
+              find.text(finalLevel ? 'Adventure Complete!' : 'Level Complete!'),
+              findsOneWidget);
+          expect(find.byType(PremiumVictoryBanner), findsNothing);
+        } else {
+          final banner = find.byType(PremiumVictoryBanner);
+          expect(banner, findsOneWidget);
+          final art = tester.widget<Image>(
+              find.descendant(of: banner, matching: find.byType(Image)));
+          expect(
+              (art.image as AssetImage).assetName, VictoryPremiumAssets.banner);
+        }
         for (var i = 1; i <= 3; i++) {
-          final icon =
-              tester.widget<Icon>(find.byKey(ValueKey('victory_star_$i')));
-          expect(icon.icon,
-              i <= stars ? Icons.star_rounded : Icons.star_border_rounded);
+          final star = find.byKey(ValueKey('victory_star_$i'));
+          if (boss) {
+            expect(tester.widget<Icon>(star).icon,
+                i <= stars ? Icons.star_rounded : Icons.star_border_rounded);
+          } else {
+            expect(tester.widget<PremiumVictoryStar>(star).earned, i <= stars);
+            final art = tester.widget<Image>(
+                find.descendant(of: star, matching: find.byType(Image)));
+            expect(
+                (art.image as AssetImage).assetName,
+                i <= stars
+                    ? VictoryPremiumAssets.star
+                    : VictoryPremiumAssets.unearnedStar);
+          }
         }
         expect(
             tester
@@ -322,20 +352,24 @@ void main() {
   });
 
   for (final level in [1, 11, 21, 31, 41, 51, 61, 71, 81, 91]) {
-    testWidgets('victory carries its world palette for level $level',
+    testWidgets(
+        'victory carries its world identity in the coastal design for level $level',
         (tester) async {
       await mountVictory(tester, qaScreens[1], level: level);
       await tester.pumpAndSettle();
-      final background =
-          tester.widget<GameBackground>(find.byType(GameBackground));
-      final atmosphere =
-          tester.widget<WorldAtmosphere>(find.byType(WorldAtmosphere));
-      expect(background.worldTheme!.tileTheme, tileVisualThemeForLevel(level));
-      expect(atmosphere.theme, background.worldTheme);
-      final primary =
-          tester.widget<GameButton>(find.byKey(const ValueKey('victory_next')));
-      expect((primary.gradient! as LinearGradient).colors,
-          background.worldTheme!.actionGradient.colors);
+      expect(find.byType(CoastalBackdrop), findsOneWidget);
+      expect(find.byKey(const ValueKey('victory_world')), findsNothing);
+      expect(find.byKey(const ValueKey('victory_description')), findsNothing);
+      expect(
+          find.bySemanticsLabel(
+              '${WorldThemes.forLevel(level).worldName}, level $level'),
+          findsOneWidget,
+          reason: 'World and level remain accessible without visible copy');
+      final primary = tester.widget<PremiumVictoryButton>(
+          find.byKey(const ValueKey('victory_next')));
+      expect(primary.primary, isTrue);
+      expect(primary.symbol, VictoryActionSymbol.play);
+      expect(primary.onPressed, isNotNull);
       expect(tester.takeException(), isNull);
     });
   }
@@ -370,18 +404,27 @@ void main() {
                       width: 100,
                       child: GameBoosterButton(
                         onPressed: action,
-                        icon: const Icon(Icons.undo_rounded),
+                        action: BoosterAction.undo,
                         label: 'Undo',
                         badge: 'x2',
-                        accent: Colors.teal,
                       )))),
         ));
     await show(() => taps++);
     await tester.tap(find.byType(GameBoosterButton));
     await tester.pumpAndSettle();
     expect(taps, 1);
-    expect(tester.getSize(find.byType(GameBoosterButton)).height, 64);
+    final button = find.byType(GameBoosterButton);
+    final enabledBounds = tester.getRect(button);
+    final label = find.descendant(of: button, matching: find.text('x2'));
+    final labelBounds = tester.getRect(label);
+    final labelParagraph = tester.renderObject<RenderParagraph>(
+        find.descendant(of: label, matching: find.byType(RichText)));
+    expect(enabledBounds.height, greaterThanOrEqualTo(64));
+    expect(labelParagraph.didExceedMaxLines, isFalse);
+    expect(enabledBounds.contains(labelBounds.topLeft), isTrue);
+    expect(enabledBounds.contains(labelBounds.bottomRight), isTrue);
     await show(null);
+    expect(tester.getSize(button).height, greaterThanOrEqualTo(64));
     await tester.tap(find.byType(GameBoosterButton));
     await tester.pumpAndSettle();
     expect(taps, 1);

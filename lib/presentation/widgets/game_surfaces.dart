@@ -2,6 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
+import 'booster_art.dart';
+
+export 'booster_art.dart'
+    show BoosterAction, BoosterActionArtwork, BoosterMedallionPainter;
+
+/// Shared gameplay spacing: reserve space for artwork once, rather than
+/// stacking large tray, board and booster gutters at the expense of tile scale.
+abstract final class GameplaySpacing {
+  static const boardMargin = EdgeInsets.symmetric(horizontal: 10, vertical: 4);
+  static const trayMargin = EdgeInsets.symmetric(horizontal: 16, vertical: 4);
+  // The booster already includes top clearance and space below its badge.
+  static const boosterPadding = EdgeInsets.symmetric(horizontal: 16);
+}
 
 // These decorations deliberately retain the original 2px board and 3px tray
 // borders. Painting upgrades must not consume more of the logical canvas.
@@ -126,111 +139,152 @@ class GameBoosterButton extends StatelessWidget {
   const GameBoosterButton(
       {super.key,
       required this.onPressed,
-      required this.icon,
+      required this.action,
       required this.label,
-      required this.badge,
-      required this.accent});
+      required this.badge});
   final VoidCallback? onPressed;
-  final Widget icon;
+  final BoosterAction action;
   final String label;
   final String badge;
-  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
-    final radius = GameRadius.largeRadius;
+    // +3 is inventory; only unsigned decimal digits represent a coin price.
+    final paid = RegExp(r'^[0-9]+$').hasMatch(badge);
     return Semantics(
-      button: true,
-      enabled: enabled,
-      label: '$label $badge',
-      onTap: onPressed,
-      child: ExcludeSemantics(
-          child: AnimatedOpacity(
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : GameDurations.quick,
-        opacity: enabled ? 1 : 0.46,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: radius,
-            child: Ink(
-                height: 64,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: enabled
-                          ? [
-                              Color.lerp(accent, Colors.white, 0.12)!,
-                              Color.lerp(accent, Colors.black, 0.24)!
-                            ]
-                          : const [
-                              GameColors.disabledTop,
-                              GameColors.disabledBottom
-                            ]),
-                  borderRadius: radius,
-                  border: Border.all(color: Colors.white70, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Color.lerp(accent, Colors.black, 0.5)!,
-                        offset: const Offset(0, 4)),
-                    ...GameShadows.light()
-                  ],
-                ),
-                child: Stack(children: [
-                  Positioned(
-                    top: 3,
-                    left: 10,
-                    right: 10,
-                    height: 15,
-                    child: IgnorePointer(
-                        child: DecoratedBox(
-                            decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      gradient: const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0x55FFFFFF), Color(0x00FFFFFF)]),
-                    ))),
-                  ),
-                  Positioned(
-                      top: 6,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                          child: IconTheme(
-                              data: const IconThemeData(
-                                  color: Colors.white, size: 25),
-                              child: icon))),
-                  Positioned(
-                      left: 5,
-                      right: 5,
-                      bottom: 5,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 3, vertical: 3),
-                        decoration: BoxDecoration(
-                            color: GameColors.primaryBlueDark
-                                .withValues(alpha: 0.92),
-                            borderRadius: GameRadius.smallRadius,
-                            border: Border.all(color: Colors.white30)),
-                        child: Text('$label $badge',
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                height: 1,
-                                fontWeight: FontWeight.w900)),
-                      )),
-                ])),
-          ),
-        ),
-      )),
-    );
+        button: true,
+        enabled: enabled,
+        label: '$label $badge',
+        onTap: onPressed,
+        child: ExcludeSemantics(
+            child: AnimatedOpacity(
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : GameDurations.quick,
+                opacity: enabled ? 1 : .46,
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final width = constraints.hasBoundedWidth
+                      ? constraints.maxWidth
+                      : 100.0;
+                  final diameter = (width * .8).clamp(0.0, 80.0).toDouble();
+                  final coinSize = diameter * .24;
+                  final style = Theme.of(context)
+                      .textTheme
+                      .bodyMedium!
+                      .copyWith(
+                          fontSize: diameter * .25,
+                          height: 1.05,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white);
+                  final measure = TextPainter(
+                      text: TextSpan(text: badge, style: style),
+                      textDirection: Directionality.of(context),
+                      textScaler: MediaQuery.textScalerOf(context),
+                      locale: Localizations.maybeLocaleOf(context))
+                    ..layout();
+                  final textWidth = measure.width;
+                  measure.dispose();
+                  final requiredWidth =
+                      textWidth + 10.1 + (paid ? coinSize + 3 : 0);
+                  final badgeWidth =
+                      requiredWidth.clamp(diameter * .78, width).toDouble();
+                  // At large text sizes, move the coin below the number before
+                  // sacrificing readable text. Normal-size prices remain inline.
+                  final stackCoin = paid && requiredWidth > width;
+                  final amount = Text(badge,
+                      key: const ValueKey('booster_badge_value'),
+                      textAlign: TextAlign.center,
+                      style: style);
+                  final coin = CustomPaint(
+                      key: const ValueKey('booster_price_coin'),
+                      size: Size.square(coinSize),
+                      painter: const BoosterCoinPainter());
+                  return SizedBox(
+                      width: width,
+                      child: Stack(fit: StackFit.passthrough, children: [
+                        // Keep the allocated width through to the inner stack.
+                        // A loose child shrinks to the badge and clips the wider
+                        // positioned circle; the badge itself stays content-sized.
+                        Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Stack(
+                                alignment: Alignment.topCenter,
+                                children: [
+                                  Positioned(
+                                      top: 4,
+                                      child: CustomPaint(
+                                          key: const ValueKey(
+                                              'booster_icon_medallion'),
+                                          painter:
+                                              const BoosterMedallionPainter(),
+                                          child: SizedBox.square(
+                                              dimension: diameter,
+                                              child: Padding(
+                                                  padding: EdgeInsets.fromLTRB(
+                                                      diameter * .15,
+                                                      diameter * .1,
+                                                      diameter * .15,
+                                                      diameter * .22),
+                                                  child: BoosterActionArtwork(
+                                                      action))))),
+                                  Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(height: 4 + diameter * .73),
+                                        Container(
+                                            key: const ValueKey(
+                                                'booster_funding_badge'),
+                                            width: badgeWidth,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 4, vertical: 3),
+                                            decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                        diameter * .12),
+                                                gradient: const LinearGradient(
+                                                    begin: Alignment.topCenter,
+                                                    end: Alignment.bottomCenter,
+                                                    colors: [
+                                                      Color(0xFF234E72),
+                                                      Color(0xFF122F50)
+                                                    ]),
+                                                border: Border.all(color: const Color(0xFF315D80)),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                      color: Color(0x660A1727),
+                                                      blurRadius: 3,
+                                                      offset: Offset(0, 2))
+                                                ]),
+                                            child: stackCoin
+                                                ? Column(mainAxisSize: MainAxisSize.min, children: [
+                                                    amount,
+                                                    const SizedBox(height: 2),
+                                                    coin
+                                                  ])
+                                                : Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment.center,
+                                                    children: [
+                                                        Flexible(child: amount),
+                                                        if (paid) ...[
+                                                          const SizedBox(
+                                                              width: 3),
+                                                          coin
+                                                        ]
+                                                      ])),
+                                      ]),
+                                ])),
+                        // Paint the ripple above the opaque illustrated layers.
+                        Positioned.fill(
+                            child: Material(
+                                type: MaterialType.transparency,
+                                child: InkWell(
+                                    onTap: onPressed,
+                                    borderRadius: BorderRadius.circular(24)))),
+                      ]));
+                }))));
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
 import 'package:triple_tile_adventure/domain/game_engine.dart';
 import 'package:triple_tile_adventure/presentation/screens/endless_screen.dart';
 import 'package:triple_tile_adventure/presentation/screens/game_screen.dart';
@@ -16,9 +17,13 @@ void _expectBoard(WidgetTester tester, int round) {
   expect(_boardTiles, findsWidgets);
   final tray = tester.widget<GameTray>(find.byType(GameTray));
   expect(tray.trayTiles.length, GameEngine.trayLimit);
-  expect(find.text('Undo x2'), findsOneWidget);
-  expect(find.text('Hint x2'), findsOneWidget);
-  expect(find.text('Shuffle x2'), findsOneWidget);
+  for (final label in ['Undo', 'Hint', 'Shuffle']) {
+    final button = find.byWidgetPredicate(
+        (w) => w is GameBoosterButton && w.label == label && w.badge == 'x2');
+    expect(button, findsOneWidget);
+    expect(
+        find.descendant(of: button, matching: find.text('x2')), findsOneWidget);
+  }
   final trayBounds = goldenGlobalRect(tester, find.byType(GameTray));
   final tileBounds = goldenGlobalRect(tester, _boardTiles.last);
   if (trayPlacementForRound(round) == TrayPlacement.top) {

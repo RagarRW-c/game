@@ -14,6 +14,7 @@ import 'package:triple_tile_adventure/presentation/theme/game_theme.dart';
 
 import 'golden_fixtures.dart';
 import '../../qa/support/tile_asset_images.dart';
+import '../../qa/support/coastal_assets.dart';
 
 class GoldenViewport {
   const GoldenViewport(this.size, {this.textScale = 1});
@@ -94,6 +95,7 @@ Future<void> settleGolden(WidgetTester tester) async {
   await tester.pumpAndSettle(const Duration(milliseconds: 50),
       EnginePhase.sendSemanticsUpdate, const Duration(seconds: 3));
   await loadVisibleTileImages(tester);
+  await loadCoastalImages(tester);
   expect(tester.takeException(), isNull);
   expect(find.byType(CircularProgressIndicator), findsNothing,
       reason: 'Never approve a loading screen as the requested UI.');

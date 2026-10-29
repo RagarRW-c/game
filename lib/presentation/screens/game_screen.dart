@@ -16,6 +16,7 @@ import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../theme/world_theme.dart';
 import '../tile_feedback.dart';
+import '../booster_transaction.dart';
 import '../widgets/achievement_popup.dart';
 import '../widgets/game_over_dialog.dart';
 import '../widgets/game_tile.dart';
@@ -69,6 +70,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   bool _vibrationEnabled = true;
   TrayFeedback? _trayFeedback;
   final _tileEffects = TileEffectsController();
+  final _boosterTransaction = BoosterTransaction();
   int _feedbackSerial = 0;
   bool _gameOverDialogShowing = false;
   bool _winDialogShowing = false;
@@ -201,13 +203,6 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     safelyPlayFeedback(feedback);
   }
 
-  void _showNotEnoughCoins() {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Not enough coins')),
-    );
-  }
-
   void _resetAnimationState() {
     _tileEffects.clear();
     _hintedTileIds.clear();
@@ -260,26 +255,105 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     return freeUsesRemaining > 0 || inventory > 0 || _coins >= _boosterCoinCost;
   }
 
-  Future<bool> _payForBoosterIfNeeded(
-    int freeUsesRemaining,
+  Future<void> _refreshBoosterResources() async {
+    final engine = _engine;
+    final repository = _scope.progressRepository;
+    final coins = await repository.coins();
+    final hint = await repository.extraHintBoosters();
+    final shuffle = await repository.extraShuffleBoosters();
+    final undo = await repository.extraUndoBoosters();
+    if (!mounted || !identical(engine, _engine)) return;
+    setState(() {
+      _coins = coins;
+      _extraHintBoosters = hint;
+      _extraShuffleBoosters = shuffle;
+      _extraUndoBoosters = undo;
+    });
+  }
+
+  Future<bool> _transactBooster(
+    GameEngine engine,
+    int freeUses,
     int inventory,
-    Future<bool> Function() useInventory,
-    VoidCallback decrementInventory,
-  ) async {
-    if (freeUsesRemaining > 0) return true;
-    if (inventory > 0) {
-      final used = await useInventory();
-      if (!used) return false;
-      if (mounted) setState(decrementInventory);
-      return true;
-    }
-    final spent = await _scope.progressRepository.spendCoins(_boosterCoinCost);
-    if (!spent) {
-      _showNotEnoughCoins();
-      return false;
-    }
-    if (mounted) setState(() => _coins -= _boosterCoinCost);
-    return true;
+    BoosterKind kind,
+    bool Function() legal,
+    bool Function() apply, {
+    Route<dynamic>? actionRoute,
+  }) {
+    final repository = _scope.progressRepository;
+    final route = actionRoute ?? ModalRoute.of(context);
+    final useInventory = switch (kind) {
+      BoosterKind.hint => repository.useExtraHintBooster,
+      BoosterKind.shuffle => repository.useExtraShuffleBooster,
+      BoosterKind.undo => repository.useExtraUndoBooster,
+    };
+    final restoreInventory = switch (kind) {
+      BoosterKind.hint => repository.addExtraHintBoosters,
+      BoosterKind.shuffle => repository.addExtraShuffleBoosters,
+      BoosterKind.undo => repository.addExtraUndoBoosters,
+    };
+    return _boosterTransaction.run(
+      free: freeUses > 0,
+      pay: () async {
+        final paid = inventory > 0
+            ? await useInventory()
+            : await repository.spendCoins(_boosterCoinCost);
+        if (!paid && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(inventory > 0 ? 'No booster available' : 'Not enough coins'),
+          ));
+        }
+        return paid;
+      },
+      refund: () async {
+        if (inventory > 0) {
+          await restoreInventory(1);
+        } else {
+          await repository.refundBoosterCoins(_boosterCoinCost);
+        }
+        // A UI refresh failure must never cause a successful refund to repeat.
+        if (mounted) {
+          try {
+            await _refreshBoosterResources();
+          } catch (error) {
+            debugPrint('Booster balance refresh failed: $error');
+          }
+        }
+      },
+      valid: () => mounted && identical(engine, _engine) &&
+          (route == null || (route.isActive && route.isCurrent)) && legal(),
+      apply: () {
+        final applied = apply();
+        if (applied && freeUses == 0) {
+          setState(() {
+            if (inventory == 0) {
+              _coins -= _boosterCoinCost;
+            } else {
+              switch (kind) {
+                case BoosterKind.hint:
+                  _extraHintBoosters--;
+                  break;
+                case BoosterKind.shuffle:
+                  _extraShuffleBoosters--;
+                  break;
+                case BoosterKind.undo:
+                  _extraUndoBoosters--;
+                  break;
+              }
+            }
+          });
+        }
+        return applied;
+      },
+      onError: (error, stack) {
+        debugPrint('Booster transaction failed: $error');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Booster could not be completed. Please try again.'),
+          ));
+        }
+      },
+    );
   }
 
   String _boosterCostLabel(int freeUsesRemaining, int inventory) {
@@ -399,25 +473,29 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
       return;
     }
     final usedFreeHint = _hintUsesRemaining > 0;
-    if (!await _payForBoosterIfNeeded(
-      _hintUsesRemaining,
-      _extraHintBoosters,
-      _scope.progressRepository.useExtraHintBooster,
-      () => _extraHintBoosters--,
-    )) {
-      return;
-    }
-
-    final beforeTrayIds = List<String>.from(engine.tray);
-    late final bool collected;
-    if (!_safeSetState(() {
-      _hintedTileIds.clear();
-      collected = engine.collectHintTileIds(hintIds);
-      if (collected && usedFreeHint) _hintUsesRemaining--;
-      if (collected) _hintUsedThisLevel++;
-    })) {
-      return;
-    }
+    var beforeTrayIds = <String>[];
+    var collected = false;
+    final applied = await _transactBooster(
+      engine, _hintUsesRemaining, _extraHintBoosters, BoosterKind.hint,
+      () => engine.result == GameResult.playing &&
+          engine.tray.length + hintIds.length <= GameEngine.trayLimit &&
+          hintIds.every((id) {
+            final tile = engine.tileById(id);
+            return tile != null && engine.boardTiles.any((t) => t.id == id) &&
+                engine.isUncovered(tile, boardSize, tileSize);
+          }),
+      () {
+        beforeTrayIds = List<String>.from(engine.tray);
+        setState(() {
+          _hintedTileIds.clear();
+          collected = engine.collectHintTileIds(hintIds);
+          if (collected && usedFreeHint) _hintUsesRemaining--;
+          if (collected) _hintUsedThisLevel++;
+        });
+        return collected;
+      },
+    );
+    if (!applied || !mounted || !identical(engine, _engine)) return;
     if (!collected) {
       if (engine.result == GameResult.lost) await _handleGameOver(level: level);
       return;
@@ -475,35 +553,35 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   }
 
   Future<bool> _useShuffle(GameEngine engine,
-      {bool fromGameOver = false}) async {
+      {bool fromGameOver = false, Route<dynamic>? actionRoute}) async {
     if (!fromGameOver && engine.result != GameResult.playing) return false;
     if (engine.boardTiles.length < 2) return false;
     final usedFreeShuffle = _shuffleUsesRemaining > 0;
-    if (!await _payForBoosterIfNeeded(
-      _shuffleUsesRemaining,
-      _extraShuffleBoosters,
-      _scope.progressRepository.useExtraShuffleBooster,
-      () => _extraShuffleBoosters--,
-    )) {
-      return false;
-    }
-
-    late final bool shuffled;
-    if (!_safeSetState(() {
-      _hintedTileIds.clear();
-      if (fromGameOver && engine.result == GameResult.lost) {
-        engine.result = GameResult.playing;
-      }
-      shuffled = engine.shuffleBoard();
-      if (shuffled) {
-        _trayFeedback = null;
-        _tileEffects.clear();
-      }
-      if (shuffled && usedFreeShuffle) _shuffleUsesRemaining--;
-      if (shuffled) _shuffleUsedThisLevel++;
-    })) {
-      return false;
-    }
+    var shuffled = false;
+    final applied = await _transactBooster(
+      engine, _shuffleUsesRemaining, _extraShuffleBoosters, BoosterKind.shuffle,
+      () => engine.boardTiles.length >= 2 &&
+          (engine.result == GameResult.playing ||
+              (fromGameOver && engine.result == GameResult.lost)),
+      () {
+        setState(() {
+          _hintedTileIds.clear();
+          if (fromGameOver && engine.result == GameResult.lost) {
+            engine.result = GameResult.playing;
+          }
+          shuffled = engine.shuffleBoard();
+          if (shuffled) {
+            _trayFeedback = null;
+            _tileEffects.clear();
+          }
+          if (shuffled && usedFreeShuffle) _shuffleUsesRemaining--;
+          if (shuffled) _shuffleUsedThisLevel++;
+        });
+        return shuffled;
+      },
+      actionRoute: actionRoute,
+    );
+    if (!applied || !mounted || !identical(engine, _engine)) return false;
     if (!shuffled) return false;
     _playSfx(_scope.audioService.playBooster, 'booster');
     unawaited(_recordBoosterUsed(BoosterKind.shuffle));
@@ -512,25 +590,25 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
 
   Future<void> _useUndo(GameEngine engine) async {
     if (!engine.canUndo) return;
+    final undoTray = List<String>.from(engine.tray);
     final usedFreeUndo = _undoUsesRemaining > 0;
-    if (!await _payForBoosterIfNeeded(
-      _undoUsesRemaining,
-      _extraUndoBoosters,
-      _scope.progressRepository.useExtraUndoBooster,
-      () => _extraUndoBoosters--,
-    )) {
-      return;
-    }
-
-    late final bool undone;
-    _safeSetState(() {
-      undone = engine.undo();
-      if (undone) {
-        _resetAnimationState();
-        if (usedFreeUndo) _undoUsesRemaining--;
-        _undoUsedThisLevel++;
-      }
-    });
+    var undone = false;
+    final applied = await _transactBooster(
+      engine, _undoUsesRemaining, _extraUndoBoosters, BoosterKind.undo,
+      () => engine.canUndo && listEquals(engine.tray, undoTray),
+      () {
+        setState(() {
+          undone = engine.undo();
+          if (undone) {
+            _resetAnimationState();
+            if (usedFreeUndo) _undoUsesRemaining--;
+            _undoUsedThisLevel++;
+          }
+        });
+        return undone;
+      },
+    );
+    if (!applied || !mounted || !identical(engine, _engine)) return;
     if (undone) {
       _playSfx(_scope.audioService.playBooster, 'booster');
       unawaited(_recordBoosterUsed(BoosterKind.undo));
@@ -547,7 +625,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _GameOverDialog(
+      builder: (dialogContext) => _GameOverDialog(
         canUseShuffle:
             _canUseBooster(_shuffleUsesRemaining, _extraShuffleBoosters),
         onBackToMap: () {
@@ -557,8 +635,12 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         onUseShuffle: () async {
           final engine = _engine;
           if (engine == null) return;
-          final shuffled = await _useShuffle(engine, fromGameOver: true);
-          if (shuffled && mounted) _navigator.pop();
+          final dialogRoute = ModalRoute.of(dialogContext);
+          final shuffled = await _useShuffle(engine, fromGameOver: true,
+              actionRoute: dialogRoute);
+          if (shuffled && mounted && (dialogRoute?.isCurrent ?? false)) {
+            _navigator.pop();
+          }
         },
         onRestart: level == null
             ? null
@@ -1036,8 +1118,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                                     // FittedBox scales canvas + frame together.
                                     width: boardSize.width + 4,
                                     height: boardSize.height + 4,
-                                    margin:
-                                        const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                                    margin: GameplaySpacing.boardMargin,
                                     decoration:
                                         boardSurfaceDecoration(worldTheme),
                                     child: Stack(
@@ -1097,7 +1178,6 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                               ),
                             ),
                             _BoosterBar(
-                              worldTheme: worldTheme,
                               onShuffle: _canUseBooster(_shuffleUsesRemaining,
                                       _extraShuffleBoosters)
                                   ? () => unawaited(_useShuffle(engine))
@@ -1504,7 +1584,6 @@ class _ObjectiveBadge extends StatelessWidget {
 
 class _BoosterBar extends StatelessWidget {
   const _BoosterBar({
-    required this.worldTheme,
     required this.onShuffle,
     required this.onHint,
     required this.onUndo,
@@ -1516,7 +1595,6 @@ class _BoosterBar extends StatelessWidget {
   final VoidCallback? onShuffle;
   final VoidCallback? onHint;
   final VoidCallback? onUndo;
-  final WorldVisualTheme worldTheme;
   final String undoLabel;
   final String hintLabel;
   final String shuffleLabel;
@@ -1524,41 +1602,33 @@ class _BoosterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        GameSpacing.lg,
-        GameSpacing.xs,
-        GameSpacing.lg,
-        GameSpacing.sm,
-      ),
+      padding: GameplaySpacing.boosterPadding,
       child: Row(
         children: [
           Expanded(
             child: GameBoosterButton(
               onPressed: onUndo,
-              icon: const Icon(Icons.arrow_back_rounded),
+              action: BoosterAction.undo,
               label: 'Undo',
               badge: undoLabel,
-              accent: worldTheme.boosterAccents[0],
             ),
           ),
           const SizedBox(width: GameSpacing.sm),
           Expanded(
             child: GameBoosterButton(
               onPressed: onHint,
-              icon: const Icon(Icons.pets_rounded),
+              action: BoosterAction.hint,
               label: 'Hint',
               badge: hintLabel,
-              accent: worldTheme.boosterAccents[1],
             ),
           ),
           const SizedBox(width: GameSpacing.sm),
           Expanded(
             child: GameBoosterButton(
               onPressed: onShuffle,
-              icon: const Icon(Icons.air_rounded),
+              action: BoosterAction.shuffle,
               label: 'Shuffle',
               badge: shuffleLabel,
-              accent: worldTheme.boosterAccents[2],
             ),
           ),
         ],

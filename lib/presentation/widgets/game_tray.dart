@@ -68,8 +68,7 @@ class GameTray extends StatelessWidget {
           : null,
       child: Container(
         height: 94,
-        margin: const EdgeInsets.fromLTRB(
-            GameSpacing.lg, GameSpacing.sm, GameSpacing.lg, GameSpacing.lg),
+        margin: GameplaySpacing.trayMargin,
         padding: const EdgeInsets.all(GameSpacing.md),
         decoration: traySurfaceDecoration(worldTheme),
         child: Stack(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:triple_tile_adventure/core/app_flavor.dart';
 import 'package:triple_tile_adventure/core/audio_service.dart';
 import 'package:triple_tile_adventure/data/level_repository.dart';
 import 'package:triple_tile_adventure/data/progress_repository.dart';
@@ -174,9 +175,7 @@ Future<void> _mountMenu(
 }
 
 Future<void> _tapMenu(WidgetTester tester, String label) async {
-  final button = find.byWidgetPredicate(
-    (widget) => widget is GameButton && widget.label == label,
-  );
+  final button = find.byKey(ValueKey('menu_action_$label'));
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);
@@ -184,7 +183,18 @@ Future<void> _tapMenu(WidgetTester tester, String label) async {
 }
 
 Future<void> _tapKey(WidgetTester tester, String key) async {
-  await tester.tap(find.byKey(ValueKey(key)));
+  final target = find.byKey(ValueKey(key));
+  expect(target, findsOneWidget);
+  // Returning routes retain the menu's scroll offset. Header shortcuts may
+  // need scrolling back into view just like the lower menu actions.
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
+  final viewport =
+      Offset.zero & (tester.view.physicalSize / tester.view.devicePixelRatio);
+  expect(viewport.contains(tester.getCenter(target)), isTrue,
+      reason: '$key must be inside the viewport before tapping');
+  await tester.tap(target);
   if (key == 'change_state') {
     final completion = find.byKey(const ValueKey('change_complete'));
     for (var i = 0; i < 100 && completion.evaluate().isEmpty; i++) {
@@ -272,41 +282,74 @@ Future<void> _showProfileContent(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('one menu refresh per return, including unchanged routes',
-      (tester) async {
-    final repository = _CountingProgress();
-    await repository.addCoins(400);
-    await _mountMenu(tester, repository);
-    expect(repository.coinReads, 1);
-    expect(repository.statusReads, 1);
-    expect(repository.popupReads, 1);
-    final menuState = tester.state(find.byType(MainMenuScreen));
+  for (final size in [
+    const Size(320, 568),
+    const Size(360, 800),
+    const Size(412, 915),
+  ]) {
+    testWidgets(
+        'one menu refresh per return, including unchanged routes / $size',
+        (tester) async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('final_reward_unlocked', true);
+      final repository = _CountingProgress();
+      await repository.addCoins(400);
+      await _mountMenu(tester, repository, size: size);
+      expect(repository.coinReads, 1);
+      expect(repository.statusReads, 1);
+      expect(repository.popupReads, 1);
+      final menuState = tester.state(find.byType(MainMenuScreen));
+      final scroll = find.byKey(const ValueKey('main_menu_scroll'));
+      final position = tester
+          .state<ScrollableState>(
+              find.descendant(of: scroll, matching: find.byType(Scrollable)))
+          .position;
 
-    for (final label in [
-      'Adventure',
-      'Endless Mode',
-      'Daily Spin',
-      'Booster Shop',
-      'Profile',
-      'Chests',
-      'Daily Challenges',
-      'Collection Book',
-      'Achievements',
-      'Statistics',
-      'Settings',
-    ]) {
-      final before = repository.coinReads;
-      await _tapMenu(tester, label);
-      expect(repository.coinReads, before, reason: 'opening $label');
+      for (final entry in {
+        'Adventure': '/worlds',
+        'Endless Mode': '/endless',
+        'Daily Spin': '/lucky-wheel',
+        'Booster Shop': '/booster-shop',
+        'Profile': '/player-profile',
+        'Chests': '/treasure-chests',
+        'Daily Challenges': '/daily-challenges',
+        'Collection Book': '/collection-book',
+        'Achievements': '/achievements',
+        'Statistics': '/statistics',
+        'Settings': '/settings',
+        'Final Reward': '/final-code',
+        if (AppFlavorConfig.qaToolsEnabled) 'DEV QA Tools': '/dev-qa',
+      }.entries) {
+        final label = entry.key;
+        final before = repository.coinReads;
+        await _tapMenu(tester, label);
+        expect(find.text(entry.value), findsOneWidget);
+        expect(repository.coinReads, before, reason: 'opening $label');
+        final retainedOffset = position.pixels;
+        await _tapKey(tester, 'return_to_menu');
+        expect(position.pixels, retainedOffset,
+            reason: 'An unchanged return from $label must not jump the menu');
+        expect(repository.coinReads, before + 1, reason: label);
+        expect(repository.statusReads, before + 1, reason: label);
+        expect(repository.popupReads, before + 1, reason: label);
+        expect(tester.state(find.byType(MainMenuScreen)), same(menuState));
+        expect(find.text('400'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+      final beforeShortcut = repository.coinReads;
+      await _tapKey(tester, 'menu_shop_shortcut');
+      expect(find.text('/booster-shop'), findsOneWidget);
       await _tapKey(tester, 'return_to_menu');
-      expect(repository.coinReads, before + 1, reason: label);
-      expect(repository.statusReads, before + 1, reason: label);
-      expect(repository.popupReads, before + 1, reason: label);
+      expect(repository.coinReads, beforeShortcut + 1);
+      expect(repository.statusReads, beforeShortcut + 1);
+      expect(repository.popupReads, beforeShortcut + 1);
+      expect(find.byKey(const ValueKey('menu_shop_shortcut')).hitTestable(),
+          findsOneWidget);
       expect(tester.state(find.byType(MainMenuScreen)), same(menuState));
       expect(find.text('400'), findsOneWidget);
       expect(tester.takeException(), isNull);
-    }
-  });
+    });
+  }
 
   testWidgets('nested campaign return and Endless winnings refresh once',
       (tester) async {
@@ -512,6 +555,48 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('short menu keeps wider test-font rows reachable',
+      (tester) async {
+    // Deliberately retain this suite's Ahem font: its wider words force more
+    // rows than Roboto, exercising the height fallback rather than hiding it.
+    await _mountMenu(tester, _CountingProgress(), size: const Size(320, 568));
+    expect(tester.takeException(), isNull,
+        reason: 'The menu itself must lay out before any Profile navigation');
+    final scroll = find.byKey(const ValueKey('main_menu_scroll'));
+    final position = tester
+        .state<ScrollableState>(
+            find.descendant(of: scroll, matching: find.byType(Scrollable)))
+        .position;
+    expect(position.maxScrollExtent, greaterThan(0),
+        reason: 'Extra action rows must use reachable scrollable content');
+    for (final label in [
+      'Adventure',
+      'Endless Mode',
+      'Claim Daily Reward',
+      'Daily Spin',
+      'Booster Shop',
+      'Profile',
+      'Chests',
+      'Daily Challenges',
+      'Collection Book',
+      'Achievements',
+      'Statistics',
+      'Settings',
+      if (AppFlavorConfig.qaToolsEnabled) 'DEV QA Tools',
+    ]) {
+      final action = find.byKey(ValueKey('menu_action_$label'));
+      await tester.ensureVisible(action);
+      await tester.pumpAndSettle();
+      expect(action.hitTestable(), findsOneWidget);
+      final bounds = tester.getRect(action);
+      final viewport = tester.getRect(scroll);
+      expect(bounds.top, greaterThanOrEqualTo(viewport.top));
+      expect(bounds.bottom, lessThanOrEqualTo(viewport.bottom));
+      expect(tester.takeException(), isNull, reason: 'Reaching $label');
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final size in [
     const Size(320, 568),
     const Size(360, 800),
@@ -530,6 +615,8 @@ void main() {
           size: size,
           textScale: scale,
         );
+        expect(tester.takeException(), isNull,
+            reason: 'Menu mounting must not overflow before opening Profile');
         await _tapMenu(tester, 'Profile');
         expect(find.text('Player Profile'), findsOneWidget);
         expect(tester.takeException(), isNull);

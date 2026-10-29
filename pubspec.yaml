@@ -27,4 +27,6 @@ flutter:
     - assets/audio/triotrek/music/
     - assets/audio/triotrek/sfx/
     - assets/tiles/approved/
+    - assets/ui/coastal/
+    - assets/ui/victory_premium/
     - assets/video/triotrek/cat_victory_android_audio.mp4

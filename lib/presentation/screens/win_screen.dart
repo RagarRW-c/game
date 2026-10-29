@@ -5,6 +5,8 @@ import '../theme/world_theme.dart';
 import '../widgets/game_ui.dart';
 import '../widgets/game_decoration.dart';
 import '../widgets/victory_video.dart';
+import '../widgets/coastal_ui.dart';
+import '../widgets/victory_premium.dart';
 
 /// Presentation only. Rewards are granted by GameScreen before this is shown;
 /// rebuilding or animating this screen never writes progress or grants rewards.
@@ -85,6 +87,22 @@ class WinScreen extends StatelessWidget {
               height: 48,
               gradient: world.hudGradient),
         ]);
+    if (!isBossLevel && !isFinalLevel) {
+      return Dialog.fullscreen(
+          backgroundColor: Colors.transparent,
+          child: CoastalBackdrop(
+              child: SafeArea(
+                  child: Center(
+                      child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 520),
+                          child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
+                              child: LayoutBuilder(
+                                  builder: (context, constraints) =>
+                                      _ordinaryVictory(
+                                          context, constraints, world))))))));
+    }
     return Dialog.fullscreen(
       backgroundColor: Colors.transparent,
       child: GameBackground(
@@ -120,22 +138,6 @@ class WinScreen extends StatelessWidget {
                                         offset: Offset(0, (1 - value) * 10),
                                         child: child)),
                                 child: Column(children: [
-                                  if (!isBossLevel && !isFinalLevel) ...[
-                                    // First in the actual scroll viewport, with room for
-                                    // the title below. Scaling text cannot push it offscreen.
-                                    VictoryVideo(
-                                      maxHeight: (viewport.maxHeight * .5)
-                                          .clamp(0.0, 340.0)
-                                          .toDouble(),
-                                      controllerFactory: videoControllerFactory,
-                                      fallback: _VictoryEmblem(
-                                          world: world,
-                                          special: false,
-                                          icon: emblemIcon ??
-                                              Icons.emoji_events_rounded),
-                                    ),
-                                    const SizedBox(height: 12),
-                                  ],
                                   Text(
                                       '${world.worldName.toUpperCase()}  ·  LEVEL $level',
                                       textAlign: TextAlign.center,
@@ -268,11 +270,155 @@ class WinScreen extends StatelessWidget {
       ),
     );
   }
+
+  Widget _ordinaryVictory(BuildContext context, BoxConstraints constraints,
+      WorldVisualTheme world) {
+    final fitPortrait = constraints.maxHeight >= 480 &&
+        MediaQuery.textScalerOf(context).scale(1) <= 1.2;
+    // On short phones the cat and heading share the hero row. This reserves a
+    // meaningful full-aspect video without shrinking labels or action targets.
+    // Larger text uses natural scrolling instead of compressing the content.
+    // The banner and panel header also grow with width. Height alone selected
+    // the vertical stack at 496x600, leaving no room for the cat and overflowing
+    // the outer Column. Reuse the compact hero until the content area has tall
+    // portrait proportions; ordinary phone layouts keep their existing branch.
+    final compactDecoration = fitPortrait &&
+        (constraints.maxHeight < 600 ||
+            constraints.maxHeight < constraints.maxWidth * 2);
+    Widget video(double height, {bool alignBottom = false}) =>
+        LayoutBuilder(builder: (context, area) {
+          final frameHeight = height
+              .clamp(0.0, area.maxWidth * 16 / 9)
+              .clamp(0.0, 320.0)
+              .toDouble();
+          return Align(
+              alignment:
+                  alignBottom ? Alignment.bottomCenter : Alignment.center,
+              child: SizedBox(
+                  key: const ValueKey('victory_premium_frame'),
+                  width: frameHeight * 9 / 16,
+                  height: frameHeight,
+                  child: PremiumVictoryVideoFrame(
+                      child: VictoryVideo(
+                          maxHeight: frameHeight *
+                              PremiumVictoryVideoFrame.openingFraction,
+                          controllerFactory: videoControllerFactory,
+                          fallback: _VictoryEmblem(
+                              world: world,
+                              special: false,
+                              icon:
+                                  emblemIcon ?? Icons.emoji_events_rounded)))));
+        });
+    Widget heading() => Semantics(
+        container: true,
+        explicitChildNodes: true,
+        label: '${world.worldName}, level $level',
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          SizedBox(
+              height: compactDecoration ? 38 : 46,
+              child: FittedBox(
+                  child: VictoryStars(stars: starsEarned, illustrated: true))),
+          const PremiumVictoryBanner(key: ValueKey('victory_title')),
+        ]));
+
+    final secondaryButtons = [
+      PremiumVictoryButton(
+          key: const ValueKey('victory_replay'),
+          label: 'Replay',
+          symbol: VictoryActionSymbol.replay,
+          onPressed: onRestart),
+      PremiumVictoryButton(
+          key: const ValueKey('victory_map'),
+          label: 'Back to Map',
+          symbol: VictoryActionSymbol.map,
+          onPressed: onMap),
+    ];
+    final stackActions = MediaQuery.textScalerOf(context).scale(1) > 1.2;
+    return SingleChildScrollView(
+        key: const ValueKey('victory_scroll'),
+        child: SizedBox(
+            height: fitPortrait ? constraints.maxHeight : null,
+            child: Column(
+                key: const ValueKey('victory_content'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 4),
+                  if (compactDecoration)
+                    Expanded(
+                        child: LayoutBuilder(
+                            builder: (context, area) => Row(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      SizedBox(
+                                          width: area.maxWidth * .34,
+                                          child: video(area.maxHeight,
+                                              alignBottom: true)),
+                                      const SizedBox(width: 6),
+                                      Expanded(child: heading()),
+                                    ])))
+                  else if (fitPortrait)
+                    Expanded(
+                        child: LayoutBuilder(
+                            builder: (context, area) => video(area.maxHeight)))
+                  else
+                    video(220),
+                  if (!compactDecoration) heading(),
+                  const SizedBox(height: 4),
+                  PremiumVictoryRewards(
+                      key: const ValueKey('victory_rewards'),
+                      compact: compactDecoration,
+                      coins: coinsEarned,
+                      xp: xpEarned,
+                      chest: chestLabel),
+                  const SizedBox(height: 4),
+                  Padding(
+                      key: const ValueKey('victory_actions'),
+                      padding:
+                          EdgeInsets.only(bottom: compactDecoration ? 6 : 8),
+                      child: Column(children: [
+                        Center(
+                            child: ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 360),
+                                child: PremiumVictoryButton(
+                                    key: const ValueKey('victory_next'),
+                                    label: 'Next Level',
+                                    symbol: VictoryActionSymbol.play,
+                                    primary: true,
+                                    onPressed: onNext))),
+                        const SizedBox(height: 6),
+                        if (stackActions)
+                          Column(
+                            key: const ValueKey('victory_secondary_actions'),
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              secondaryButtons[0],
+                              const SizedBox(height: 6),
+                              secondaryButtons[1]
+                            ],
+                          )
+                        else
+                          IntrinsicHeight(
+                              child: Row(
+                                  key: const ValueKey(
+                                      'victory_secondary_actions'),
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                Expanded(child: secondaryButtons[0]),
+                                const SizedBox(width: 8),
+                                Expanded(child: secondaryButtons[1]),
+                              ])),
+                      ])),
+                ])));
+  }
 }
 
 class VictoryStars extends StatelessWidget {
-  const VictoryStars({super.key, required this.stars});
+  const VictoryStars(
+      {super.key, required this.stars, this.illustrated = false});
   final int stars;
+  final bool illustrated;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -302,23 +448,28 @@ class VictoryStars extends StatelessWidget {
                       opacity: earned ? reveal : 0.45,
                       child: Transform.scale(
                           scale: scale,
-                          child: Icon(
-                            earned
-                                ? Icons.star_rounded
-                                : Icons.star_border_rounded,
-                            key: ValueKey('victory_star_${i + 1}'),
-                            size: i == 1 ? 74 : 64,
-                            color:
-                                earned ? const Color(0xFFFFDA6A) : Colors.white,
-                            shadows: earned
-                                ? const [
-                                    Shadow(
-                                        color: Color(0x994F2C15),
-                                        offset: Offset(0, 4),
-                                        blurRadius: 2)
-                                  ]
-                                : null,
-                          )),
+                          child: illustrated
+                              ? PremiumVictoryStar(
+                                  key: ValueKey('victory_star_${i + 1}'),
+                                  earned: earned)
+                              : Icon(
+                                  earned
+                                      ? Icons.star_rounded
+                                      : Icons.star_border_rounded,
+                                  key: ValueKey('victory_star_${i + 1}'),
+                                  size: i == 1 ? 74 : 64,
+                                  color: earned
+                                      ? const Color(0xFFFFDA6A)
+                                      : Colors.white,
+                                  shadows: earned
+                                      ? const [
+                                          Shadow(
+                                              color: Color(0x994F2C15),
+                                              offset: Offset(0, 4),
+                                              blurRadius: 2)
+                                        ]
+                                      : null,
+                                )),
                     ),
                   );
                 })),

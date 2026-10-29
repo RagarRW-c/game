@@ -7,9 +7,8 @@ import '../../data/progress_repository.dart';
 import '../../main.dart';
 import '../theme/game_theme.dart';
 import '../widgets/achievement_popup.dart';
-import '../widgets/game_decoration.dart';
+import '../widgets/coastal_ui.dart';
 import '../widgets/game_ui.dart';
-import '../widgets/primary_button.dart';
 import 'achievements_screen.dart';
 import 'booster_shop_screen.dart';
 import 'collection_book_screen.dart';
@@ -192,221 +191,228 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
+    CoastalButton action(String label, String art, VoidCallback? callback,
+            {CoastalButtonTone tone = CoastalButtonTone.blue,
+            bool primary = false}) =>
+        CoastalButton(
+            key: ValueKey('menu_action_$label'),
+            label: label,
+            art: art,
+            onPressed: callback,
+            tone: tone,
+            compact: !primary,
+            horizontal: primary,
+            minHeight: 56);
+    VoidCallback open(String route) =>
+        () => Navigator.pushNamed(context, route);
+    final kit = <CoastalButton>[
+      action('Booster Shop', 'shop', open(BoosterShopScreen.route)),
+      action('Profile', 'profile', open(PlayerProfileScreen.route)),
+      action('Chests', 'chest', open(TreasureChestsScreen.route)),
+      action(
+          'Daily Challenges', 'challenge', open(DailyChallengesScreen.route)),
+      action('Collection Book', 'collection', open(CollectionBookScreen.route)),
+      action('Achievements', 'trophy', open(AchievementsScreen.route)),
+      action('Statistics', 'statistics', open(StatisticsScreen.route)),
+      action('Settings', 'settings',
+          () => _openProgressScreen(SettingsScreen.route)),
+      if (_finalRewardUnlocked)
+        action('Final Reward', 'trophy', open(FinalCodeScreen.route)),
+    ];
     return Scaffold(
-      body: GameBackground(
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(vertical: GameSpacing.lg),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
-                child: Padding(
-                  padding: const EdgeInsets.all(GameSpacing.xl),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const GameEntrance(child: AdventureEmblem()),
-                      const SizedBox(height: GameSpacing.sm),
-                      const Text(
-                        'Triple Tile\nAdventure',
-                        textAlign: TextAlign.center,
-                        style: GameTextStyles.h1,
-                      ),
-                      const SizedBox(height: GameSpacing.sm),
-                      Text('A little match. A grand adventure.',
-                          textAlign: TextAlign.center,
-                          style: GameTextStyles.body
-                              .copyWith(color: Colors.white)),
-                      const SizedBox(height: GameSpacing.md),
-                      GameBadge(
-                        icon: Icons.monetization_on_rounded,
-                        gradient: GameGradients.badge,
-                        child: Text(
-                          '$_coins',
-                          style: GameTextStyles.button.copyWith(
-                            color: GameColors.ink,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: GameSpacing.xxl),
-                      GameButton(
-                        label: 'Adventure',
-                        icon: Icons.play_arrow_rounded,
-                        height: 66,
-                        variant: GameButtonVariant.success,
-                        onPressed: () => Navigator.pushNamed(
-                            context, WorldSelectionScreen.route),
-                      ),
-                      const SizedBox(height: GameSpacing.md),
-                      GameButton(
-                        label: 'Endless Mode',
-                        icon: Icons.all_inclusive_rounded,
-                        gradient: const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xFFAC8CEC), Color(0xFF7352B8)],
-                        ),
-                        onPressed: () =>
-                            Navigator.pushNamed(context, EndlessScreen.route),
-                      ),
-                      const SizedBox(height: GameSpacing.xl),
-                      const _MenuSectionTitle('A little something every day'),
-                      const SizedBox(height: GameSpacing.md),
-                      if (_dailyRewardAvailable) ...[
-                        PrimaryButton(
-                          label: 'Claim Daily Reward',
-                          icon: Icons.card_giftcard_rounded,
-                          onPressed: _claimDailyReward,
-                        ),
-                        const SizedBox(height: GameSpacing.md),
+        body: CoastalBackdrop(
+            child: SafeArea(
+                child: Center(
+      child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: LayoutBuilder(builder: (context, constraints) {
+            final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.2;
+            final primaryActions = _MenuActionRows(
+                maxColumns: largeText ? 1 : 2,
+                spacing: 8,
+                actions: [
+                  action('Adventure', 'play', open(WorldSelectionScreen.route),
+                      tone: CoastalButtonTone.green, primary: true),
+                  action('Endless Mode', 'endless', open(EndlessScreen.route),
+                      tone: CoastalButtonTone.purple, primary: true),
+                ]);
+            final dailyActions = _MenuActionRows(maxColumns: 2, actions: [
+              if (_dailyRewardAvailable)
+                action('Claim Daily Reward', 'gift', _claimDailyReward),
+              action(
+                  _dailySpinAvailable ? 'Daily Spin' : 'Next Spin Tomorrow',
+                  'wheel',
+                  _dailySpinAvailable ? open(LuckyWheelScreen.route) : null),
+            ]);
+            final kitActions =
+                _MenuActionRows(maxColumns: largeText ? 2 : 3, actions: kit);
+            final contentWidth = constraints.maxWidth - 24;
+            final panelWidth = contentWidth - 20;
+            // The one-screen composition budgets one primary row, one daily
+            // row and three kit rows. Wider font metrics can require more rows
+            // even at text scale 1. Let that content scroll instead of forcing
+            // it into the fixed-height Column with no remaining hero space.
+            final fitPortrait = !largeText &&
+                constraints.maxHeight >= 480 &&
+                primaryActions.fitsRows(context, contentWidth, 1) &&
+                dailyActions.fitsRows(context, panelWidth, 1) &&
+                kitActions.fitsRows(context, panelWidth, 3);
+            final shopShortcut = CoastalButton(
+                key: const ValueKey('menu_shop_shortcut'),
+                label: 'Shop',
+                art: 'shop',
+                compact: true,
+                minHeight: 48,
+                onPressed: open(BoosterShopScreen.route));
+            final hero = Semantics(
+                label: 'TrioTrek: Tile Adventure',
+                image: true,
+                child: LayoutBuilder(builder: (context, heroSpace) {
+                  const logo = CoastalArt('logo', key: ValueKey('menu_logo'));
+                  const cat =
+                      CoastalArt('menu_cat', key: ValueKey('menu_mascot'));
+                  return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: heroSpace.maxHeight < 170
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                  Expanded(flex: 3, child: logo),
+                                  Expanded(child: cat)
+                                ])
+                          : Column(children: [
+                              Expanded(flex: 5, child: logo),
+                              Expanded(flex: 4, child: cat)
+                            ]));
+                }));
+            return SingleChildScrollView(
+              key: const ValueKey('main_menu_scroll'),
+              padding: const EdgeInsets.all(12),
+              child: SizedBox(
+                  height: fitPortrait ? constraints.maxHeight - 24 : null,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Row(children: [
+                      if (AppFlavorConfig.qaToolsEnabled && !largeText) ...[
+                        SizedBox(
+                            width: 82,
+                            child: action('DEV QA Tools', 'tools',
+                                () => _openProgressScreen(QaScreen.route))),
+                        const SizedBox(width: 8),
                       ],
-                      PrimaryButton(
-                        label: _dailySpinAvailable
-                            ? 'Daily Spin'
-                            : 'Next Spin Tomorrow',
-                        icon: Icons.casino_rounded,
-                        onPressed: _dailySpinAvailable
-                            ? () => Navigator.pushNamed(
-                                context, LuckyWheelScreen.route)
-                            : null,
-                      ),
-                      const SizedBox(height: GameSpacing.md),
-                      if (_finalRewardUnlocked) ...[
-                        PrimaryButton(
-                          label: 'Final Reward',
-                          icon: Icons.emoji_events_rounded,
-                          onPressed: () => Navigator.pushNamed(
-                            context,
-                            FinalCodeScreen.route,
-                          ),
-                        ),
-                        const SizedBox(height: GameSpacing.md),
-                      ],
-                      const SizedBox(height: GameSpacing.sm),
-                      const _MenuSectionTitle('Your adventure kit'),
-                      const SizedBox(height: GameSpacing.md),
-                      GameButton(
-                        label: 'Booster Shop',
-                        variant: GameButtonVariant.gold,
-                        icon: Icons.storefront_rounded,
-                        onPressed: () => Navigator.pushNamed(
-                            context, BoosterShopScreen.route),
-                      ),
-                      const SizedBox(height: GameSpacing.md),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: GameButton(
-                              label: 'Profile',
-                              icon: Icons.person_rounded,
-                              onPressed: () => Navigator.pushNamed(
-                                context,
-                                PlayerProfileScreen.route,
-                              ),
-                              variant: GameButtonVariant.primary,
-                            ),
-                          ),
-                          const SizedBox(width: GameSpacing.md),
-                          Expanded(
-                            child: GameButton(
-                              label: 'Chests',
-                              icon: Icons.inventory_2_rounded,
-                              onPressed: () => Navigator.pushNamed(
-                                context,
-                                TreasureChestsScreen.route,
-                              ),
-                              variant: GameButtonVariant.gold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: GameSpacing.md),
-                      PrimaryButton(
-                        label: 'Daily Challenges',
-                        icon: Icons.task_alt_rounded,
-                        onPressed: () => Navigator.pushNamed(
-                            context, DailyChallengesScreen.route),
-                      ),
-                      const SizedBox(height: GameSpacing.md),
-                      PrimaryButton(
-                        label: 'Collection Book',
-                        icon: Icons.collections_bookmark_rounded,
-                        onPressed: () => Navigator.pushNamed(
-                          context,
-                          CollectionBookScreen.route,
-                        ),
-                      ),
-                      const SizedBox(height: GameSpacing.md),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: GameButton(
-                              label: 'Achievements',
-                              icon: Icons.emoji_events_rounded,
-                              onPressed: () => Navigator.pushNamed(
-                                  context, AchievementsScreen.route),
-                              variant: GameButtonVariant.gold,
-                            ),
-                          ),
-                          const SizedBox(width: GameSpacing.md),
-                          Expanded(
-                            child: GameButton(
-                              label: 'Statistics',
-                              icon: Icons.bar_chart_rounded,
-                              onPressed: () => Navigator.pushNamed(
-                                context,
-                                StatisticsScreen.route,
-                              ),
-                              variant: GameButtonVariant.secondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: GameSpacing.md),
-                      GameButton(
-                        label: 'Settings',
-                        variant: GameButtonVariant.secondary,
-                        icon: Icons.settings_rounded,
-                        onPressed: () =>
-                            _openProgressScreen(SettingsScreen.route),
-                      ),
-                      if (AppFlavorConfig.qaToolsEnabled) ...[
-                        const SizedBox(height: GameSpacing.md),
-                        PrimaryButton(
-                          label: 'DEV QA Tools',
-                          icon: Icons.science_rounded,
-                          onPressed: () => _openProgressScreen(QaScreen.route),
-                        ),
-                      ],
+                      Expanded(
+                          child: Align(
+                              alignment: Alignment.centerRight,
+                              child: GameBadge(
+                                  gradient: GameGradients.darkBadge,
+                                  child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const CoastalArt('coin',
+                                            width: 28, height: 28),
+                                        const SizedBox(width: 5),
+                                        Flexible(
+                                            child: Text('$_coins',
+                                                key: const ValueKey(
+                                                    'menu_coins'),
+                                                style: GameTextStyles.button
+                                                    .copyWith(
+                                                        color: Colors.white))),
+                                      ])))),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                          width: shopShortcut
+                              .minimumReadableWidth(context)
+                              .clamp(60.0, double.infinity)
+                              .toDouble(),
+                          child: shopShortcut),
+                    ]),
+                    if (AppFlavorConfig.qaToolsEnabled && largeText) ...[
+                      const SizedBox(height: 6),
+                      SizedBox(
+                          width: double.infinity,
+                          child: action('DEV QA Tools', 'tools',
+                              () => _openProgressScreen(QaScreen.route))),
                     ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+                    if (fitPortrait)
+                      Expanded(child: hero)
+                    else
+                      SizedBox(height: 230, child: hero),
+                    primaryActions,
+                    const SizedBox(height: 8),
+                    CoastalPanel(
+                        child:
+                            Column(mainAxisSize: MainAxisSize.min, children: [
+                      dailyActions,
+                      const SizedBox(height: 6),
+                      kitActions,
+                    ])),
+                    const SizedBox(height: 4),
+                  ])),
+            );
+          })),
+    ))));
   }
 }
 
-class _MenuSectionTitle extends StatelessWidget {
-  const _MenuSectionTitle(this.title);
-  final String title;
+/// Preserve action order while giving long words enough width. A row gains
+/// fewer columns when the scaled labels cannot share the available space.
+class _MenuActionRows extends StatelessWidget {
+  const _MenuActionRows(
+      {required this.actions, required this.maxColumns, this.spacing = 6});
+  final List<CoastalButton> actions;
+  final int maxColumns;
+  final double spacing;
+
+  List<double> _minimums(BuildContext context) => [
+        for (final action in actions) action.minimumReadableWidth(context),
+      ];
+
+  // Share the actual row-packing decision with the parent height policy.
+  List<int> _rowEnds(List<double> minimums, double width) {
+    final ends = <int>[];
+    var start = 0;
+    while (start < minimums.length) {
+      var end = start + 1;
+      var requiredWidth = minimums[start];
+      while (end < minimums.length &&
+          end - start < maxColumns &&
+          requiredWidth + spacing + minimums[end] <= width) {
+        requiredWidth += spacing + minimums[end];
+        end++;
+      }
+      ends.add(end);
+      start = end;
+    }
+    return ends;
+  }
+
+  bool fitsRows(BuildContext context, double width, int rows) =>
+      _rowEnds(_minimums(context), width).length <= rows;
 
   @override
-  Widget build(BuildContext context) => Row(children: [
-        const Expanded(child: Divider(color: Colors.white30)),
-        const SizedBox(width: 10),
-        Flexible(
-            flex: 4,
-            child: Text(title,
-                textAlign: TextAlign.center,
-                style: GameTextStyles.caption
-                    .copyWith(color: Colors.white, letterSpacing: 0.4))),
-        const SizedBox(width: 10),
-        const Expanded(child: Divider(color: Colors.white30)),
-      ]);
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, area) {
+        final minimums = _minimums(context);
+        final rows = <Widget>[];
+        var start = 0;
+        for (final end in _rowEnds(minimums, area.maxWidth)) {
+          final count = end - start;
+          final requiredWidth = minimums
+              .sublist(start, end)
+              .fold<double>(spacing * (count - 1), (sum, width) => sum + width);
+          final surplus = (area.maxWidth - requiredWidth) / count;
+          if (rows.isNotEmpty) rows.add(SizedBox(height: spacing));
+          rows.add(Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (var i = start; i < end; i++) ...[
+              if (i != start) SizedBox(width: spacing),
+              SizedBox(
+                  width: count == 1 ? area.maxWidth : minimums[i] + surplus,
+                  child: actions[i]),
+            ],
+          ]));
+          start = end;
+        }
+        return Column(mainAxisSize: MainAxisSize.min, children: rows);
+      });
 }
 
 class _DailyLoginStreakDialog extends StatelessWidget {
