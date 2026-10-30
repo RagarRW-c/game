@@ -22,13 +22,20 @@ List<Tile> tiles() => List.generate(18, (i) => Tile(
     id: 't$i', type: tileCatalog.keys.elementAt(i ~/ 3),
     x: (i % 3) * .3, y: (i ~/ 3) * .15, layer: 0));
 class _Levels extends LevelRepository {
+  _Levels({this.layout});
+  final List<Tile>? layout;
+
   @override
   Future<LevelDefinition> loadLevel(int level) async => LevelDefinition(
-      level: level, name: 'Booster fixture', timeBonusSeconds: 60, tiles: tiles());
+      level: level, name: 'Booster fixture', timeBonusSeconds: 60,
+      tiles: layout ?? tiles());
 }
 class _Boards extends EndlessBoardGenerator {
+  _Boards({this.layout});
+  final List<Tile>? layout;
+
   @override
-  List<Tile> generate({required int round, required TileVisualTheme theme}) => tiles();
+  List<Tile> generate({required int round, required TileVisualTheme theme}) => layout ?? tiles();
 }
 class _Audio implements GameAudioService {
   @override
@@ -174,6 +181,84 @@ void main() {
   });
 
   for (final endless in [false, true]) {
+    for (final exhaustFreeUses in [false, true]) {
+      for (final stock in [false, true]) {
+        testWidgets('$endless unavailable Hint is quiet, exhausted=$exhaustFreeUses stock=$stock',
+            (tester) async {
+          tester.view.devicePixelRatio = 1;
+          tester.view.physicalSize = const Size(360, 800);
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          SharedPreferences.setMockInitialValues({
+            'coins': 500,
+            'vibration_enabled': false,
+            'level_one_tutorial_seen': true,
+            'extra_hint_boosters': stock ? 2 : 0,
+          });
+          final layout = [
+            if (exhaustFreeUses)
+              for (var i = 0; i < 6; i++)
+                Tile(id: 'match$i', type: i < 3 ? 'apple' : 'banana',
+                    x: (i % 3) * .3, y: (i ~/ 3) * .3, layer: 0),
+            const Tile(id: 'leaf', type: 'leaf', x: .1, y: .65, layer: 0),
+            const Tile(id: 'paper', type: 'shell', x: .5, y: .65, layer: 0),
+          ];
+          final p = _Progress();
+          try {
+            await tester.pumpWidget(AppScope(
+                progressRepository: p, levelRepository: _Levels(layout: layout),
+                audioService: _Audio(),
+                child: MaterialApp(theme: GameTheme.theme(),
+                    home: endless
+                        ? EndlessScreen.forTesting(boardGenerator: _Boards(layout: layout))
+                        : const GameScreen(level: 2))));
+            await tester.pumpAndSettle();
+            if (exhaustFreeUses) {
+              for (var i = 0; i < 2; i++) {
+                await tester.tap(booster('Hint'));
+                await tester.pumpAndSettle();
+              }
+            }
+            final achievementCoins = !endless && exhaustFreeUses ? 50 : 0;
+            expect(p.effects, exhaustFreeUses ? 2 : 0);
+            expect(p.firstMatchGrants, achievementCoins == 0 ? isEmpty : [50]);
+            expect(await p.coins(), 500 + achievementCoins);
+            expect(board(), findsNWidgets(2));
+            final before = boardState(tester);
+            final badge = tester.widget<GameBoosterButton>(booster('Hint')).badge;
+            // Real pointer interaction, followed by duplicate same-turn requests.
+            await tester.tap(booster('Hint'));
+            final callback = tester.widget<GameBoosterButton>(booster('Hint')).onPressed!;
+            callback();
+            callback();
+            await tester.pump();
+            expect(find.text('No hint available'), findsNothing);
+            expect(find.byType(SnackBar), findsNothing);
+            await tester.pumpAndSettle();
+            expect(find.byType(SnackBar), findsNothing);
+            expect(boardState(tester), before);
+            expect(tester.widget<GameTray>(find.byType(GameTray))
+                .trayTiles.whereType<Tile>(), isEmpty);
+            expect(tester.widget<GameBoosterButton>(booster('Hint')).badge, badge);
+            expect(await p.coins(), 500 + achievementCoins);
+            expect(await p.extraHintBoosters(), stock ? 2 : 0);
+            expect(p.attempts, 0);
+            expect(p.deductions, 0);
+            expect(p.coinDebits, isEmpty);
+            expect(p.inventoryDebits, isEmpty);
+            expect(p.coinRefunds, isEmpty);
+            expect(p.inventoryRefunds, isEmpty);
+            expect(p.effects, exhaustFreeUses ? 2 : 0);
+            expect((await p.statistics()).totalCoinsEarned, achievementCoins);
+            expect(tester.takeException(), isNull);
+          } finally {
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pump();
+          }
+        });
+      }
+    }
+
     for (final kind in ['Undo', 'Hint', 'Shuffle']) {
       for (final stock in [false, true]) {
         for (final event in ['duplicate', 'tile', 'dispose', 'navigate', 'replace', 'restart', 'failure',

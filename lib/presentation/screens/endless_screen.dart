@@ -515,9 +515,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
     engine.updateBoardGeometry(boardSize, tileSize);
     final hintIds = engine.findBestHintTileIds();
     if (hintIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hint available')),
-      );
+      // No eligible move: leave coins, stock and free uses untouched.
       return;
     }
     final usedFreeHint = _hintUsesRemaining > 0;

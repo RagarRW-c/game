@@ -56,6 +56,13 @@ void main() {
           }
           expect(alpha(160, 160), 255,
               reason: 'Removing the white sheet must not erase the tile.');
+          if (name == 'leaf' || name == 'paper_roll') {
+            expect(alpha(272, 272), 255,
+                reason: 'The corner-overlap regression taps a visible face.');
+            expect(alpha(3, 3), 0,
+                reason:
+                    'The upper tile must not intercept this transparent corner.');
+          }
         } finally {
           frame.image.dispose();
         }
@@ -215,7 +222,8 @@ void main() {
             tester
                 .widget<AnimatedOpacity>(find.byType(AnimatedOpacity))
                 .opacity,
-            blocked ? .86 : 1);
+            1,
+            reason: 'Covered artwork is tinted, not made see-through.');
         expect(
             tester.getSemantics(find.bySemanticsLabel('Lagoon')),
             matchesSemantics(
@@ -285,7 +293,8 @@ void main() {
       expect(image.color, covered ? const Color(0xFF9DAFB5) : null);
       expect(
           tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity,
-          covered ? .86 : 1);
+          1,
+          reason: 'Covered artwork is tinted, not made see-through.');
       await tester.tap(find.byType(GameTileWidget));
       await tester.pumpAndSettle();
       expect(accepted, !covered);

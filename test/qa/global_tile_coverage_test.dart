@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
@@ -24,6 +28,8 @@ import 'package:triple_tile_adventure/presentation/widgets/tile_face.dart';
 import 'support/geometry.dart';
 import 'support/tile_asset_images.dart';
 
+const _level3Asset = 'assets/levels/level_03.json';
+
 // Three complete triples. Two blockers cover base; removing only the top
 // blocker must not expose base. All types, including the world-specific sun,
 // retain their real saved IDs. Keep this order deliberately unsorted by layer.
@@ -40,20 +46,26 @@ const _tiles = [
 ];
 
 class _Levels extends LevelRepository {
+  _Levels([this.layout = _tiles]);
+  final List<Tile> layout;
+
   @override
   Future<LevelDefinition> loadLevel(int level) async => LevelDefinition(
       level: level,
       name: 'Coverage fixture',
       timeBonusSeconds: 60,
-      tiles: _tiles);
+      tiles: layout);
 }
 
 class _Boards extends EndlessBoardGenerator {
+  _Boards([this.layout = _tiles]);
+  final List<Tile> layout;
+
   final List<TileVisualTheme> themes = [];
   @override
   List<Tile> generate({required int round, required TileVisualTheme theme}) {
     themes.add(theme);
-    return List.of(_tiles);
+    return List.of(layout);
   }
 }
 
@@ -105,8 +117,9 @@ void _expectBoard(WidgetTester tester, GameEngine oracle, TileVisualTheme theme,
     expect(face.blocked, expected);
     final opacity = tester.widget<AnimatedOpacity>(
         find.descendant(of: tile, matching: find.byType(AnimatedOpacity)));
-    expect(opacity.opacity, expected ? .86 : 1,
-        reason: 'Settled uncovered tiles must use the full active appearance.');
+    expect(opacity.opacity, 1,
+        reason: 'Active tiles are full strength; covered bodies stay opaque '
+            'while their artwork uses the distinct blocked tint.');
     if (face.art.assetPath != null) {
       final image = tester.widget<Image>(
           find.descendant(of: tile, matching: find.byType(Image)));
@@ -119,6 +132,282 @@ void _expectBoard(WidgetTester tester, GameEngine oracle, TileVisualTheme theme,
 }
 
 void main() {
+  for (final screen in qaScreens) {
+    testWidgets(
+        'real Campaign Level 3 ${screen.name}: leaves uncover and accept taps',
+        (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = screen.size;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      // CachingAssetBundle retains Future<String>, not just decoded text.
+      // A completed Future from the preceding test schedules new listeners in
+      // that test's now-inactive FakeAsync zone, leaving the loading spinner
+      // running forever. Keep the real repository, but isolate this asset cache.
+      rootBundle.evict(_level3Asset);
+      addTearDown(() => rootBundle.evict(_level3Asset));
+      SharedPreferences.setMockInitialValues({
+        'vibration_enabled': false,
+        'level_one_tutorial_seen': true,
+      });
+      // Inspect the shipped level, not a hand-authored replacement layout.
+      final level = LevelDefinition.fromJson(
+          jsonDecode(File(_level3Asset).readAsStringSync())
+              as Map<String, dynamic>);
+      final geometry = screen.geometry();
+      final oracle = GameEngine(level.tiles)
+        ..updateBoardGeometry(geometry.board, geometry.tile);
+      expect(level.tiles.where((t) => t.type == 'leaf').map((t) => t.id),
+          ['L3_T000', 'L3_T002', 'L3_T004']);
+      expect(level.tiles.where((t) => t.type == 'shell'), isEmpty,
+          reason:
+              'The shipped Level 3 has no Paper Roll; shuffle cannot add types.');
+      Set<String> coveredIds() => oracle.renderedBoardTiles
+          .where(oracle.isTileCovered)
+          .map((t) => t.id)
+          .toSet();
+      try {
+        await tester.pumpWidget(AppScope(
+            progressRepository: _Progress(),
+            levelRepository: LevelRepository(),
+            audioService: _Audio(),
+            child: MaterialApp(
+                theme: GameTheme.theme(),
+                builder: (context, child) => MediaQuery(
+                    data: MediaQuery.of(context).copyWith(
+                        padding:
+                            EdgeInsets.only(top: screen.safeTop, bottom: 24),
+                        viewPadding:
+                            EdgeInsets.only(top: screen.safeTop, bottom: 24)),
+                    child: child!),
+                home: const GameScreen(level: 3))));
+        // The test asset handler reads synchronously; one frame flushes the
+        // repository microtasks and renders FutureBuilder's completed snapshot.
+        // Diagnose loading independently of finite gameplay animation settling.
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        expect(_board(), findsNWidgets(level.tiles.length),
+            reason:
+                'Level 3 must load in this viewport test\'s FakeAsync zone.');
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        await _settle(tester);
+        await loadVisibleTileImages(tester);
+        _expectBoard(tester, oracle, TileVisualTheme.garden,
+            covered: coveredIds());
+        for (final id in ['L3_T000', 'L3_T002', 'L3_T004']) {
+          expect(tester.widget<GameTileWidget>(_board(id)).blocked, isTrue,
+              reason: '$id has actual higher painted blockers at level start.');
+          expect(oracle.tapTile(id, geometry.board, geometry.tile), isFalse);
+        }
+        // Legal in all three viewport geometries, including same-layer blockers.
+        // Keep T001 on the board to exercise the final leaf triple without
+        // entering victory/video/navigation, which have separate coverage.
+        const moves = [
+          35,
+          33,
+          31,
+          34,
+          32,
+          30,
+          29,
+          27,
+          25,
+          28,
+          26,
+          24,
+          23,
+          17,
+          4,
+          22,
+          21,
+          20,
+          18,
+          19,
+          15,
+          16,
+          14,
+          13,
+          12,
+          11,
+          9,
+          10,
+          7,
+          8,
+          6,
+          5,
+          3,
+          2,
+          0,
+        ];
+        for (final number in moves) {
+          final id = 'L3_T${number.toString().padLeft(3, '0')}';
+          final widget = tester.widget<GameTileWidget>(_board(id));
+          expect(widget.enabled, isTrue,
+              reason: 'Legal move $id on ${screen.name}');
+          expect(widget.blocked, isFalse);
+          await tester.tap(_board(id));
+          expect(oracle.tapTile(id, geometry.board, geometry.tile), isTrue);
+          await _settle(tester);
+          _expectBoard(tester, oracle, TileVisualTheme.garden,
+              covered: coveredIds());
+          expect(_board(id), findsNothing,
+              reason: 'The pointer must select $id.');
+        }
+        expect(oracle.renderedBoardTiles.map((t) => t.id), ['L3_T001']);
+        expect(oracle.tray, ['L3_T005', 'L3_T003']);
+        for (final id in ['L3_T000', 'L3_T002', 'L3_T004']) {
+          expect(oracle.tileById(id)!.state, TileState.matched);
+        }
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      }
+    });
+  }
+
+  test('real Level 3 preserves qualifying logical gaps between rounded bodies',
+      () {
+    final level = LevelDefinition.fromJson(
+        jsonDecode(File('assets/levels/level_03.json').readAsStringSync())
+            as Map<String, dynamic>);
+    for (final sample in [
+      (qaScreens[0], 'L3_T000', 'L3_T027'),
+      (qaScreens[1], 'L3_T028', 'L3_T030'),
+      (qaScreens[2], 'L3_T019', 'L3_T033'),
+    ]) {
+      final geometry = sample.$1.geometry();
+      final lower = level.tiles.singleWhere((t) => t.id == sample.$2);
+      final upper = level.tiles.singleWhere((t) => t.id == sample.$3);
+      final first = lower.boardRect(geometry.board, geometry.tile);
+      final second = upper.boardRect(geometry.board, geometry.tile);
+      final intersection = first.intersect(second);
+      final ratio = intersection.width *
+          intersection.height /
+          (first.width * first.height);
+      expect(ratio, greaterThanOrEqualTo(.03));
+      expect(ratio, lessThan(.05));
+      expect(
+          TileBodyGeometry.bodiesOverlap(
+              TileFacePainter.bodyRect(geometry.tile).shift(first.topLeft),
+              TileFacePainter.bodyRect(geometry.tile).shift(second.topLeft)),
+          isFalse);
+      final engine = GameEngine([lower, upper])
+        ..updateBoardGeometry(geometry.board, geometry.tile);
+      expect(engine.isTileCovered(lower), isTrue);
+      expect(engine.tapTile(lower.id, geometry.board, geometry.tile), isFalse);
+      expect(engine.tapTile(upper.id, geometry.board, geometry.tile), isTrue);
+      expect(engine.tapTile(lower.id, geometry.board, geometry.tile), isTrue);
+    }
+  });
+
+  for (final endless in [false, true]) {
+    for (final screen in qaScreens) {
+      for (final type in ['leaf', 'shell']) {
+        testWidgets('$endless ${screen.name} $type: painted body owns the tap',
+            (tester) async {
+          tester.view.devicePixelRatio = 1;
+          tester.view.physicalSize = screen.size;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final geometry = screen.geometry(endless: endless);
+          for (final offset in [
+            const Offset(.84, .84), // 2.56%: selectable rounded corner.
+            const Offset(1.1, 0), // Fully separated.
+            const Offset(.74, .74), // 6.76%: genuinely covered.
+            const Offset(.96, 0), // 4%: logical coverage despite PNG padding.
+          ]) {
+            SharedPreferences.setMockInitialValues({
+              'vibration_enabled': false,
+              'level_one_tutorial_seen': true,
+            });
+            final layout = [
+              Tile(id: 'lower', type: type, x: .1, y: .1, layer: 0),
+              Tile(
+                  id: 'upper',
+                  type: type == 'leaf' ? 'shell' : 'leaf',
+                  x: .1 +
+                      offset.dx * geometry.tile.width / geometry.board.width,
+                  y: .1 +
+                      offset.dy * geometry.tile.height / geometry.board.height,
+                  layer: 1),
+              const Tile(id: 'spare', type: 'berry', x: .7, y: .7, layer: 0),
+            ];
+            final oracle = GameEngine(layout)
+              ..updateBoardGeometry(geometry.board, geometry.tile);
+            final covered = offset.dx == .74 || offset.dx == .96;
+            try {
+              await tester.pumpWidget(AppScope(
+                  progressRepository: _Progress(),
+                  levelRepository: _Levels(layout),
+                  audioService: _Audio(),
+                  child: MaterialApp(
+                      theme: GameTheme.theme(),
+                      builder: (context, child) => MediaQuery(
+                          data: MediaQuery.of(context).copyWith(
+                              padding: EdgeInsets.only(
+                                  top: screen.safeTop, bottom: 24),
+                              viewPadding: EdgeInsets.only(
+                                  top: screen.safeTop, bottom: 24)),
+                          child: child!),
+                      home: endless
+                          ? EndlessScreen.forTesting(
+                              boardGenerator: _Boards(layout))
+                          : const GameScreen(level: 2))));
+              await _settle(tester);
+              await loadVisibleTileImages(tester);
+              _expectBoard(tester, oracle, TileVisualTheme.garden,
+                  covered: {if (covered) 'lower'});
+              final box = tester.renderObject<RenderBox>(_board('lower'));
+              final local = covered
+                  ? box.size.center(Offset.zero)
+                  : Offset(box.size.width * .85, box.size.height * .85);
+              final point = box.localToGlobal(local);
+              expect(
+                  TileFacePainter.bodyRect(box.size).contains(local), isTrue);
+              if (offset.dx == .84) {
+                final upper = tester.renderObject<RenderBox>(_board('upper'));
+                final upperPoint = upper.globalToLocal(point);
+                expect((Offset.zero & upper.size).contains(upperPoint), isTrue,
+                    reason:
+                        'Reproduces interception by the old rectangular hit box.');
+                expect(
+                    TileFacePainter.bodyRect(upper.size).contains(upperPoint),
+                    isFalse,
+                    reason: 'Only the lower tile is painted at this point.');
+              }
+              await tester.tapAt(point);
+              expect(oracle.tapTile('lower', geometry.board, geometry.tile),
+                  !covered);
+              await tester.pump();
+              _expectBoard(tester, oracle, TileVisualTheme.garden,
+                  covered: {if (covered) 'lower'});
+              // A live flight must not intercept the next legitimate board tap.
+              await tester.tap(_board('upper'));
+              expect(oracle.tapTile('upper', geometry.board, geometry.tile),
+                  isTrue);
+              await tester.pump();
+              await _settle(tester);
+              _expectBoard(tester, oracle, TileVisualTheme.garden, covered: {});
+              if (covered) {
+                await tester.tap(_board('lower'));
+                expect(oracle.tapTile('lower', geometry.board, geometry.tile),
+                    isTrue);
+                await _settle(tester);
+                _expectBoard(tester, oracle, TileVisualTheme.garden,
+                    covered: {});
+              }
+              expect(oracle.tray,
+                  covered ? ['upper', 'lower'] : ['lower', 'upper']);
+            } finally {
+              await tester.pumpWidget(const SizedBox.shrink());
+              await tester.pump();
+            }
+          }
+        });
+      }
+    }
+  }
+
   test('Lagoon globe is restricted to Ocean sun, not the shared sun ID', () {
     for (final theme in TileVisualTheme.values) {
       expect(tileCatalogForTheme(theme).keys, orderedEquals(tileCatalog.keys));

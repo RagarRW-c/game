@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../core/tile_catalog.dart';
 import '../../domain/tile.dart';
@@ -73,47 +74,79 @@ class _GameTileWidgetState extends State<GameTileWidget> {
       enabled: widget.enabled && !widget.blocked,
       hint: widget.blocked ? 'Covered tile' : null,
       onTap: widget.enabled && !widget.blocked ? widget.onTap : null,
-      child: GestureDetector(
-        excludeFromSemantics: true,
-        onTap: widget.enabled && !widget.blocked ? widget.onTap : null,
-        onTapDown: (_) => _setPressed(true),
-        onTapCancel: () => _setPressed(false),
-        onTapUp: (_) => _setPressed(false),
-        child: AnimatedOpacity(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : GameDurations.quick,
-          curve: Curves.easeInOut,
-          opacity: widget.blocked
-              ? 0.86
-              : widget.enabled
-                  ? 1
-                  : 0.52,
-          child: TweenAnimationBuilder<double>(
-            tween: Tween<double>(
-              begin: 1,
-              end: _pressed ? 0.93 : 1,
-            ),
+      child: _TileBodyHitRegion(
+        boardTile: !widget.trayTile,
+        child: GestureDetector(
+          excludeFromSemantics: true,
+          onTap: widget.enabled && !widget.blocked ? widget.onTap : null,
+          onTapDown: (_) => _setPressed(true),
+          onTapCancel: () => _setPressed(false),
+          onTapUp: (_) => _setPressed(false),
+          child: AnimatedOpacity(
             duration: MediaQuery.disableAnimationsOf(context)
                 ? Duration.zero
-                : Duration(milliseconds: _pressed ? 70 : 110),
-            curve: Curves.easeOutCubic,
-            builder: (context, scale, child) {
-              return Transform.scale(
-                  scale: scale, transformHitTests: false, child: child);
-            },
-            child: TileFace(
-              art: art,
-              blocked: widget.blocked,
-              highlighted: widget.highlighted,
-              pressed: _pressed,
-              depth: widget.depth,
-              trayBlend: blend,
+                : GameDurations.quick,
+            curve: Curves.easeInOut,
+            // TileFace already mutes covered artwork. Keep its body opaque so
+            // underlying symbols cannot shine through and confuse layer order.
+            opacity: widget.blocked || widget.enabled ? 1 : 0.52,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: 1,
+                end: _pressed ? 0.93 : 1,
+              ),
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : Duration(milliseconds: _pressed ? 70 : 110),
+              curve: Curves.easeOutCubic,
+              builder: (context, scale, child) {
+                return Transform.scale(
+                    scale: scale, transformHitTests: false, child: child);
+              },
+              child: TileFace(
+                art: art,
+                blocked: widget.blocked,
+                highlighted: widget.highlighted,
+                pressed: _pressed,
+                depth: widget.depth,
+                trayBlend: blend,
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// Input follows the resting painted body, not transparent PNG corners. This
+/// does not clip painting, shrink layout/semantics bounds or redefine coverage.
+class _TileBodyHitRegion extends SingleChildRenderObjectWidget {
+  const _TileBodyHitRegion({required this.boardTile, required super.child});
+
+  final bool boardTile;
+
+  @override
+  _RenderTileBodyHitRegion createRenderObject(BuildContext context) =>
+      _RenderTileBodyHitRegion(boardTile);
+
+  @override
+  void updateRenderObject(
+          BuildContext context, _RenderTileBodyHitRegion renderObject) =>
+      renderObject.boardTile = boardTile;
+}
+
+class _RenderTileBodyHitRegion extends RenderProxyBox {
+  _RenderTileBodyHitRegion(this.boardTile);
+
+  bool boardTile;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (boardTile && !TileFacePainter.bodyRect(size).contains(position)) {
+      return false;
+    }
+    return super.hitTest(result, position: position);
   }
 }
 
