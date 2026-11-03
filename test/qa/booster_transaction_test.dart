@@ -181,6 +181,106 @@ void main() {
   });
 
   for (final endless in [false, true]) {
+    for (final stock in [false, true]) {
+      for (final event in ['duplicate', 'hint_target', 'dispose']) {
+        testWidgets('$endless direct board Hint with five tray tiles stock=$stock $event',
+            (tester) async {
+          tester.view.devicePixelRatio = 1;
+          tester.view.physicalSize = const Size(360, 800);
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          SharedPreferences.setMockInitialValues({
+            'coins': 500, 'vibration_enabled': false,
+            'level_one_tutorial_seen': true,
+            'extra_hint_boosters': stock ? 1 : 0,
+          });
+          const types = ['carrot', 'berry', 'apple', 'leaf', 'moon',
+            'sun', 'sun', 'sun', 'banana',
+            'shell', 'shell', 'shell', 'heart', 'heart', 'heart'];
+          final layout = [for (var i = 0; i < types.length; i++)
+            Tile(id: 'direct$i', type: types[i], x: (i % 4) * .23,
+                y: (i ~/ 4) * .19, layer: 0)];
+          final p = _Progress();
+          Finder tile(String id) => find.byWidgetPredicate((w) =>
+              w is GameTileWidget && !w.trayTile && w.tile.id == id);
+          List<String> trayIds() => tester.widget<GameTray>(find.byType(GameTray))
+              .trayTiles.whereType<Tile>().map((tile) => tile.id).toList();
+          final gate = Completer<void>();
+          addTearDown(() { if (!gate.isCompleted) gate.complete(); });
+          try {
+            await tester.pumpWidget(AppScope(
+                progressRepository: p, levelRepository: _Levels(layout: layout),
+                audioService: _Audio(),
+                child: MaterialApp(theme: GameTheme.theme(), home: endless
+                    ? EndlessScreen.forTesting(boardGenerator: _Boards(layout: layout))
+                    : const GameScreen(level: 2))));
+            await tester.pumpAndSettle();
+            // Consume exactly the two existing free uses, leaving the sun
+            // triple for a real paid/inventory transaction.
+            for (var i = 0; i < 2; i++) {
+              await tester.tap(booster('Hint'));
+              await tester.pumpAndSettle();
+            }
+            expect(p.effects, 2);
+            expect(p.attempts, 0);
+            final before = [for (var i = 0; i < 5; i++) 'direct$i'];
+            for (final id in before) {
+              await tester.tap(tile(id));
+              await tester.pumpAndSettle();
+            }
+            expect(trayIds(), before);
+            p.gate = gate;
+            await tester.tap(booster('Hint'));
+            await tester.pump();
+            expect(p.attempts, 1);
+            expect(p.deductions, 0);
+            expect(trayIds(), before);
+            if (event == 'duplicate') {
+              await tester.tap(booster('Hint'));
+              await tester.pump();
+              expect(p.attempts, 1);
+            } else if (event == 'hint_target') {
+              await tester.tap(tile('direct7'));
+              await tester.pump();
+              expect(trayIds(), [...before, 'direct7']);
+            } else {
+              await tester.pumpWidget(const SizedBox.shrink());
+            }
+            gate.complete();
+            await tester.pumpAndSettle();
+            final applied = event == 'duplicate';
+            expect(p.attempts, 1);
+            expect(p.deductions, 1);
+            expect(p.effects, applied ? 3 : 2);
+            expect(p.coinDebits, stock ? isEmpty : [150]);
+            expect(p.inventoryDebits, stock ? [BoosterKind.hint] : isEmpty);
+            expect(p.coinRefunds, !stock && !applied ? [150] : isEmpty);
+            expect(p.inventoryRefunds, stock && !applied ? [BoosterKind.hint] : isEmpty);
+            expect(await p.extraHintBoosters(), stock && !applied ? 1 : 0);
+            expect(await p.coins(), 500 + (endless ? 0 : 50) -
+                (!stock && applied ? 150 : 0));
+            expect(p.firstMatchGrants, endless ? isEmpty : [50]);
+            expect(p.matchedBatches, endless ? isEmpty : [3, 3, if (applied) 3]);
+            if (event != 'dispose') {
+              expect(trayIds(), [...before, if (!applied) 'direct7']);
+              expect(tile('direct5'), applied ? findsNothing : findsOneWidget);
+              expect(tile('direct6'), applied ? findsNothing : findsOneWidget);
+              expect(tile('direct7'), findsNothing);
+              if (applied) {
+                expect(tester.widget<GameTray>(find.byType(GameTray)).feedback!.slots,
+                    isEmpty, reason: 'A direct board clear does not occupy tray slots.');
+              }
+            }
+            expect(tester.takeException(), isNull);
+          } finally {
+            if (!gate.isCompleted) gate.complete();
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pump();
+          }
+        });
+      }
+    }
+
     for (final exhaustFreeUses in [false, true]) {
       for (final stock in [false, true]) {
         testWidgets('$endless unavailable Hint is quiet, exhausted=$exhaustFreeUses stock=$stock',

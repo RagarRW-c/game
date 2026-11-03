@@ -113,8 +113,7 @@ void main() {
     });
   }
 
-  test('coverage retains the logical 3% rule regardless of transparent artwork',
-      () {
+  test('coverage preserves logical dependencies independently of artwork', () {
     const base = Tile(id: 'a', type: 'apple', x: 0, y: 0, layer: 0);
     Tile above(double x) => Tile(id: 'b', type: 'berry', x: x, y: 0, layer: 1);
     const size = Size(100, 100);
@@ -123,15 +122,24 @@ void main() {
     expect(base.overlaps(above(offsetForRatio(.02)), size, tile), isFalse);
     expect(base.overlaps(above(offsetForRatio(.04)), size, tile), isTrue);
     expect(
-        base.overlaps(above(0.09), size, tile), isTrue); // 10% logical overlap
+        base.overlaps(above(0.08), size, tile), isTrue); // Real body overlap.
+    expect(
+        base.overlaps(above(0.09), size, tile), isTrue); // 10% logical overlap.
     expect(base.overlaps(above(0.096), size, tile), isTrue,
-        reason: 'Artwork margins must not remove an authored 4% dependency.');
+        reason:
+            'Transparent margins must not erase an authored 4% dependency.');
     expect(base.overlaps(above(0.096), size, tile, minimumCoveredRatio: .05),
         isFalse);
     expect(base.overlaps(above(0.1), size, tile), isFalse); // layout edge
-    // Integer pixel coordinates avoid rounding the inclusive 3% boundary.
+    // Integer coordinates exercise the inclusive 3% boundary exactly.
     expect(base.overlaps(above(.97), size, size), isTrue);
     expect(base.overlaps(above(.98), size, size), isFalse);
+    // Verify the configurable inclusive threshold independently where the
+    // bodies genuinely intersect (integer coordinates avoid rounding).
+    expect(base.overlaps(above(.65), size, size, minimumCoveredRatio: .35),
+        isTrue);
+    expect(base.overlaps(above(.65), size, size, minimumCoveredRatio: .36),
+        isFalse);
   });
 
   for (final sameLayer in [false, true]) {
@@ -164,7 +172,7 @@ void main() {
             x: .1 + scenario.offset.dx / board.width,
             y: .1 + scenario.offset.dy / board.height,
             layer: sameLayer ? 0 : 1);
-        // Gameplay coverage is measured on the authored logical footprint.
+        // An independent rectangle oracle protects the authored rule.
         final intersection = lower
             .boardRect(board, tileSize)
             .intersect(upper.boardRect(board, tileSize));
@@ -193,7 +201,7 @@ void main() {
       () {
     final engine = GameEngine([
       const Tile(id: 'a', type: 'apple', x: 0, y: 0, layer: 0),
-      // 4% logical overlap: the regressed artwork rule discarded this edge.
+      // Even shallow logical overlap must survive PNG/procedural symbol swaps.
       Tile(
           id: 'b',
           type: 'sun',
@@ -309,6 +317,61 @@ void main() {
     expect(engine.boardTiles.length, 3);
   });
 
+  test('photo tray with five tiles: Hint completes the carrot pair first', () {
+    // The device photo's tray order: carrot, chili, kiwi, leaf, carrot.
+    // An independent sun triple must not take precedence over a one-tile match.
+    final engine = GameEngine(openTiles([
+      'carrot',
+      'berry',
+      'apple',
+      'leaf',
+      'carrot',
+      'carrot',
+      'sun',
+      'sun',
+      'sun',
+    ]))
+      ..updateBoardGeometry(board, tileSize);
+    pick(engine, ['t0', 't1', 't2', 't3', 't4']);
+    expect(engine.tray, ['t0', 't1', 't2', 't3', 't4']);
+    expect(engine.findBestHintTileIds(), ['t5']);
+    expect(engine.collectHintTileIds(['t5']), isTrue);
+    expect(engine.tray, ['t1', 't2', 't3']);
+    expect(engine.result, GameResult.playing);
+    for (final id in ['t0', 't4', 't5']) {
+      expect(engine.tileById(id)!.state, TileState.matched);
+    }
+    expect(engine.boardTiles.map((tile) => tile.id), ['t6', 't7', 't8']);
+  });
+
+  test('photo tray: covered carrot cannot complete the pair through a blocker',
+      () {
+    final tiles = openTiles([
+      'carrot',
+      'berry',
+      'apple',
+      'leaf',
+      'carrot',
+      'carrot',
+      'sun',
+      'sun',
+      'sun',
+    ]);
+    final carrot = tiles[5];
+    final engine = GameEngine([
+      ...tiles,
+      Tile(id: 'cover', type: 'shell', x: carrot.x, y: carrot.y, layer: 1),
+    ])
+      ..updateBoardGeometry(board, tileSize);
+    pick(engine, ['t0', 't1', 't2', 't3', 't4']);
+    expect(engine.isTileCovered(carrot), isTrue);
+    expect(engine.findBestHintTileIds(), unorderedEquals(['t6', 't7', 't8']));
+    expect(engine.collectHintTileIds(['t5']), isFalse);
+    expect(engine.tray, ['t0', 't1', 't2', 't3', 't4']);
+    expect(engine.tileById('t5')!.state, TileState.board);
+    expect(engine.result, GameResult.playing);
+  });
+
   test('Hint collects and matches an exposed triple without duplicate IDs', () {
     final engine = GameEngine(openTiles([
       'apple',
@@ -327,27 +390,110 @@ void main() {
     expect(engine.result, GameResult.playing);
   });
 
-  test('Hint respects the current batch capacity rule without tray overflow',
+  for (final occupied in [5, 6]) {
+    test('Hint clears an exposed triple directly with $occupied occupied slots',
+        () {
+      final engine = GameEngine(
+          openTiles([
+            'apple',
+            'apple',
+            'apple',
+            'banana',
+            'berry',
+            'carrot',
+            'star',
+            'shell',
+            if (occupied == 6) 'leaf',
+            'moon', // Keep gameplay active after the direct clear.
+          ]),
+          objective: const LevelObjective(type: 'apple', target: 3))
+        ..updateBoardGeometry(board, tileSize);
+      final before = [for (var i = 3; i < 3 + occupied; i++) 't$i'];
+      pick(engine, before);
+      final ids = engine.findBestHintTileIds();
+      expect(ids.toSet(), {'t0', 't1', 't2'});
+      expect(engine.canCollectHintTileIds(ids), isTrue);
+      expect(engine.collectHintTileIds([...ids, ids.first]), isTrue);
+      expect(engine.tray, before);
+      expect(engine.result, GameResult.playing);
+      expect(engine.boardTiles.map((tile) => tile.id), ['t${3 + occupied}']);
+      for (final id in ids) {
+        expect(engine.tileById(id)!.state, TileState.matched);
+      }
+      expect(engine.objectiveProgress, 3);
+      expect(engine.collectHintTileIds(ids), isFalse);
+      expect(engine.objectiveProgress, 3);
+      expect(engine.tray, before);
+      expect(engine.undo(), isFalse,
+          reason: 'Matched tiles cannot be resurrected.');
+    });
+  }
+
+  test('Hint capacity exception rejects mixed, incomplete and covered batches',
       () {
-    final engine = GameEngine(openTiles([
+    final initial = openTiles([
       'apple',
       'apple',
-      'apple',
-      'banana',
       'berry',
+      'banana',
       'carrot',
       'star',
       'shell',
+      'moon',
+      'leaf',
+    ]);
+    final engine = GameEngine(initial)..updateBoardGeometry(board, tileSize);
+    pick(engine, ['t3', 't4', 't5', 't6', 't7', 't8']);
+    final before = List<String>.of(engine.tray);
+    for (final ids in [
+      <String>['t0', 't1'],
+      ['t0', 't1', 't2'],
+      ['missing']
+    ]) {
+      expect(engine.canCollectHintTileIds(ids), isFalse);
+      expect(engine.collectHintTileIds(ids), isFalse);
+      expect(engine.tray, before);
+      expect(engine.result, GameResult.playing);
+    }
+    // A valid triple becomes stale after an added blocker, just as a board
+    // change during pending payment must invalidate the captured request.
+    engine.tiles = engine.tiles
+        .map((tile) => tile.id == 't2' ? tile.copyWith(type: 'apple') : tile)
+        .toList();
+    expect(engine.canCollectHintTileIds(['t0', 't1', 't2']), isTrue);
+    engine.tiles
+        .add(const Tile(id: 'cover', type: 'sun', x: 0, y: 0, layer: 1));
+    expect(engine.canCollectHintTileIds(['t0', 't1', 't2']), isFalse);
+    expect(engine.collectHintTileIds(['t0', 't1', 't2']), isFalse);
+    expect(engine.tray, before);
+  });
+
+  test('six-slot Hint skips an unfit tray completion for an exposed triple',
+      () {
+    final engine = GameEngine(openTiles([
+      'carrot',
+      'apple',
+      'berry',
+      'leaf',
+      'moon',
+      'shell',
+      'carrot',
+      'carrot',
+      'sun',
+      'sun',
+      'sun',
     ]))
       ..updateBoardGeometry(board, tileSize);
-    pick(engine, ['t3', 't4', 't5', 't6', 't7']);
+    pick(engine, ['t0', 't1', 't2', 't3', 't4', 't5']);
     final ids = engine.findBestHintTileIds();
-    expect(ids.toSet(), {'t0', 't1', 't2'});
-    // Current Hint requires room for the complete batch before matching.
-    expect(engine.collectHintTileIds(ids), isFalse);
-    expect(engine.tray.length, 5);
+    expect(ids, unorderedEquals(['t8', 't9', 't10']));
+    expect(engine.collectHintTileIds(ids), isTrue);
+    expect(engine.tray, ['t0', 't1', 't2', 't3', 't4', 't5']);
+    expect(engine.boardTiles.map((tile) => tile.id), ['t6', 't7']);
+    // Ordinary selection still loses at seven unmatched tiles.
+    expect(engine.tapTile('t6', board, tileSize), isTrue);
+    expect(engine.tray, hasLength(GameEngine.trayLimit));
     expect(engine.result, GameResult.lost);
-    expect(engine.boardTiles.length, 3);
   });
 
   test('objective completion does not win while tiles remain on the board', () {

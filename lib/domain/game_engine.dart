@@ -84,7 +84,8 @@ class GameEngine {
   }
 
   /// A board tile is covered when any active tile rendered above it has a
-  /// visible rectangular overlap with it.
+  /// qualifying logical footprint overlap with it. Transparent artwork margins
+  /// affect pointer targeting, not the authored blocking dependency graph.
   bool isTileCovered(Tile tile) {
     if (!_isRenderedOnBoard(tile) ||
         _boardSize == Size.zero ||
@@ -221,6 +222,7 @@ class GameEngine {
     }
 
     for (final needed in const <int>[1, 2]) {
+      if (tray.length + needed > trayLimit) continue;
       final currentCount = 3 - needed;
       for (final type in trayTypeOrder) {
         if (trayCounts[type] != currentCount) continue;
@@ -242,28 +244,49 @@ class GameEngine {
     return <String>[];
   }
 
-  bool collectHintTileIds(List<String> ids) {
-    if (result != GameResult.playing || ids.isEmpty) return false;
-    final uniqueIds = <String>[];
-    final seenIds = <String>{};
-    for (final id in ids) {
-      if (seenIds.add(id)) uniqueIds.add(id);
-    }
-
+  /// Revalidated before and after payment, and again at application. Only a
+  /// complete exposed board triple may bypass the ordinary tray capacity.
+  bool canCollectHintTileIds(List<String> ids) {
+    if (result != GameResult.playing ||
+        ids.isEmpty ||
+        _boardSize == Size.zero ||
+        _tileSize == Size.zero) return false;
+    final uniqueIds = ids.toSet().toList();
     for (final id in uniqueIds) {
       final tile = tileById(id);
       if (tile == null || !_isRenderedOnBoard(tile) || isTileCovered(tile)) {
         return false;
       }
     }
+    return tray.length + uniqueIds.length <= trayLimit ||
+        _isSingleHintTriple(uniqueIds);
+  }
+
+  bool _isSingleHintTriple(List<String> ids) =>
+      ids.length == 3 &&
+      ids.map((id) => tileById(id)!.type).toSet().length == 1;
+
+  bool collectHintTileIds(List<String> ids) {
+    if (!canCollectHintTileIds(ids)) return false;
+    final uniqueIds = ids.toSet().toList();
+    final idSet = uniqueIds.toSet();
 
     _sanitizeTray();
     if (tray.length + uniqueIds.length > trayLimit) {
-      result = GameResult.lost;
-      return false;
+      // The validated triple clears directly from the board. Never construct
+      // an eight/nine-slot tray, disturb its contents, or expose an overflow
+      // state to rewards, navigation or presentation.
+      _updateObjectiveProgress(idSet);
+      tiles = tiles
+          .map((tile) => idSet.contains(tile.id)
+              ? tile.copyWith(state: TileState.matched)
+              : tile)
+          .toList();
+      _selectionHistory.addAll(uniqueIds);
+      _updateResult();
+      return true;
     }
 
-    final idSet = uniqueIds.toSet();
     tiles = tiles
         .map((tile) => idSet.contains(tile.id)
             ? tile.copyWith(state: TileState.tray)

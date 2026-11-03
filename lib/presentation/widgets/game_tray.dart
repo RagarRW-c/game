@@ -19,14 +19,21 @@ class TrayFeedback {
       required List<String> before,
       required Iterable<String> collected,
       required Set<String> matchedIds})
-      : slots = List.unmodifiable([
-          for (final entry in [...before, ...collected].asMap().entries)
-            if (entry.key < GameEngine.trayLimit &&
-                (matched
-                    ? matchedIds.contains(entry.value)
-                    : entry.key >= before.length))
-              entry.key,
-        ]);
+      : slots = matched &&
+                before.length + collected.length > GameEngine.trayLimit &&
+                collected.length == 3 &&
+                collected.every(matchedIds.contains)
+            // Direct board Hint: the existing tray never participates. Do not
+            // draw a partial triple in its remaining one or two empty slots.
+            ? const []
+            : List.unmodifiable([
+                for (final entry in [...before, ...collected].asMap().entries)
+                  if (entry.key < GameEngine.trayLimit &&
+                      (matched
+                          ? matchedIds.contains(entry.value)
+                          : entry.key >= before.length))
+                    entry.key,
+              ]);
 
   final int serial;
   final bool matched;

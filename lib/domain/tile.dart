@@ -53,9 +53,10 @@ class Tile {
     final otherRect = other.boardRect(boardSize, tileSize);
     if (!candidateRect.overlaps(otherRect)) return false;
 
-    // Campaign balance and Endless layer offsets use logical tile footprints.
-    // PNG padding, rounded artwork and symbol swaps must not change eligibility.
-    // UI tint, input and hints all consume this same 3% gameplay rule.
+    // Authored Campaign layouts and Endless offsets depend on the logical
+    // footprint, including shallow margin/corner overlaps. Artwork must not
+    // erase those dependencies. Eligibility, blocked styling and Hint consume
+    // this rule; pointer targeting separately follows the resting painted body.
     final intersection = candidateRect.intersect(otherRect);
     if (intersection.width <= 0 || intersection.height <= 0) return false;
 

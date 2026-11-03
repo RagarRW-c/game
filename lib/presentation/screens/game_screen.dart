@@ -473,13 +473,10 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     var collected = false;
     final applied = await _transactBooster(
       engine, _hintUsesRemaining, _extraHintBoosters, BoosterKind.hint,
-      () => engine.result == GameResult.playing &&
-          engine.tray.length + hintIds.length <= GameEngine.trayLimit &&
-          hintIds.every((id) {
-            final tile = engine.tileById(id);
-            return tile != null && engine.boardTiles.any((t) => t.id == id) &&
-                engine.isUncovered(tile, boardSize, tileSize);
-          }),
+      () {
+        engine.updateBoardGeometry(boardSize, tileSize);
+        return engine.canCollectHintTileIds(hintIds);
+      },
       () {
         beforeTrayIds = List<String>.from(engine.tray);
         setState(() {

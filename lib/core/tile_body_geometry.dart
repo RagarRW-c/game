@@ -55,16 +55,12 @@ class TileBodyGeometry {
         Radius.circular(unit * .19));
   }
 
-  /// The cap and lower bevel together form this silhouette; neither shadow
-  /// nor pressed/flight transforms should change resting board availability.
+  /// The resting artwork silhouette, not the logical coverage footprint.
+  /// Shadows and pressed/flight transforms do not change pointer targeting.
   static RRect bodyFor(String type, Size size) {
-    if (illustratedTypes.contains(type)) return illustratedBody(size);
-    final face = fallbackFace(size);
-    final unit = size.shortestSide;
-    return RRect.fromRectAndRadius(
-        Rect.fromLTRB(
-            face.left, face.top, face.right, size.height - unit * .035),
-        Radius.circular(unit * .19));
+    // Procedural symbols (including sun and peas) now use the same body as
+    // the PNG tiles. Logical blocking is defined independently in Tile.overlaps.
+    return illustratedBody(size);
   }
 
   /// Exact intersection predicate for two axis-aligned rounded rectangles
