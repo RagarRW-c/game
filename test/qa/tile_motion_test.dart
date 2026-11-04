@@ -16,6 +16,7 @@ import 'package:triple_tile_adventure/presentation/screens/game_screen.dart';
 import 'package:triple_tile_adventure/presentation/screens/endless_screen.dart';
 import 'package:triple_tile_adventure/presentation/screens/win_screen.dart';
 import 'package:triple_tile_adventure/presentation/theme/game_theme.dart';
+import 'package:triple_tile_adventure/presentation/widgets/achievement_reward_dialog.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_over_dialog.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tile.dart';
@@ -51,22 +52,30 @@ class _Audio implements GameAudioService {
   }
 
   @override
+  Future<void> playAchievementUnlocked() async {
+    calls.add('achievement');
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => Future<void>.value();
 }
 
 class _Progress extends ProgressRepository {
+  _Progress({this.showPopups = false});
+  final bool showPopups;
+
   @override
   Future<List<PendingAchievementPopup>>
       consumePendingAchievementPopups() async {
-    await super.consumePendingAchievementPopups();
-    return [];
+    final popups = await super.consumePendingAchievementPopups();
+    return showPopups ? popups : [];
   }
 }
 
 // A controllable persistence boundary, not an animation delay. This proves
 // victory depends on committed rewards rather than on a VFX completion callback.
 class _VictoryProgress extends _Progress {
-  _VictoryProgress({this.completionGate});
+  _VictoryProgress({this.completionGate, super.showPopups});
   final Completer<void>? completionGate;
   int completionCalls = 0;
   int unlockCalls = 0;
@@ -135,6 +144,27 @@ Rect _rect(WidgetTester tester, Finder finder) {
   final box = tester.renderObject<RenderBox>(finder);
   return MatrixUtils.transformRect(
       box.getTransformTo(null), Offset.zero & box.size);
+}
+
+void _expectBurstClockOnly(int serial) {
+  final clock = find.byKey(ValueKey('burst_$serial'), skipOffstage: false);
+  expect(clock, findsOneWidget,
+      reason: 'Supersession must retain the original audio clock.');
+  expect(
+      find.descendant(
+          of: clock,
+          skipOffstage: false,
+          matching: find.byWidgetPredicate(
+              (w) =>
+                  w is MatchedTileVisual ||
+                  w is TrayShiftVisual ||
+                  w is GameTileWidget ||
+                  w is CustomPaint ||
+                  w is Opacity,
+              skipOffstage: false)),
+      findsNothing,
+      reason: 'Invisible burst faces, shifts and painters must be unmounted, '
+          'not retained beneath zero opacity.');
 }
 
 // Absolute logical pixels: separate FittedBox/Stack transform chains may round
@@ -926,6 +956,8 @@ void main() {
     expect(effects.flights.single.slot, 1);
     expect(effects.presents(superseded), isFalse,
         reason: 'Old match faces must not cover a newly reused slot.');
+    _expectBurstClockOnly(superseded.serial);
+    expect(find.byType(TrayShiftVisual), findsNothing);
     expect(effects.hides('m3'), isFalse);
     expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
         ['m3', 'm6']);
@@ -1073,6 +1105,68 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+      'final match reward popups precede Victory without duplicate grants or stale effects',
+      (tester) async {
+    final gate = Completer<void>();
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete();
+    });
+    final progress = _VictoryProgress(completionGate: gate, showPopups: true);
+    final audio = await _mount(tester, count: 3, progressRepository: progress);
+    final effects = _effects(tester);
+    final finalTap = tester.widget<GameTileWidget>(_board('m2')).onTap!;
+    for (final id in ['m0', 'm1', 'm2']) {
+      tester.widget<GameTileWidget>(_board(id)).onTap!();
+    }
+    await tester.pumpAndSettle();
+    expect(find.byType(AchievementRewardDialog), findsOneWidget);
+    expect(find.text('First Match'), findsOneWidget);
+    expect(find.byType(WinScreen), findsNothing);
+    expect(progress.completionCalls, 0,
+        reason: 'The match-earned coin popup precedes completion persistence.');
+    expect(audio.calls.where((c) => c == 'achievement'), hasLength(1));
+    expect(effects.bursts, isEmpty);
+    expect(effects.flights, isEmpty);
+    expect(find.byType(MatchedTileVisual, skipOffstage: false), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('achievement_close')));
+    await tester.pumpAndSettle();
+    expect(progress.completionCalls, 1);
+    expect(find.byType(AchievementRewardDialog), findsNothing);
+    expect(find.byType(WinScreen), findsNothing,
+        reason: 'Completion rewards must be committed before Victory.');
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('First Win'), findsOneWidget);
+    expect(find.byType(WinScreen), findsNothing);
+    expect(audio.calls.where((c) => c == 'achievement'), hasLength(2));
+    final earnedCoins = await progress.coins();
+    final coinCalls = progress.coinCalls;
+    tester.element(find.byType(AchievementRewardDialog)).markNeedsBuild();
+    await tester.pump();
+    expect(await progress.coins(), earnedCoins);
+    expect(audio.calls.where((c) => c == 'achievement'), hasLength(2));
+
+    await tester.tap(find.byKey(const ValueKey('achievement_close')));
+    await tester.pumpAndSettle();
+    expect(find.byType(WinScreen), findsOneWidget);
+    finalTap();
+    await tester.pump();
+    expect(progress.completionCalls, 1);
+    expect(progress.unlockCalls, 1);
+    expect(progress.coinCalls, coinCalls);
+    expect(await progress.coins(), earnedCoins);
+    expect(audio.calls.where((c) => c == 'achievement'), hasLength(2));
+    expect(effects.bursts, isEmpty);
+    expect(effects.flights, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final holdPersistence in [false, true]) {
     testWidgets(
         holdPersistence
@@ -1152,6 +1246,10 @@ void main() {
       expect(effects.flights, isEmpty);
       expect(effects.boardCue, isNull);
       expect(find.byType(MatchedTileVisual, skipOffstage: false), findsNothing);
+      expect(find.byType(TrayShiftVisual, skipOffstage: false), findsNothing);
+      expect(find.byType(TileFlightVisual, skipOffstage: false), findsNothing);
+      expect(find.byKey(ValueKey('burst_${burst.serial}'), skipOffstage: false),
+          findsNothing);
       finalTap();
       effects.finishBurst(burst.serial);
       effects.finishFlight(flight.serial);
@@ -1676,16 +1774,22 @@ void main() {
     final visuals = tester
         .widgetList<MatchedTileVisual>(find.byType(MatchedTileVisual))
         .toList();
-    expect(visuals, hasLength(9));
-    expect(visuals.first.progress, greaterThan(visuals.last.progress));
+    expect(visuals, hasLength(3),
+        reason: 'Three retained clocks must not retain nine visual faces.');
+    expect(visuals.map((v) => v.burst.serial),
+        everyElement(effects.bursts.last.serial));
+    double clockProgress(TrayBurst burst) => tester
+        .state<ImplicitlyAnimatedWidgetState<TweenAnimationBuilder<double>>>(
+            find.byKey(ValueKey('burst_${burst.serial}')))
+        .animation
+        .value;
+    expect(clockProgress(effects.bursts.first),
+        greaterThan(clockProgress(effects.bursts.last)));
     expect(effects.bursts.where(effects.presents), [effects.bursts.last],
         reason:
             'Retired snapshots retain clocks, never ownership of reused slots.');
     for (final burst in effects.bursts) {
-      final layer = find.byKey(ValueKey('burst_layer_${burst.serial}'));
-      final opacity = tester.widget<Opacity>(
-          find.descendant(of: layer, matching: find.byType(Opacity)).first);
-      expect(opacity.opacity, effects.presents(burst) ? 1 : 0);
+      if (!effects.presents(burst)) _expectBurstClockOnly(burst.serial);
     }
     expect(_board(), findsNWidgets(6));
     expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
@@ -1731,93 +1835,170 @@ void main() {
   });
 
   for (final action in ['Undo', 'Shuffle', 'Hint']) {
+    for (final endless in [false, true]) {
+      testWidgets(
+          '$action during snapshot reaction cancels or replaces effects safely${endless ? ' (Endless)' : ''}',
+          (tester) async {
+        final audio =
+            await _mount(tester, endless: endless, fixedEndless: true);
+        for (final id in ['m3', 'm0', 'm1', 'm2']) {
+          tester.widget<GameTileWidget>(_board(id)).onTap!();
+          await tester.pump();
+        }
+        final effects = _effects(tester);
+        final oldBurst = effects.bursts.single;
+        final oldSerial = oldBurst.serial;
+        final oldClockFinder =
+            find.byKey(ValueKey('burst_$oldSerial'), skipOffstage: false);
+        final oldClock = tester.state(oldClockFinder);
+        await tester.pump(const Duration(milliseconds: 370));
+        expect(effects.bursts.where(effects.presents), [oldBurst]);
+        final activeFaces = tester.widgetList<MatchedTileVisual>(
+            find.byType(MatchedTileVisual, skipOffstage: false));
+        expect(activeFaces, hasLength(3));
+        expect(activeFaces.map((v) => v.burst), everyElement(same(oldBurst)));
+        expect(activeFaces.map((v) => v.face.tile.id),
+            unorderedEquals(['m0', 'm1', 'm2']));
+        expect(audio.calls.where((c) => c == 'match'), isEmpty,
+            reason:
+                '370 ms is inside compression, before the 413.2 ms release.');
+        if (action == 'Undo') {
+          // The last selection (m2) has matched, so Undo cannot skip it to
+          // restore m3. Make a legal undoable move while the burst is reacting.
+          expect(tester.widget<GameBoosterButton>(_booster(action)).onPressed,
+              isNull);
+          tester.widget<GameTileWidget>(_board('m6')).onTap!();
+          await tester.pump();
+          expect(_board('m6'), findsNothing);
+          expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
+              ['m3', 'm6']);
+          expect(effects.bursts.single, same(oldBurst));
+          expect(oldBurst.snapshots.map((s) => s.tile.id),
+              unorderedEquals(['m0', 'm1', 'm2']));
+          expect(effects.bursts.where(effects.presents), isEmpty,
+              reason:
+                  'The accepted m6 move supersedes the previous arrangement.');
+          _expectBurstClockOnly(oldSerial);
+          expect(tester.state(oldClockFinder), same(oldClock));
+          expect(
+              tester
+                  .state<
+                      ImplicitlyAnimatedWidgetState<
+                          TweenAnimationBuilder<double>>>(oldClockFinder)
+                  .animation
+                  .value,
+              closeTo(370 / 640, 1e-9),
+              reason: 'Supersession retains the clock without restarting it.');
+          expect(find.byType(MatchedTileVisual, skipOffstage: false),
+              findsNothing);
+          expect(
+              find.byType(TrayShiftVisual, skipOffstage: false), findsNothing);
+          expect(effects.hides('m3'), isFalse);
+        }
+        expect(tester.widget<GameBoosterButton>(_booster(action)).onPressed,
+            isNotNull);
+        await tester.tap(_booster(action));
+        await tester.pump();
+        if (action == 'Hint') {
+          final hint = effects.bursts.last;
+          expect(hint.serial, isNot(oldSerial));
+          expect(hint.incomingId, isNull);
+          expect(hint.snapshots, hasLength(3));
+          expect(hint.reactionStart, 0);
+          expect(
+              hint.snapshots.every((s) => hint.opacityAt(s, 0) == 1), isTrue);
+          expect(effects.bursts.where(effects.presents), [hint]);
+          final faces = tester.widgetList<MatchedTileVisual>(
+              find.byType(MatchedTileVisual, skipOffstage: false));
+          expect(faces, hasLength(3));
+          expect(faces.map((v) => v.burst), everyElement(same(hint)));
+        } else {
+          expect(effects.bursts, isEmpty);
+          expect(find.byType(MatchedTileVisual), findsNothing);
+        }
+        if (action == 'Undo') {
+          expect(oldClockFinder, findsNothing,
+              reason: 'Undo fully cancels the retained audio-only burst.');
+          expect(_board('m6'), findsOneWidget);
+          expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
+              ['m3']);
+          expect(effects.flights.single.reversed, isTrue);
+          expect(effects.flights.single.source.tile.id, 'm6');
+          expect(find.byType(TileFlightVisual), findsOneWidget);
+          expect(effects.hidesBoard('m6'), isTrue);
+          final boardOpacity = find
+              .ancestor(of: _board('m6'), matching: find.byType(Opacity))
+              .first;
+          expect(tester.widget<Opacity>(boardOpacity).opacity, 0,
+              reason: 'The reverse flight is the only visible m6 copy.');
+          expect(_tray(tester).feedback, isNull);
+          for (final id in ['m0', 'm1', 'm2']) {
+            expect(_board(id), findsNothing);
+          }
+        }
+        await tester.pumpAndSettle();
+        expect(effects.flights, isEmpty);
+        expect(effects.bursts, isEmpty);
+        if (action == 'Undo') {
+          expect(effects.hidesBoard('m6'), isFalse);
+          expect(_board('m6'), findsOneWidget);
+          expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
+              ['m3']);
+          expect(
+              find.byType(TileFlightVisual, skipOffstage: false), findsNothing);
+          expect(audio.calls, ['tap', 'tap', 'tap', 'tap', 'tap', 'tap'],
+              reason:
+                  'Undo uses selection audio; the cancelled burst cannot play.');
+        }
+        expect(tester.binding.transientCallbackCount, 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final endless in [false, true]) {
     testWidgets(
-        '$action during snapshot reaction cancels or replaces effects safely',
+        'disabled Undo after a triple preserves its valid clearing effect${endless ? ' (Endless)' : ''}',
         (tester) async {
-      await _mount(tester);
+      final audio = await _mount(tester, endless: endless, fixedEndless: true);
       for (final id in ['m3', 'm0', 'm1', 'm2']) {
         tester.widget<GameTileWidget>(_board(id)).onTap!();
         await tester.pump();
       }
       final effects = _effects(tester);
-      final oldSerial = effects.bursts.single.serial;
+      final burst = effects.bursts.single;
       await tester.pump(const Duration(milliseconds: 370));
-      if (action == 'Undo') {
-        // The last selection (m2) has matched, so Undo cannot skip it to
-        // restore m3. Make a legal undoable move while the burst is reacting.
-        expect(tester.widget<GameBoosterButton>(_booster(action)).onPressed,
-            isNull);
-        tester.widget<GameTileWidget>(_board('m6')).onTap!();
-        await tester.pump();
-        expect(_board('m6'), findsNothing);
-        expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
-            ['m3', 'm6']);
-        expect(effects.bursts.single.serial, oldSerial);
-        expect(find.byType(MatchedTileVisual), findsNWidgets(3));
-      }
-      expect(tester.widget<GameBoosterButton>(_booster(action)).onPressed,
-          isNotNull);
-      await tester.tap(_booster(action));
+      final undo = tester.widget<GameBoosterButton>(_booster('Undo'));
+      expect(undo.onPressed, isNull);
+      await tester.tap(_booster('Undo'));
       await tester.pump();
-      if (action == 'Hint') {
-        final hint = effects.bursts.last;
-        expect(hint.serial, isNot(oldSerial));
-        expect(hint.incomingId, isNull);
-        expect(hint.snapshots, hasLength(3));
-        expect(hint.reactionStart, 0);
-        expect(hint.snapshots.every((s) => hint.opacityAt(s, 0) == 1), isTrue);
-      } else {
-        expect(effects.bursts, isEmpty);
-        expect(find.byType(MatchedTileVisual), findsNothing);
-      }
-      if (action == 'Undo') {
-        expect(_board('m6'), findsOneWidget);
-        expect(
-            _tray(tester).trayTiles.whereType<Tile>().map((t) => t.id), ['m3']);
-        expect(effects.flights.single.reversed, isTrue);
-        expect(effects.hidesBoard('m6'), isTrue);
-        expect(_tray(tester).feedback, isNull);
-        for (final id in ['m0', 'm1', 'm2']) {
-          expect(_board(id), findsNothing);
-        }
-      }
+      expect(effects.bursts.single, same(burst));
+      expect(effects.bursts.where(effects.presents), [burst]);
+      expect(find.byType(MatchedTileVisual), findsNWidgets(3));
+      final faces =
+          tester.widgetList<MatchedTileVisual>(find.byType(MatchedTileVisual));
+      expect(faces.map((v) => v.burst), everyElement(same(burst)));
+      expect(faces.map((v) => v.face.tile.id),
+          unorderedEquals(['m0', 'm1', 'm2']));
+      expect(
+          _tray(tester).trayTiles.whereType<Tile>().map((t) => t.id), ['m3']);
+      expect(_board(), findsNWidgets(8));
+      expect(
+          tester.widget<GameBoosterButton>(_booster('Undo')).badge, undo.badge);
+      expect(audio.calls, ['tap', 'tap', 'tap', 'tap']);
+      // Advance just past the existing 343.2 ms arrival + 70 ms compression.
+      await tester.pump(const Duration(microseconds: 43201));
+      expect(audio.calls, ['tap', 'tap', 'tap', 'tap', 'match']);
+      await tester.pump();
+      expect(audio.calls, ['tap', 'tap', 'tap', 'tap', 'match']);
       await tester.pumpAndSettle();
-      expect(effects.flights, isEmpty);
+      expect(audio.calls, ['tap', 'tap', 'tap', 'tap', 'match']);
       expect(effects.bursts, isEmpty);
+      expect(find.byType(MatchedTileVisual), findsNothing);
       expect(tester.binding.transientCallbackCount, 0);
       expect(tester.takeException(), isNull);
     });
   }
-
-  testWidgets(
-      'disabled Undo after a triple preserves its valid clearing effect',
-      (tester) async {
-    final audio = await _mount(tester);
-    for (final id in ['m3', 'm0', 'm1', 'm2']) {
-      tester.widget<GameTileWidget>(_board(id)).onTap!();
-      await tester.pump();
-    }
-    final effects = _effects(tester);
-    final burst = effects.bursts.single;
-    await tester.pump(const Duration(milliseconds: 370));
-    final undo = tester.widget<GameBoosterButton>(_booster('Undo'));
-    expect(undo.onPressed, isNull);
-    await tester.tap(_booster('Undo'));
-    await tester.pump();
-    expect(effects.bursts.single, same(burst));
-    expect(find.byType(MatchedTileVisual), findsNWidgets(3));
-    expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id), ['m3']);
-    expect(_board(), findsNWidgets(8));
-    expect(
-        tester.widget<GameBoosterButton>(_booster('Undo')).badge, undo.badge);
-    expect(audio.calls, ['tap', 'tap', 'tap', 'tap']);
-    await tester.pumpAndSettle();
-    expect(audio.calls, ['tap', 'tap', 'tap', 'tap', 'match']);
-    expect(effects.bursts, isEmpty);
-    expect(find.byType(MatchedTileVisual), findsNothing);
-    expect(tester.binding.transientCallbackCount, 0);
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets('cancelled Undo effects cannot affect a subsequent flight clock',
       (tester) async {
@@ -1911,57 +2092,146 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('removing an earlier burst preserves the later snapshot clock',
-      (tester) async {
-    await _mount(tester);
-    for (final id in ['m0', 'm1', 'm2']) {
-      tester.widget<GameTileWidget>(_board(id)).onTap!();
-      await tester.pump();
-    }
-    final effects = _effects(tester);
-    final first = effects.bursts.single.serial;
-    await tester.pump(const Duration(milliseconds: 100));
-    for (final id in ['m3', 'm4', 'm5']) {
-      tester.widget<GameTileWidget>(_board(id)).onTap!();
-      await tester.pump();
-    }
-    final second = effects.bursts.last.serial;
-    expect(effects.bursts, hasLength(2));
-    await tester.pump(const Duration(milliseconds: 541));
-    expect(effects.bursts.map((b) => b.serial), [second]);
-    expect(effects.bursts.any((b) => b.serial == first), isFalse);
-    for (final visual in tester
-        .widgetList<MatchedTileVisual>(find.byType(MatchedTileVisual))) {
-      expect(visual.burst.serial, second);
-      expect(visual.progress, closeTo(541 / 640, .000001));
-    }
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(effects.bursts, isEmpty);
-    expect(find.byType(MatchedTileVisual), findsNothing);
-    await tester.pumpAndSettle();
-    expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
-    expect(_board(), findsNWidgets(6));
-    expect(tester.binding.transientCallbackCount, 0);
-    expect(tester.takeException(), isNull);
-  });
+  for (final endless in [false, true]) {
+    testWidgets(
+        'endless=$endless: removing an earlier burst preserves the later snapshot clock and both audio cues',
+        (tester) async {
+      final audio = await _mount(tester, endless: endless, fixedEndless: true);
+      for (final id in ['m0', 'm1', 'm2']) {
+        tester.widget<GameTileWidget>(_board(id)).onTap!();
+        await tester.pump();
+      }
+      final effects = _effects(tester);
+      final first = effects.bursts.single.serial;
+      final firstClock = tester.state(find.byKey(ValueKey('burst_$first')));
+      await tester.pump(const Duration(milliseconds: 100));
+      for (final id in ['m3', 'm4', 'm5']) {
+        tester.widget<GameTileWidget>(_board(id)).onTap!();
+        await tester.pump();
+      }
+      final second = effects.bursts.last.serial;
+      expect(effects.bursts, hasLength(2));
+      _expectBurstClockOnly(first);
+      expect(
+          tester.state(find.byKey(ValueKey('burst_$first'))), same(firstClock));
+      final faces = tester.widgetList<MatchedTileVisual>(
+          find.byType(MatchedTileVisual, skipOffstage: false));
+      expect(faces, hasLength(3),
+          reason: 'Only the current triple owns visual faces.');
+      expect(faces.map((v) => v.burst.serial), everyElement(second));
+      expect(faces.map((v) => v.face.tile.id).toSet(), {'m3', 'm4', 'm5'});
+      expect(
+          find.byWidgetPredicate(
+              (w) => w is CustomPaint && w.painter is MatchBurstPainter),
+          findsOneWidget);
 
-  testWidgets('reduced motion never retains matched face snapshots',
-      (tester) async {
-    final audio = await _mount(tester, reduced: true);
-    for (final id in ['m0', 'm1', 'm2']) {
-      tester.widget<GameTileWidget>(_board(id)).onTap!();
+      // First release is at 343.2 ms arrival + 70 ms compression. The second
+      // clock starts 100 ms later. Supersession must neither reset nor skip audio.
+      await tester.pump(const Duration(microseconds: 313199));
+      expect(audio.calls.where((c) => c == 'match'), isEmpty);
+      _expectBurstClockOnly(first);
+      await tester.pump(const Duration(microseconds: 2));
+      expect(audio.calls.where((c) => c == 'match'), hasLength(1));
       await tester.pump();
+      expect(audio.calls.where((c) => c == 'match'), hasLength(1));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(audio.calls.where((c) => c == 'match'), hasLength(2));
+      await tester.pump(const Duration(microseconds: 127799));
+      expect(effects.bursts.map((b) => b.serial), [second]);
+      expect(effects.bursts.any((b) => b.serial == first), isFalse);
+      for (final visual in tester
+          .widgetList<MatchedTileVisual>(find.byType(MatchedTileVisual))) {
+        expect(visual.burst.serial, second);
+        expect(visual.progress, closeTo(541 / 640, .000001));
+      }
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(effects.bursts, isEmpty);
+      expect(find.byType(MatchedTileVisual), findsNothing);
+      await tester.pumpAndSettle();
+      expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+      expect(_board(), findsNWidgets(6));
+      expect(audio.calls.where((c) => c == 'match'), hasLength(2));
+      expect(tester.binding.transientCallbackCount, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final interruption in ['route', 'background', 'dispose']) {
+      testWidgets(
+          'endless=$endless: $interruption cancels a superseded audio-only burst',
+          (tester) async {
+        final audio =
+            await _mount(tester, endless: endless, fixedEndless: true);
+        for (final id in ['m0', 'm1', 'm2', 'm3']) {
+          tester.widget<GameTileWidget>(_board(id)).onTap!();
+          await tester.pump();
+        }
+        final effects = _effects(tester);
+        _expectBurstClockOnly(effects.bursts.single.serial);
+        expect(audio.calls.where((c) => c == 'match'), isEmpty);
+        if (interruption == 'route') {
+          final navigator =
+              Navigator.of(tester.element(find.byType(GameTileEffects)));
+          unawaited(navigator.push<void>(PageRouteBuilder<void>(
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+              pageBuilder: (_, __, ___) =>
+                  const Scaffold(body: Text('Away')))));
+          await tester.pump();
+          expect(effects.bursts, isEmpty);
+          navigator.pop();
+        } else if (interruption == 'background') {
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          await tester.pump();
+          expect(effects.bursts, isEmpty);
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        } else {
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 1));
+        expect(effects.bursts, isEmpty);
+        expect(effects.flights, isEmpty);
+        expect(
+            find.byType(MatchedTileVisual, skipOffstage: false), findsNothing);
+        expect(
+            find.byType(TileFlightVisual, skipOffstage: false), findsNothing);
+        expect(find.byType(TrayShiftVisual, skipOffstage: false), findsNothing);
+        expect(audio.calls.where((c) => c == 'match'), isEmpty,
+            reason: 'Returning or resuming must not replay a cancelled cue.');
+        if (interruption != 'dispose') {
+          expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
+              ['m3']);
+          expect(_board(), findsNWidgets(8));
+        }
+        expect(tester.binding.transientCallbackCount, 0);
+        expect(tester.takeException(), isNull);
+      });
     }
-    expect(_effects(tester).bursts, isEmpty);
-    expect(_effects(tester).flights, isEmpty);
-    expect(find.byType(MatchedTileVisual), findsNothing);
-    expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
-    expect(_board(), findsNWidgets(9));
-    expect(audio.calls, ['tap', 'tap', 'match']);
-    await tester.pumpAndSettle();
-    expect(tester.binding.transientCallbackCount, 0);
-    expect(tester.takeException(), isNull);
-  });
+  }
+
+  for (final endless in [false, true]) {
+    testWidgets(
+        'endless=$endless: reduced motion never retains matched face snapshots',
+        (tester) async {
+      final audio = await _mount(tester,
+          reduced: true, endless: endless, fixedEndless: true);
+      for (final id in ['m0', 'm1', 'm2']) {
+        tester.widget<GameTileWidget>(_board(id)).onTap!();
+        await tester.pump();
+      }
+      expect(_effects(tester).bursts, isEmpty);
+      expect(_effects(tester).flights, isEmpty);
+      expect(find.byType(MatchedTileVisual), findsNothing);
+      expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+      expect(_board(), findsNWidgets(9));
+      expect(audio.calls, ['tap', 'tap', 'match']);
+      await tester.pumpAndSettle();
+      expect(tester.binding.transientCallbackCount, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('navigation during match reaction cancels snapshots permanently',
       (tester) async {

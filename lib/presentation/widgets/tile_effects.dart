@@ -811,31 +811,34 @@ class _GameTileEffectsState extends State<GameTileEffects>
                                 widget.controller.finishBurst(burst.serial),
                             builder: (context, progress, _) {
                               widget.controller.observeBurst(burst, progress);
-                              return Opacity(
-                                  opacity:
-                                      widget.controller.presents(burst) ? 1 : 0,
-                                  child: Stack(children: [
-                                    for (final shift in burst.shifts)
-                                      Positioned.fromRect(
-                                          rect: burst.shiftRectAt(
-                                              shift, progress),
-                                          child: TrayShiftVisual(
-                                              tile: shift.tile,
-                                              catalog: burst.catalog)),
-                                    for (final face in burst.snapshots)
-                                      Positioned.fromRect(
-                                          rect: burst.rectAt(face, progress),
-                                          child: MatchedTileVisual(
-                                              key: ValueKey(
-                                                  'match_${burst.serial}_${face.tile.id}'),
-                                              burst: burst,
-                                              face: face,
-                                              progress: progress)),
-                                    Positioned.fill(
-                                        child: CustomPaint(
-                                            painter: MatchBurstPainter(
-                                                burst, progress))),
-                                  ]));
+                              // Superseded bursts retain this keyed clock for
+                              // exactly-once audio, but no longer own visuals.
+                              // Opacity(0) skipped paint while still rebuilding
+                              // and laying out every obsolete face each tick.
+                              if (!widget.controller.presents(burst)) {
+                                return const SizedBox.shrink();
+                              }
+                              return Stack(children: [
+                                for (final shift in burst.shifts)
+                                  Positioned.fromRect(
+                                      rect: burst.shiftRectAt(shift, progress),
+                                      child: TrayShiftVisual(
+                                          tile: shift.tile,
+                                          catalog: burst.catalog)),
+                                for (final face in burst.snapshots)
+                                  Positioned.fromRect(
+                                      rect: burst.rectAt(face, progress),
+                                      child: MatchedTileVisual(
+                                          key: ValueKey(
+                                              'match_${burst.serial}_${face.tile.id}'),
+                                          burst: burst,
+                                          face: face,
+                                          progress: progress)),
+                                Positioned.fill(
+                                    child: CustomPaint(
+                                        painter: MatchBurstPainter(
+                                            burst, progress))),
+                              ]);
                             },
                           )),
                   ],

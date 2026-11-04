@@ -154,7 +154,51 @@ void main() {
     }
   }
 
+  // Public debugLayer and repaint metrics inspect framework paint reuse and
+  // invalidation in debug widget tests. They do not observe engine raster-cache
+  // retention or establish a GPU/frame-time improvement.
   for (final reducedMotion in [false, true]) {
+    testWidgets(
+        'entrance retains the static panel display list; reduced motion=$reducedMotion',
+        (tester) async {
+      await _mount(
+          tester, AchievementRewardDialog(definition: _short, onClose: () {}),
+          reducedMotion: reducedMotion);
+      // The first nontransparent frame records the complete panel once.
+      await tester.pump(const Duration(milliseconds: 80));
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const ValueKey('achievement_panel_paint')));
+      final layer = boundary.debugLayer!;
+      final recordedContent = layer.firstChild;
+      expect(recordedContent, isNotNull);
+      final size = boundary.size;
+      final fade = find.byKey(const ValueKey('achievement_fade'));
+      final beforeOpacity = tester.widget<Opacity>(fade).opacity;
+      boundary.debugResetMetrics();
+      for (var frame = 0; frame < 5; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(boundary.debugLayer, same(layer));
+        expect(layer.firstChild, same(recordedContent),
+            reason: 'Entrance ticks must reuse recorded panel paint.');
+        expect(boundary.size, size);
+      }
+      expect(boundary.debugSymmetricPaintCount, 0,
+          reason:
+              'The static panel must not repaint with its animated parent.');
+      if (!reducedMotion) {
+        expect(boundary.debugAsymmetricPaintCount, greaterThan(0));
+        expect(
+            tester.widget<Opacity>(fade).opacity, greaterThan(beforeOpacity));
+      }
+      await tester.pumpAndSettle();
+      expect(tester.widget<Opacity>(fade).opacity, 1);
+      expectAchievementArtworkVisible(tester);
+      expect(find.byKey(const ValueKey('achievement_close')).hitTestable(),
+          findsOneWidget);
+      expect(tester.binding.transientCallbackCount, 0);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets(
         'entrance finishes without a loop; reduced motion=$reducedMotion',
         (tester) async {
@@ -176,6 +220,43 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('retained reward panel repaints when its content changes',
+      (tester) async {
+    final definition = ValueNotifier(_short);
+    addTearDown(definition.dispose);
+    await _mount(
+        tester,
+        ValueListenableBuilder<AchievementDefinition>(
+            valueListenable: definition,
+            builder: (_, value, __) =>
+                AchievementRewardDialog(definition: value, onClose: () {})));
+    await tester.pumpAndSettle();
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const ValueKey('achievement_panel_paint')));
+    Iterable<PictureLayer> pictures(ContainerLayer layer) sync* {
+      for (Layer? child = layer.firstChild;
+          child != null;
+          child = child.nextSibling) {
+        if (child is PictureLayer) yield child;
+        if (child is ContainerLayer) yield* pictures(child);
+      }
+    }
+
+    final recordedContent = pictures(boundary.debugLayer!).toList();
+    expect(recordedContent, isNotEmpty);
+    definition.value = _long;
+    await tester.pumpAndSettle();
+    expect(find.text(_short.name), findsNothing);
+    expect(find.text(_long.name), findsOneWidget);
+    expect(find.text('+${_long.reward} coins'), findsOneWidget);
+    // Scrolling content may repaint inside its own retained layer without
+    // repainting the panel's outer decoration.
+    expect(
+        pictures(boundary.debugLayer!), isNot(orderedEquals(recordedContent)));
+    expectAchievementArtworkVisible(tester);
+    expect(tester.takeException(), isNull);
+  });
 
   for (final dispose in [false, true]) {
     testWidgets(

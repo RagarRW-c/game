@@ -41,7 +41,13 @@ class AchievementRewardDialog extends StatelessWidget {
                       child: Transform.scale(
                         key: const ValueKey('achievement_scale'),
                         scale: 0.92 + value * 0.08,
-                        child: child,
+                        // Only the entrance transform/fade changes each tick.
+                        // Retain the panel's shadows and artwork display list;
+                        // scrolling or changed content still repaints normally.
+                        child: RepaintBoundary(
+                          key: const ValueKey('achievement_panel_paint'),
+                          child: child,
+                        ),
                       ),
                     ),
                     child: GameCard(
