@@ -16,7 +16,9 @@ class GameOverDialog extends StatelessWidget {
 
   final bool canUseShuffle;
   final VoidCallback onBackToMap;
-  final VoidCallback onUseShuffle;
+
+  /// Null omits recovery entirely when the caller has no valid Shuffle rescue.
+  final VoidCallback? onUseShuffle;
   final VoidCallback? onRestart;
 
   @override
@@ -150,27 +152,29 @@ class GameOverDialog extends StatelessWidget {
                           ),
                           foregroundColor: Colors.white,
                         ),
-                        const SizedBox(height: 16),
-                        GameButton(
-                          key: const ValueKey('game_over_shuffle'),
-                          label: 'Use Shuffle',
-                          wrapLabel: true,
-                          sculpted: true,
-                          icon: showActionIcons ? Icons.air_rounded : null,
-                          onPressed: canUseShuffle ? onUseShuffle : null,
-                          variant: GameButtonVariant.gold,
-                          gradient: const LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Color(0xFFFFE6A0),
-                              Color(0xFFF4BC63),
-                              Color(0xFFDD8C44)
-                            ],
-                            stops: [0, 0.5, 1],
+                        if (onUseShuffle != null) ...[
+                          const SizedBox(height: 16),
+                          GameButton(
+                            key: const ValueKey('game_over_shuffle'),
+                            label: 'Use Shuffle',
+                            wrapLabel: true,
+                            sculpted: true,
+                            icon: showActionIcons ? Icons.air_rounded : null,
+                            onPressed: canUseShuffle ? onUseShuffle : null,
+                            variant: GameButtonVariant.gold,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color(0xFFFFE6A0),
+                                Color(0xFFF4BC63),
+                                Color(0xFFDD8C44)
+                              ],
+                              stops: [0, 0.5, 1],
+                            ),
+                            foregroundColor: const Color(0xFF62421E),
                           ),
-                          foregroundColor: const Color(0xFF62421E),
-                        ),
+                        ],
                         const SizedBox(height: 20),
                         GameButton(
                           key: const ValueKey('game_over_map'),

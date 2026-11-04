@@ -280,11 +280,10 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     int inventory,
     BoosterKind kind,
     bool Function() legal,
-    bool Function() apply, {
-    Route<dynamic>? actionRoute,
-  }) {
+    bool Function() apply,
+  ) {
     final repository = _scope.progressRepository;
-    final route = actionRoute ?? ModalRoute.of(context);
+    final route = ModalRoute.of(context);
     final useInventory = switch (kind) {
       BoosterKind.hint => repository.useExtraHintBooster,
       BoosterKind.shuffle => repository.useExtraShuffleBooster,
@@ -575,9 +574,9 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         .toSet();
   }
 
-  Future<bool> _useShuffle(GameEngine engine,
-      {bool fromGameOver = false, Route<dynamic>? actionRoute}) async {
-    if (!fromGameOver && engine.result != GameResult.playing) return false;
+  Future<bool> _useShuffle(GameEngine engine) async {
+    // Shuffle only rearranges board types; it cannot recover a full lost tray.
+    if (engine.result != GameResult.playing) return false;
     if (engine.boardTiles.length < 2) return false;
     final usedFreeShuffle = _shuffleUsesRemaining > 0;
     var shuffled = false;
@@ -588,15 +587,10 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
       _extraShuffleBoosters,
       BoosterKind.shuffle,
       () =>
-          engine.boardTiles.length >= 2 &&
-          (engine.result == GameResult.playing ||
-              (fromGameOver && engine.result == GameResult.lost)),
+          engine.boardTiles.length >= 2 && engine.result == GameResult.playing,
       () {
         setState(() {
           _hintedTileIds.clear();
-          if (fromGameOver && engine.result == GameResult.lost) {
-            engine.result = GameResult.playing;
-          }
           shuffled = engine.shuffleBoard();
           if (shuffled) {
             _trayFeedback = null;
@@ -608,7 +602,6 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         cueRevision = _tileEffects.revision;
         return shuffled;
       },
-      actionRoute: actionRoute,
     );
     if (!applied || !mounted || !identical(engine, _engine)) return false;
     if (!shuffled) return false;
@@ -684,22 +677,12 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => _GameOverDialog(
-        canUseShuffle:
-            _canUseBooster(_shuffleUsesRemaining, _extraShuffleBoosters),
+      builder: (_) => GameOverDialog(
+        canUseShuffle: false,
+        onUseShuffle: null,
         onBackToMap: () {
           _navigator.pop();
           if (_navigator.canPop()) _navigator.pop();
-        },
-        onUseShuffle: () async {
-          final engine = _engine;
-          if (engine == null) return;
-          final dialogRoute = ModalRoute.of(dialogContext);
-          final shuffled = await _useShuffle(engine,
-              fromGameOver: true, actionRoute: dialogRoute);
-          if (shuffled && mounted && (dialogRoute?.isCurrent ?? false)) {
-            _navigator.pop();
-          }
         },
         onRestart: level == null
             ? null
@@ -1444,30 +1427,6 @@ class _BossLevelInfo {
       default:
         return null;
     }
-  }
-}
-
-class _GameOverDialog extends StatelessWidget {
-  const _GameOverDialog({
-    required this.canUseShuffle,
-    required this.onBackToMap,
-    required this.onUseShuffle,
-    required this.onRestart,
-  });
-
-  final bool canUseShuffle;
-  final VoidCallback onBackToMap;
-  final VoidCallback onUseShuffle;
-  final VoidCallback? onRestart;
-
-  @override
-  Widget build(BuildContext context) {
-    return GameOverDialog(
-      canUseShuffle: canUseShuffle,
-      onBackToMap: onBackToMap,
-      onUseShuffle: onUseShuffle,
-      onRestart: onRestart,
-    );
   }
 }
 
