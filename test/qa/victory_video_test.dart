@@ -163,6 +163,7 @@ class _Levels extends LevelRepository {
 }
 
 class _Progress extends ProgressRepository {
+  bool showPopups = false;
   int completionCalls = 0;
   final completionCoinGrants = <int>[];
   late PlayerProfileSummary beforeCampaign;
@@ -183,8 +184,8 @@ class _Progress extends ProgressRepository {
   @override
   Future<List<PendingAchievementPopup>>
       consumePendingAchievementPopups() async {
-    await super.consumePendingAchievementPopups();
-    return [];
+    final popups = await super.consumePendingAchievementPopups();
+    return showPopups ? popups : [];
   }
 }
 
@@ -201,6 +202,12 @@ class _Audio implements GameAudioService {
   }
 
   final completionCues = <String>[];
+  int achievementEnds = 0;
+  @override
+  Future<void> playAchievementUnlocked() async =>
+      completionCues.add('achievement');
+  @override
+  void cancelAchievementFeedback({Object? owner}) => achievementEnds++;
   final musicStarts = <int>[];
   int victoryPauses = 0;
   @override
@@ -285,6 +292,19 @@ Future<GlobalKey<NavigatorState>> _completeCampaign(WidgetTester tester,
     await tester.tap(tile);
     tap();
     await tester.pumpAndSettle();
+    if (progress.showPopups) {
+      // Dismiss the three earned popups deterministically, without timer sleeps.
+      for (var popup = 0;
+          popup < 3 &&
+              find
+                  .byKey(const ValueKey('achievement_close'))
+                  .evaluate()
+                  .isNotEmpty;
+          popup++) {
+        await tester.tap(find.byKey(const ValueKey('achievement_close')));
+        await tester.pumpAndSettle();
+      }
+    }
   }
   expect(find.byType(WinScreen), findsOneWidget);
   expect(progress.completionCalls, 1);
@@ -1023,6 +1043,24 @@ void main() {
   });
 
   testWidgets(
+      'Garden completion achievements announce once without a second world fanfare',
+      (tester) async {
+    final progress = _Progress()..showPopups = true;
+    final audio = _Audio();
+    try {
+      await _completeCampaign(tester, platform, progress, audio, level: 10);
+      expect(
+          audio.completionCues, ['achievement', 'achievement', 'achievement']);
+      expect(audio.achievementEnds, 3);
+      expect(progress.completionCalls, 1);
+      await _expectCampaignRewards(progress);
+      expect(await progress.highestUnlockedLevel(), 11);
+    } finally {
+      await _cleanupCampaign(tester, platform);
+    }
+  });
+
+  testWidgets(
       'Garden Boss rewards and unlock cue survive chime removal and system Back',
       (tester) async {
     final progress = _Progress();
@@ -1035,10 +1073,14 @@ void main() {
       await _expectCampaignRewards(progress);
       expect(await progress.highestUnlockedLevel(), 11);
       expect(audio.completionCues, ['world_unlock']);
+      expect(audio.achievementEnds, 0,
+          reason: 'The visible boss result owns its fallback reward.');
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(find.byType(MapScreen), findsOneWidget);
       expect(find.byType(GameScreen, skipOffstage: false), findsNothing);
+      expect(audio.achievementEnds, 1,
+          reason: 'System Back cancels the result-owned reward exactly once.');
       expect(progress.completionCalls, 1);
       await _expectCampaignRewards(progress);
     } finally {

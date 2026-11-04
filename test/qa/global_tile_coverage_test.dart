@@ -115,6 +115,14 @@ void _expectBoard(WidgetTester tester, GameEngine oracle, TileVisualTheme theme,
     final face = tester.widget<TileFace>(
         find.descendant(of: tile, matching: find.byType(TileFace)));
     expect(face.blocked, expected);
+    expect(
+        find.descendant(
+            of: tile,
+            matching: find.byWidgetPredicate((widget) =>
+                widget is CustomPaint &&
+                widget.foregroundPainter is BlockedTileOverlayPainter)),
+        expected ? findsOneWidget : findsNothing,
+        reason: '${widget.tile.id}: logical coverage owns the visible lock');
     final opacity = tester.widget<AnimatedOpacity>(
         find.descendant(of: tile, matching: find.byType(AnimatedOpacity)));
     expect(opacity.opacity, 1,
@@ -297,6 +305,8 @@ void main() {
                     widget.action == BoosterAction.hint);
                 await tester.tap(hint);
                 await _settle(tester);
+                expect(find.byType(SnackBar), findsNothing,
+                    reason: 'No legal Hint is a quiet, resource-free no-op.');
                 expect(tester.widget<GameBoosterButton>(hint).badge, 'x2');
                 expect(_board(), findsNWidgets(5));
                 // A visible but logically blocked sun/pea cannot be collected.
@@ -324,6 +334,9 @@ void main() {
                   widget.action == BoosterAction.hint));
               expect(oracle.collectHintTileIds(ids), isTrue);
               await _settle(tester);
+              expect(find.byType(SnackBar), findsNothing,
+                  reason: 'A valid tray completion or exposed triple must not '
+                      'announce that Hint is unavailable.');
               _expectBoard(tester, oracle, TileVisualTheme.garden,
                   covered: {'blocked'});
               expect(_board(), findsNWidgets(2));
@@ -556,6 +569,19 @@ void main() {
               ..updateBoardGeometry(geometry.board, geometry.tile);
             final covered =
                 offset.dx == .74 || offset.dx == .96 || offset.dx == .8;
+            if (offset.dx == .96 || offset.dx == .8) {
+              expect(
+                  TileBodyGeometry.bodiesOverlap(
+                      TileFacePainter.bodyRect(geometry.tile).shift(layout[0]
+                          .boardRect(geometry.board, geometry.tile)
+                          .topLeft),
+                      TileFacePainter.bodyRect(geometry.tile).shift(layout[1]
+                          .boardRect(geometry.board, geometry.tile)
+                          .topLeft)),
+                  isFalse,
+                  reason: 'Reproduce an exposed-looking but logically blocked '
+                      'leaf, paper roll, sun or pea; the lock must still show.');
+            }
             try {
               await tester.pumpWidget(AppScope(
                   progressRepository: _Progress(),

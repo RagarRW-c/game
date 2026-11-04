@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -321,6 +322,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  for (final endless in [false, true]) {
+    for (final reduced in [false, true]) {
+      for (final muted in [false, true]) {
+        testWidgets(
+            'Undo selection audio endless=$endless reduced=$reduced muted=$muted',
+            (tester) async {
+          final audio = _Audio();
+          await _mount(tester, audio, endless: endless, reduced: reduced);
+          audio.sfxEnabled = !muted;
+          final tile = tester
+              .widgetList<GameTileWidget>(_board())
+              .firstWhere((w) => w.enabled && !w.blocked);
+          tile.onTap!();
+          await tester.pump();
+          expect(audio.calls, muted ? isEmpty : ['tap']);
+          final undo =
+              tester.widget<GameBoosterButton>(_booster('Undo')).onPressed!;
+          final coins = await ProgressRepository().coins();
+          final stock = await ProgressRepository().extraUndoBoosters();
+          undo();
+          undo(); // Same-frame duplicate callback, before the button rebuilds.
+          await tester.pump();
+          expect(audio.calls, muted ? isEmpty : ['tap', 'tap'],
+              reason:
+                  'The return starts with one normal tap; no booster or delayed cue.');
+          expect(audio.calls.where((c) => c == 'booster'), isEmpty);
+          expect(_board(tile.tile.id), findsOneWidget);
+          expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+          expect(
+              tester.widget<GameBoosterButton>(_booster('Undo')).badge, 'x1');
+          if (!reduced) {
+            expect(
+                tester
+                    .widget<TileFlightVisual>(find.byType(TileFlightVisual))
+                    .flight
+                    .reversed,
+                isTrue);
+          }
+          undo(); // Retained callback with no legal Undo must be silent.
+          await tester.pumpAndSettle();
+          expect(audio.calls, muted ? isEmpty : ['tap', 'tap']);
+          expect(await ProgressRepository().coins(), coins);
+          expect(await ProgressRepository().extraUndoBoosters(), stock);
+          expect(
+              tester.widget<GameBoosterButton>(_booster('Undo')).badge, 'x1');
+          expect(find.byType(TileFlightVisual), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  }
+
   for (final screen in qaScreens) {
     for (final endless in [false, true]) {
       testWidgets(
@@ -343,6 +396,8 @@ void main() {
         expect(_board(id), findsOneWidget);
         expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
         expect(_tray(tester).feedback, isNull);
+        expect(audio.calls, ['tap', 'tap'],
+            reason: 'Undo reuses selection audio without a booster cue.');
         // Endless generates a random, solvable board. Follow its guaranteed
         // reverse paint order until a legal Hint is available, before shuffling.
         bool hintAvailable() {
@@ -452,7 +507,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(audio.calls.where((cue) => cue == 'match'), hasLength(3));
     expect(audio.calls.where((cue) => cue == 'won'), isEmpty,
-        reason: 'Campaign completion must not play the retired synthetic chime');
+        reason:
+            'Campaign completion must not play the retired synthetic chime');
     expect(find.byType(WinScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -485,7 +541,8 @@ void main() {
         audibleMatches = reduced
             ? matches
             : burstStarts
-                .where((start) => now.difference(start).inMicroseconds >= 413200)
+                .where(
+                    (start) => now.difference(start).inMicroseconds >= 413200)
                 .length;
         expect(event.serial, accepted);
         expect(
@@ -515,44 +572,110 @@ void main() {
     });
   }
 
-  testWidgets('press feedback keeps hit geometry and cancels without selecting',
-      (tester) async {
-    var taps = 0;
-    await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-            body: Center(
-                child: SizedBox(
-      width: 60,
-      height: 60,
-      child: GameTileWidget(
-          tile: _tiles().first,
-          enabled: true,
-          highlighted: false,
-          onTap: () => taps++),
-    )))));
-    final tile = find.byType(GameTileWidget);
-    final size = tester.getSize(tile);
-    final gesture = await tester.startGesture(tester.getCenter(tile));
-    await tester.pump(const Duration(milliseconds: 200));
-    final pressTween = find.descendant(
-        of: tile, matching: find.byType(TweenAnimationBuilder<double>));
-    expect(tester.widget<TweenAnimationBuilder<double>>(pressTween).duration,
-        const Duration(milliseconds: 70));
-    final transform =
-        find.descendant(of: tile, matching: find.byType(Transform));
-    expect(tester.widget<Transform>(transform).transformHitTests, isFalse);
-    expect(tester.getSize(tile), size);
-    await gesture.cancel();
-    await tester.pumpAndSettle();
-    expect(tester.widget<TweenAnimationBuilder<double>>(pressTween).duration,
-        const Duration(milliseconds: 110));
-    expect(taps, 0);
-    await tester.tap(tile);
-    await tester.pumpAndSettle();
-    expect(taps, 1);
-    expect(tester.binding.transientCallbackCount, 0);
-    expect(tester.takeException(), isNull);
-  });
+  for (final blocked in [false, true]) {
+    for (final reduced in [false, true]) {
+      testWidgets(
+          !blocked && !reduced
+              ? 'press feedback keeps hit geometry and cancels without selecting'
+              : 'press cancellation blocked=$blocked reduced=$reduced preserves geometry',
+          (tester) async {
+        var taps = 0;
+        await tester.pumpWidget(MaterialApp(
+            home: MediaQuery(
+          data: MediaQueryData(disableAnimations: reduced),
+          child: Scaffold(
+              body: Center(
+                  child: SizedBox(
+                      width: 60,
+                      height: 60,
+                      child: GameTileWidget(
+                          tile: _tiles().first,
+                          enabled: true,
+                          blocked: blocked,
+                          highlighted: false,
+                          onTap: () => taps++)))),
+        )));
+        final tile = find.byType(GameTileWidget);
+        final size = tester.getSize(tile);
+        final bounds = tester.getRect(tile);
+        final gesture = await tester.startGesture(tester.getCenter(tile));
+        // Resolve Flutter's tap-down recognition deadline, not a guessed wait.
+        await tester.pump(kPressTimeout);
+        final pressTween = find.descendant(
+            of: tile, matching: find.byType(TweenAnimationBuilder<double>));
+        final transform =
+            find.descendant(of: tile, matching: find.byType(Transform));
+        final press = tester.widget<TweenAnimationBuilder<double>>(pressTween);
+        expect(
+            press.duration,
+            reduced
+                ? Duration.zero
+                : Duration(milliseconds: blocked ? 95 : 55));
+        expect(press.tween.end, blocked || reduced ? 1 : .96,
+            reason: 'Press target changes as soon as tap-down is recognized');
+        expect(taps, 0);
+        await tester.pump(const Duration(milliseconds: 16));
+        final scale = tester.widget<Transform>(transform).transform.storage[0];
+        expect(scale, blocked || reduced ? 1 : inExclusiveRange(.96, 1),
+            reason: 'Feedback must already be moving on the next frame');
+        expect(tester.widget<Transform>(transform).transformHitTests, isFalse);
+        expect(tester.getSize(tile), size);
+        expect(tester.getRect(tile), bounds);
+        await gesture.cancel();
+        await tester.pump();
+        final release =
+            tester.widget<TweenAnimationBuilder<double>>(pressTween);
+        expect(release.duration,
+            reduced ? Duration.zero : const Duration(milliseconds: 95));
+        expect(release.tween.end, 1);
+        await tester.pumpAndSettle();
+        expect(tester.widget<Transform>(transform).transform.storage[0], 1);
+        expect(tester.getRect(tile), bounds);
+        expect(taps, 0);
+        await tester.tap(tile);
+        await tester.pumpAndSettle();
+        expect(taps, blocked ? 0 : 1);
+        expect(tester.binding.transientCallbackCount, 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final endless in [false, true]) {
+    for (final reduced in [false, true]) {
+      testWidgets(
+          'endless=$endless reduced=$reduced: cancelled press never enters tray or effects',
+          (tester) async {
+        final audio = _Audio();
+        await _mount(tester, audio, endless: endless, reduced: reduced);
+        final effects = tester
+            .widget<GameTileEffects>(find.byType(GameTileEffects))
+            .controller;
+        final beforeIds = tester
+            .widgetList<GameTileWidget>(_board())
+            .map((w) => w.tile.id)
+            .toList();
+        final target = _board().last;
+        expect(tester.widget<GameTileWidget>(target).blocked, isFalse);
+        final gesture = await tester.startGesture(tester.getCenter(target));
+        await tester.pump(kPressTimeout);
+        await tester.pump(const Duration(milliseconds: 16));
+        await gesture.cancel();
+        await tester.pumpAndSettle();
+        expect(
+            tester.widgetList<GameTileWidget>(_board()).map((w) => w.tile.id),
+            beforeIds);
+        expect(_tray(tester).trayTiles, hasLength(7));
+        expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+        expect(effects.flights, isEmpty);
+        expect(effects.bursts, isEmpty);
+        expect(effects.boardCue, isNull);
+        expect(audio.calls, isEmpty);
+        expect(tester.binding.transientCallbackCount, 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   testWidgets('feedback channel failures cannot interrupt accepted moves',
       (tester) async {

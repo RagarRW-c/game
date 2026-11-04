@@ -17,6 +17,7 @@ import 'package:triple_tile_adventure/presentation/theme/game_theme.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tile.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tray.dart';
+import 'package:triple_tile_adventure/presentation/widgets/tile_effects.dart';
 
 List<Tile> tiles() => List.generate(18, (i) => Tile(
     id: 't$i', type: tileCatalog.keys.elementAt(i ~/ 3),
@@ -38,6 +39,11 @@ class _Boards extends EndlessBoardGenerator {
   List<Tile> generate({required int round, required TileVisualTheme theme}) => layout ?? tiles();
 }
 class _Audio implements GameAudioService {
+  final calls = <String>[];
+  @override
+  Future<void> playTap() async => calls.add('tap');
+  @override
+  Future<void> playBooster() async => calls.add('booster');
   @override
   bool sfxEnabled = false;
   @override
@@ -375,8 +381,9 @@ void main() {
             });
             final p = _Progress();
             final navigator = GlobalKey<NavigatorState>();
+            final audio = _Audio()..sfxEnabled = kind == 'Undo';
             Widget app({int level = 2, int run = 0}) => AppScope(
-              progressRepository: p, levelRepository: _Levels(), audioService: _Audio(),
+              progressRepository: p, levelRepository: _Levels(), audioService: audio,
               child: MaterialApp(navigatorKey: navigator, theme: GameTheme.theme(),
                 home: endless
                   ? EndlessScreen.forTesting(key: ValueKey(run), boardGenerator: _Boards())
@@ -406,14 +413,32 @@ void main() {
                   .trayTiles.whereType<Tile>(), isEmpty);
             }
             if (kind == 'Undo') await tapTile(tester);
+            final effects = tester.widget<GameTileEffects>(find.byType(GameTileEffects)).controller;
+            final visualEvents = <String>{};
+            void observeVisuals() {
+              if (effects.boardCue case final cue?) visualEvents.add('cue_${cue.serial}');
+              for (final flight in effects.flights.where((f) => f.reversed)) {
+                visualEvents.add('undo_${flight.serial}');
+              }
+              for (final burst in effects.bursts.where(effects.presents)) {
+                visualEvents.add('burst_${burst.serial}');
+              }
+            }
+            effects.addListener(observeVisuals);
+            addTearDown(() => effects.removeListener(observeVisuals));
             final gate = Completer<void>();
             addTearDown(() { if (!gate.isCompleted) gate.complete(); });
             p.gate = gate;
             p.fail = event == 'failure';
+            final soundsBeforePayment = List<String>.from(audio.calls);
             await press(tester, kind);
+            if (kind == 'Undo') expect(audio.calls, soundsBeforePayment,
+                reason: 'Pending payment cannot dispatch Undo audio.');
             expect(p.attempts, 1);
             expect(p.deductions, 0);
             expect(p.effects, 2);
+            expect(visualEvents, isEmpty,
+                reason: 'An unresolved payment must not start success VFX');
             final beforeBoard = tester.widgetList<GameTileWidget>(board()).length;
             if (event == 'duplicate') {
               await press(tester, kind);
@@ -461,11 +486,21 @@ void main() {
               await tester.pumpAndSettle();
             }
             final stateAfterInterruption = boardState(tester);
+            final soundsBeforeCommit = List<String>.from(audio.calls);
             gate.complete();
             await tester.pumpAndSettle();
             final stale = ['dispose', 'navigate', 'replace', 'restart'].contains(event) ||
                 event == 'hint_target' || (event == 'tile' && kind == 'Undo');
             final applied = !stale && event != 'failure';
+            if (kind == 'Undo') {
+              expect(audio.calls, [...soundsBeforeCommit, if (applied) 'tap'],
+                  reason: 'Only committed Undo plays one tap; rejected/stale requests stay silent.');
+              expect(audio.calls.where((cue) => cue == 'booster'), isEmpty);
+            }
+            expect(visualEvents, hasLength(applied ? 1 : 0),
+                reason: 'Exactly one committed booster effect; none for failure/stale/cancellation');
+            expect(effects.boardCue, isNull);
+            expect(effects.bursts, isEmpty);
             expect(p.attempts, 1);
             expect(p.deductions, event == 'failure' ? 0 : 1);
             expect(p.effects, applied ? 3 : 2);

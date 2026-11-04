@@ -159,6 +159,10 @@ class GoldenAudio implements GameAudioService {
   void cancelPendingTileFeedback() {}
   @override
   void cancelPendingWheelFeedback() {}
+  @override
+  void beginAchievementFeedback(Object owner) {}
+  @override
+  void cancelAchievementFeedback({Object? owner}) {}
 
   // Match the deterministic default preferences and exercise the SFX dispatch
   // path. Enabling either setting never starts real audio in this test double.

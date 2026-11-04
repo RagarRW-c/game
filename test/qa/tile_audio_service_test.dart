@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:triple_tile_adventure/core/audio_service.dart';
+import 'package:triple_tile_adventure/core/achievement_chime.dart';
 
 class _Player implements AudioPlayer {
   final played = <Source>[];
@@ -72,6 +75,188 @@ class _Player implements AudioPlayer {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('original chime generator remains deterministic with a silent tail', () {
+    final bytes = buildAchievementChime();
+    expect(bytes, buildAchievementChime());
+    final data = ByteData.sublistView(bytes);
+    expect(data.getUint32(24, Endian.little), 22050);
+    final samples = [
+      for (var i = 44; i < bytes.length; i += 2)
+        data.getInt16(i, Endian.little) / 32767
+    ];
+    expect(samples.length / 22050, .44);
+    expect(samples.first, 0);
+    expect(samples.last, 0);
+    final peak = samples.map((x) => x.abs()).reduce(math.max);
+    final rms = math
+        .sqrt(samples.fold<double>(0, (v, x) => v + x * x) / samples.length);
+    expect(peak, inExclusiveRange(.1, .35));
+    expect(rms, inExclusiveRange(.025, .10));
+    expect(
+        samples.take(110).map((x) => x.abs()).reduce(math.max), lessThan(.04));
+    expect(
+        samples.skip(samples.length - 220).map((x) => x.abs()).reduce(math.max),
+        lessThan(.005));
+    expect(
+        [
+          for (var i = 1; i < samples.length; i++)
+            (samples[i] - samples[i - 1]).abs()
+        ].reduce(math.max),
+        lessThan(.06),
+        reason: 'No impulse or discontinuity at note boundaries');
+  });
+
+  test(
+      'achievement and world rewards use approved piano; wheel confirmation stays intact',
+      () async {
+    final voices = List.generate(4, (_) => _Player());
+    final audio = GameAudioService(musicPlayer: _Player(), sfxPlayers: voices);
+    addTearDown(audio.dispose);
+    await audio.playAchievementUnlocked();
+    expect(voices.expand((v) => v.played), hasLength(1));
+    final source = voices[0].played.single as AssetSource;
+    expect(source.path, 'audio/triotrek/sfx/reward_ok_d.mp3');
+    expect(voices[0].volume, .65);
+    await audio.playWheelRewardOk();
+    expect((voices[1].played.single as AssetSource).path,
+        'audio/triotrek/sfx/reward_ok_d.mp3');
+    expect(voices[1].volume, .65);
+    await audio.playWorldUnlocked();
+    expect((voices[2].played.single as AssetSource).path, source.path);
+    expect(voices[2].volume, .65);
+    expect(voices.expand((v) => v.played), hasLength(3));
+    expect(voices.expand((v) => v.played), everyElement(isA<AssetSource>()),
+        reason: 'Neither reward can fall back to a synthesized WAV fanfare.');
+    audio.sfxEnabled = false;
+    await Future.wait([
+      audio.playAchievementUnlocked(),
+      audio.playWorldUnlocked(),
+    ]);
+    expect(voices.expand((v) => v.played), hasLength(3),
+        reason: 'Muted achievement and world rewards never start playback.');
+  });
+
+  for (final world in [false, true]) {
+    for (final cancellation in ['popup', 'mute', 'background', 'dispose']) {
+      test('reward world=$world $cancellation rejects pending native setup',
+          () async {
+        final voices = List.generate(4, (_) => _Player());
+        final audio =
+            GameAudioService(musicPlayer: _Player(), sfxPlayers: voices);
+        addTearDown(audio.dispose);
+        await audio.prepareTileFeedback();
+        final gate = Completer<void>();
+        voices[0].sourceGate = gate;
+        voices[0].sourceEntered = Completer<void>();
+        final owner = Object();
+        audio.beginAchievementFeedback(owner);
+        final pending =
+            world ? audio.playWorldUnlocked() : audio.playAchievementUnlocked();
+        try {
+          await voices[0].sourceEntered!.future;
+          switch (cancellation) {
+            case 'popup':
+              audio.cancelAchievementFeedback(owner: owner);
+            case 'mute':
+              audio.sfxEnabled = false;
+            case 'background':
+              await audio.pauseMusicForBackground();
+            case 'dispose':
+              await audio.dispose();
+          }
+        } finally {
+          gate.complete();
+        }
+        await pending;
+        expect(voices.expand((v) => v.played), isEmpty);
+      });
+    }
+  }
+
+  test('achievement cancellation never stops a voice reassigned to tile taps',
+      () async {
+    final voices = List.generate(4, (_) => _Player());
+    final audio = GameAudioService(musicPlayer: _Player(), sfxPlayers: voices);
+    addTearDown(audio.dispose);
+    audio.sfxEnabled = false;
+    await audio.playAchievementUnlocked();
+    expect(voices.expand((v) => v.played), isEmpty);
+    audio.sfxEnabled = true;
+    await audio.playAchievementUnlocked();
+    await audio.playTap();
+    final stops = voices.map((v) => v.stops).toList();
+    audio.cancelAchievementFeedback();
+    expect(voices.map((v) => v.stops), stops);
+    expect((voices[0].played.last as AssetSource).path,
+        'audio/triotrek/sfx/tile_tap_b.mp3');
+  });
+
+  for (final pendingOld in [false, true]) {
+    test(
+        'popup ownership supersedes ${pendingOld ? 'pending' : 'playing'} chime',
+        () async {
+      final voices = List.generate(4, (_) => _Player());
+      final audio =
+          GameAudioService(musicPlayer: _Player(), sfxPlayers: voices);
+      addTearDown(audio.dispose);
+      await audio.prepareTileFeedback();
+      final oldOwner = Object();
+      final newOwner = Object();
+      final oldGate = Completer<void>();
+      if (pendingOld) {
+        voices[0].sourceGate = oldGate;
+        voices[0].sourceEntered = Completer<void>();
+      }
+      audio.beginAchievementFeedback(oldOwner);
+      final oldPlayback = audio.playAchievementUnlocked();
+      try {
+        if (pendingOld) {
+          await voices[0].sourceEntered!.future;
+        } else {
+          await oldPlayback;
+        }
+        final oldStops = voices[0].stops;
+        audio.beginAchievementFeedback(newOwner);
+        expect(voices[0].stops, oldStops + 1,
+            reason:
+                'Superseding the popup cancels its pending or active voice.');
+
+        // Hold the successor at native setup: a late dismissal must not
+        // invalidate either its request epoch or its eventual active voice.
+        final newGate = Completer<void>();
+        voices[1].sourceGate = newGate;
+        voices[1].sourceEntered = Completer<void>();
+        final newPlayback = audio.playWorldUnlocked();
+        try {
+          await voices[1].sourceEntered!.future;
+          final stops = voices.map((v) => v.stops).toList();
+          audio.cancelAchievementFeedback(owner: oldOwner);
+          expect(voices.map((v) => v.stops), stops);
+        } finally {
+          newGate.complete();
+        }
+        await newPlayback;
+        expect(voices[1].played, hasLength(1));
+        expect((voices[1].played.single as AssetSource).path,
+            'audio/triotrek/sfx/reward_ok_d.mp3');
+        final newStops = voices[1].stops;
+        audio.cancelAchievementFeedback(owner: oldOwner);
+        expect(voices[1].stops, newStops);
+        audio.cancelAchievementFeedback(owner: newOwner);
+        expect(voices[1].stops, newStops + 1);
+        audio.cancelAchievementFeedback(owner: newOwner);
+        expect(voices[1].stops, newStops + 1,
+            reason: 'Repeated close/dispose is idempotent.');
+      } finally {
+        oldGate.complete();
+      }
+      await oldPlayback;
+      expect(voices[0].played, hasLength(pendingOld ? 0 : 1),
+          reason: 'A superseded pending request must never resume.');
+      expect(voices.skip(2).expand((v) => v.played), isEmpty);
+    });
+  }
 
   test('preparation is shared; tap voice cannot steal three match voices',
       () async {
@@ -149,6 +334,53 @@ void main() {
         await audio.playMatch();
         expect(voices[2].played, hasLength(1));
         expect(voices[1].played, isEmpty, reason: 'Old cues must never replay');
+      }
+    });
+  }
+
+  for (final cancellation in ['route', 'mute', 'background', 'dispose']) {
+    test('selection and Undo tap reject pending setup on $cancellation',
+        () async {
+      final voices = List.generate(4, (_) => _Player());
+      final audio =
+          GameAudioService(musicPlayer: _Player(), sfxPlayers: voices);
+      addTearDown(audio.dispose);
+      await audio.prepareTileFeedback();
+      final gate = Completer<void>();
+      voices[0].sourceGate = gate;
+      voices[0].sourceEntered = Completer<void>();
+      final pending = audio.playTap();
+      try {
+        await voices[0].sourceEntered!.future;
+        expect((voices[0].loadedSource as AssetSource).path,
+            'audio/triotrek/sfx/tile_tap_b.mp3');
+        expect(voices[0].volume, .58);
+        switch (cancellation) {
+          case 'route':
+            audio.cancelPendingTileFeedback();
+          case 'mute':
+            audio.sfxEnabled = false;
+          case 'background':
+            await audio.pauseMusicForBackground();
+          case 'dispose':
+            await audio.dispose();
+        }
+      } finally {
+        gate.complete();
+        await pending;
+      }
+      expect(voices.expand((v) => v.played), isEmpty);
+      if (cancellation != 'dispose') {
+        voices[0].sourceGate = null;
+        audio.sfxEnabled = true;
+        if (cancellation == 'background')
+          await audio.resumeMusicFromBackground();
+        await audio.playTap();
+        expect(voices[0].played, hasLength(1));
+        expect((voices[0].played.single as AssetSource).path,
+            'audio/triotrek/sfx/tile_tap_b.mp3');
+        expect(voices[0].volume, .58);
+        expect(voices.skip(1).expand((v) => v.played), isEmpty);
       }
     });
   }

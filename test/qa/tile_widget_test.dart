@@ -115,7 +115,19 @@ void main() {
             final face = tester.widget<TileFace>(
                 find.descendant(of: tile, matching: find.byType(TileFace)));
             expect(face.blocked, blocked);
-            expect(face.highlighted, entry.key == catalog.keys.first);
+            expect(
+                face.highlighted, !blocked && entry.key == catalog.keys.first,
+                reason:
+                    'A stale Hint highlight cannot advertise a blocked tile.');
+            expect(
+                find.descendant(
+                    of: tile,
+                    matching: find.byWidgetPredicate((widget) =>
+                        widget is CustomPaint &&
+                        widget.foregroundPainter is BlockedTileOverlayPainter)),
+                blocked && size.width != 24 ? findsOneWidget : findsNothing,
+                reason:
+                    'All worlds share the lock; tray tiles do not wear it.');
             if (hasAsset) {
               expect(bounds.width, bounds.height,
                   reason: 'Approved square artwork must never be stretched.');

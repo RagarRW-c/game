@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -175,6 +177,54 @@ void main() {
     });
   }
 
+  for (final dispose in [false, true]) {
+    testWidgets(
+        'achievement sound ownership ends once on ${dispose ? 'dispose' : 'navigation'}',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final repository = ProgressRepository();
+      await repository.recordMatchedTiles(3);
+      var starts = 0, ends = 0;
+      await _mount(
+          tester,
+          Builder(
+              builder: (context) => TextButton(
+                  onPressed: () => unawaited(
+                      showPendingAchievementPopups(context, repository,
+                          onPopup: () async {
+                            starts++;
+                          },
+                          onPopupEnded: () => ends++)),
+                  child: const Text('Open reward'))));
+      await tester.tap(find.text('Open reward'));
+      await tester.pumpAndSettle();
+      expect(starts, 1);
+      if (dispose) {
+        await tester.pumpWidget(const SizedBox.shrink());
+      } else {
+        final navigator =
+            Navigator.of(tester.element(find.byType(AchievementRewardDialog)));
+        unawaited(navigator.push<void>(PageRouteBuilder<void>(
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+            pageBuilder: (_, __, ___) => const Scaffold(body: Text('Away')))));
+        await tester.pump();
+        expect(ends, 1);
+        await tester.pump(const Duration(seconds: 3));
+        expect(find.text('Away'), findsOneWidget,
+            reason: 'The popup deadline must not pop a different route');
+        navigator.pop();
+        await tester.pumpAndSettle();
+        expect(starts, 1, reason: 'Returning must not replay the reward');
+        await tester.tap(find.byKey(const ValueKey('achievement_close')));
+        await tester.pumpAndSettle();
+      }
+      expect(starts, 1);
+      expect(ends, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
       'queued achievements close independently without stale timers or duplicate rewards',
       (tester) async {
@@ -191,15 +241,18 @@ void main() {
     expect(earnedBalance, 100 + expectedRewards);
     Future<void>? presentation;
     var sounds = 0;
+    var soundEnds = 0;
     await _mount(
         tester,
         Builder(
             builder: (context) => TextButton(
                   onPressed: () {
-                    presentation = showPendingAchievementPopups(
-                        context, repository, onPopup: () async {
-                      sounds++;
-                    });
+                    presentation =
+                        showPendingAchievementPopups(context, repository,
+                            onPopup: () async {
+                              sounds++;
+                            },
+                            onPopupEnded: () => soundEnds++);
                   },
                   child: const Text('Show queue'),
                 )));
@@ -218,6 +271,7 @@ void main() {
     await presentation;
     await tester.pump(const Duration(seconds: 4));
     expect(sounds, 2);
+    expect(soundEnds, 2);
     expect(find.byType(AchievementRewardDialog), findsNothing);
     expect(find.text('Show queue'), findsOneWidget);
     expect(await repository.coins(), earnedBalance);

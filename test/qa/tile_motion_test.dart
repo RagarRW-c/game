@@ -63,8 +63,39 @@ class _Progress extends ProgressRepository {
   }
 }
 
+// A controllable persistence boundary, not an animation delay. This proves
+// victory depends on committed rewards rather than on a VFX completion callback.
+class _VictoryProgress extends _Progress {
+  _VictoryProgress({this.completionGate});
+  final Completer<void>? completionGate;
+  int completionCalls = 0;
+  int unlockCalls = 0;
+  int coinCalls = 0;
+
+  @override
+  Future<void> recordLevelCompleted(int level, int stars) async {
+    completionCalls++;
+    final gate = completionGate;
+    if (gate != null) await gate.future;
+    await super.recordLevelCompleted(level, stars);
+  }
+
+  @override
+  Future<void> unlockNextLevel(int level) async {
+    unlockCalls++;
+    await super.unlockNextLevel(level);
+  }
+
+  @override
+  Future<int> addCoins(int amount) async {
+    coinCalls++;
+    return super.addCoins(amount);
+  }
+}
+
 class _Levels extends LevelRepository {
-  _Levels(this.count, this.unique);
+  _Levels(this.count, this.unique, [this.layout]);
+  final List<Tile>? layout;
   final int count;
   final bool unique;
   @override
@@ -72,7 +103,7 @@ class _Levels extends LevelRepository {
         level: level,
         name: 'Motion fixture',
         timeBonusSeconds: 60,
-        tiles: fixture(count, unique),
+        tiles: layout ?? fixture(count, unique),
       );
 
   static List<Tile> fixture(int count, bool unique) => List.generate(
@@ -86,9 +117,11 @@ class _Levels extends LevelRepository {
 }
 
 class _FixedBoards extends EndlessBoardGenerator {
+  _FixedBoards([this.layout]);
+  final List<Tile>? layout;
   @override
   List<Tile> generate({required int round, required TileVisualTheme theme}) =>
-      _Levels.fixture(12, false);
+      layout ?? _Levels.fixture(12, false);
 }
 
 Finder _board([String? id]) => find.byWidgetPredicate((w) =>
@@ -109,14 +142,19 @@ Rect _rect(WidgetTester tester, Finder finder) {
 const _geometryTolerance = 1e-9;
 
 void _expectAlignedRects(Rect actual, Rect expected, String description) {
+  String precise(Rect r) => [r.left, r.top, r.right, r.bottom]
+      .map((value) => value.toStringAsPrecision(17))
+      .join(', ');
+  final detail =
+      '$description: actual [${precise(actual)}], expected [${precise(expected)}]';
   expect(actual.left, closeTo(expected.left, _geometryTolerance),
-      reason: '$description: left');
+      reason: '$detail: left');
   expect(actual.top, closeTo(expected.top, _geometryTolerance),
-      reason: '$description: top');
+      reason: '$detail: top');
   expect(actual.right, closeTo(expected.right, _geometryTolerance),
-      reason: '$description: right');
+      reason: '$detail: right');
   expect(actual.bottom, closeTo(expected.bottom, _geometryTolerance),
-      reason: '$description: bottom');
+      reason: '$detail: bottom');
 }
 
 Finder _booster(String label) =>
@@ -129,17 +167,19 @@ Future<_Audio> _mount(WidgetTester tester,
     bool reduced = false,
     int count = 12,
     bool unique = false,
+    List<Tile>? layout,
+    _Progress? progressRepository,
     QaScreen screen = const QaScreen('small', Size(320, 568), 24)}) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = screen.size;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   SharedPreferences.setMockInitialValues({});
-  final progress = _Progress();
+  final progress = progressRepository ?? _Progress();
   await progress.setLevelOneTutorialSeen();
   final audio = _Audio();
   await tester.pumpWidget(AppScope(
-    levelRepository: _Levels(count, unique),
+    levelRepository: _Levels(count, unique, layout),
     progressRepository: progress,
     audioService: audio,
     child: MaterialApp(
@@ -154,7 +194,7 @@ Future<_Audio> _mount(WidgetTester tester,
         home: endless
             ? (fixedEndless
                 ? EndlessScreen.forTesting(
-                    initialRound: level, boardGenerator: _FixedBoards())
+                    initialRound: level, boardGenerator: _FixedBoards(layout))
                 : const EndlessScreen())
             : GameScreen(level: level)),
   ));
@@ -176,6 +216,620 @@ void main() {
   tearDown(() => TestDefaultBinaryMessengerBinding
       .instance.defaultBinaryMessenger
       .setMockMethodCallHandler(SystemChannels.platform, null));
+
+  for (final endless in [false, true]) {
+    for (final occupied in [false, true]) {
+      testWidgets(
+          'endless=$endless occupied=$occupied: direct Hint clears once at measured board faces',
+          (tester) async {
+        final layout = _Levels.fixture(12, false)
+            .asMap()
+            .entries
+            .map((entry) => entry.key < 6
+                ? entry.value
+                    .copyWith(type: tileCatalog.keys.elementAt(entry.key + 4))
+                : entry.value)
+            .toList();
+        await _mount(tester,
+            endless: endless,
+            fixedEndless: true,
+            layout: occupied ? layout : null);
+        if (occupied) {
+          // Six ordinary tray tiles; Hint must not invent slots eight/nine.
+          for (final id in ['m0', 'm1', 'm2', 'm3', 'm4', 'm5']) {
+            tester.widget<GameTileWidget>(_board(id)).onTap!();
+            await tester.pumpAndSettle();
+          }
+        }
+        final effects = _effects(tester);
+        final beforeTray = _tray(tester).trayTiles.map((t) => t?.id).toList();
+        final beforeBoard = _board().evaluate().length;
+        final sources = {
+          for (final element in _board().evaluate())
+            (element.widget as GameTileWidget).tile.id:
+                effects.rectFor(element)!,
+        };
+        final action =
+            tester.widget<GameBoosterButton>(_booster('Hint')).onPressed!;
+        action();
+        action(); // Same-turn duplicate must not create a second burst/charge.
+        await tester.pump();
+        expect(effects.bursts, hasLength(1));
+        final burst = effects.bursts.single;
+        expect(burst.boardMatch, isTrue);
+        expect(burst.snapshots, hasLength(3));
+        expect(effects.boardCue, isNull, reason: 'One effect owns this triple');
+        expect(effects.flights, isEmpty);
+        expect(_board(), findsNWidgets(beforeBoard - 3));
+        expect(_tray(tester).trayTiles.map((t) => t?.id), beforeTray);
+        expect(tester.widget<GameBoosterButton>(_booster('Hint')).badge, 'x1');
+        final trayRect =
+            effects.rectFor(tester.element(find.byType(GameTray)))!;
+        for (final face in burst.snapshots) {
+          _expectAlignedRects(
+              face.rect, sources[face.tile.id]!, 'Hint board anchor');
+          expect(face.rect.overlaps(trayRect), isFalse);
+          expect(_board(face.tile.id), findsNothing);
+          expect(burst.opacityAt(face, 0), 1);
+          expect(burst.opacityAt(face, 1), 0);
+        }
+        await tester.pump(const Duration(milliseconds: 71));
+        expect(find.byType(MatchedTileVisual), findsNWidgets(3));
+        await tester.pumpAndSettle();
+        expect(effects.bursts, isEmpty);
+        expect(find.byType(MatchedTileVisual), findsNothing);
+        expect(tester.binding.transientCallbackCount, 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets(
+        'endless=$endless: covered faces never receive accepted or Hint effects',
+        (tester) async {
+      final layout = _Levels.fixture(12, false);
+      final covered = layout.first;
+      final cover = layout[9];
+      layout[0] = Tile(
+          id: covered.id,
+          type: covered.type,
+          x: cover.x,
+          y: cover.y,
+          layer: cover.layer);
+      await _mount(tester,
+          endless: endless, fixedEndless: true, layout: layout);
+      final effects = _effects(tester);
+      final blocked = tester.widget<GameTileWidget>(_board('m0'));
+      expect(blocked.blocked, isTrue);
+      expect(blocked.onTap, isNull);
+      final legal = tester
+          .widgetList<GameTileWidget>(_board())
+          .where((tile) => !tile.blocked)
+          .map((tile) => tile.tile.id)
+          .toSet();
+      await tester.tap(_booster('Hint'));
+      await tester.pump();
+      expect(effects.bursts, hasLength(1));
+      expect(
+          effects.bursts.single.snapshots
+              .every((s) => legal.contains(s.tile.id)),
+          isTrue);
+      expect(effects.bursts.single.snapshots.any((s) => s.tile.id == 'm0'),
+          isFalse);
+      expect(_board('m0'), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(effects.flights, isEmpty);
+      expect(effects.bursts, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        'endless=$endless: fitting Hint accents only its exposed board targets',
+        (tester) async {
+      await _mount(tester, endless: endless, fixedEndless: true);
+      tester.widget<GameTileWidget>(_board('m0')).onTap!();
+      await tester.pumpAndSettle();
+      final effects = _effects(tester);
+      final expected = {
+        for (final id in ['m1', 'm2'])
+          id: effects.rectFor(tester.element(_board(id)))!
+      };
+      final beforeIds = tester
+          .widgetList<GameTileWidget>(_board())
+          .map((tile) => tile.tile.id)
+          .toSet();
+      for (final id in expected.keys) {
+        final target = tester.widget<GameTileWidget>(_board(id));
+        expect(target.blocked, isFalse);
+        expect(target.enabled, isTrue);
+      }
+      await tester.tap(_booster('Hint'));
+      await tester.pump();
+      expect(effects.bursts, hasLength(1));
+      expect(effects.bursts.single.boardMatch, isFalse);
+      expect(effects.boardCue!.kind, BoardCueKind.hint);
+      // The cue transforms board-space rects; rectFor composes each tile's
+      // local transform first. These equivalent FittedBox paths can round
+      // differently. Match bijectively by location, never by list order or
+      // Rect's exact-double equality. 1e-9 is far below a physical pixel.
+      final actual = effects.boardCue!.rects;
+      expect(actual, hasLength(2));
+      final remaining = Map<String, Rect>.of(expected);
+      for (final rect in actual) {
+        final candidates = remaining.entries
+            .where((entry) =>
+                (entry.value.center - rect.center).distance <=
+                _geometryTolerance)
+            .toList();
+        expect(candidates, hasLength(1),
+            reason: 'Each accent must uniquely identify m1 or m2; coordinates: '
+                '${[
+              rect.left,
+              rect.top,
+              rect.right,
+              rect.bottom
+            ].map((v) => v.toStringAsPrecision(17)).join(', ')}');
+        final target = candidates.single;
+        _expectAlignedRects(rect, target.value, 'Hint target ${target.key}');
+        remaining.remove(target.key);
+      }
+      expect(remaining, isEmpty, reason: 'No missing or duplicate target');
+      final afterIds = tester
+          .widgetList<GameTileWidget>(_board())
+          .map((tile) => tile.tile.id)
+          .toSet();
+      expect(beforeIds.difference(afterIds), unorderedEquals(expected.keys));
+      expect(effects.bursts.single.snapshots.map((face) => face.tile.id),
+          unorderedEquals(['m0', 'm1', 'm2']));
+      expect(effects.flights, isEmpty);
+      expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+      await tester.pumpAndSettle();
+      expect(effects.boardCue, isNull);
+      expect(effects.bursts, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final action in ['Undo', 'Shuffle']) {
+      testWidgets(
+          'endless=$endless: $action cue preserves authoritative geometry and settles',
+          (tester) async {
+        await _mount(tester, endless: endless, fixedEndless: true);
+        final original = {
+          for (final e in _board().evaluate())
+            (e.widget as GameTileWidget).tile.id:
+                _rect(tester, _board((e.widget as GameTileWidget).tile.id))
+        };
+        if (action == 'Undo') {
+          tester.widget<GameTileWidget>(_board('m0')).onTap!();
+          await tester.pumpAndSettle();
+        }
+        final effects = _effects(tester);
+        await tester.tap(_booster(action));
+        await tester.pump();
+        final cue = effects.boardCue;
+        if (action == 'Undo') {
+          expect(cue, isNull);
+          expect(effects.flights.single.reversed, isTrue);
+          expect(effects.hidesBoard('m0'), isTrue);
+        } else {
+          expect(cue!.kind, BoardCueKind.shuffle);
+          expect(cue.rects.length, lessThanOrEqualTo(BoardCue.maxRects));
+        }
+        expect(_board(), findsNWidgets(12));
+        expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+        for (final e in _board().evaluate()) {
+          final tile = e.widget as GameTileWidget;
+          _expectAlignedRects(_rect(tester, _board(tile.tile.id)),
+              original[tile.tile.id]!, 'booster position');
+        }
+        await tester.pump(const Duration(milliseconds: 100));
+        if (action == 'Undo') {
+          expect(
+              tester
+                  .widget<TileFlightVisual>(find.byType(TileFlightVisual))
+                  .progress,
+              closeTo(100 / 440, 1e-6));
+        } else {
+          final paint = tester.widget<CustomPaint>(find.byWidgetPredicate(
+              (w) => w is CustomPaint && w.painter is BoardCuePainter));
+          expect((paint.painter! as BoardCuePainter).progress,
+              closeTo(100 / cue!.duration.inMilliseconds, 1e-6));
+        }
+        await tester.pumpAndSettle();
+        expect(effects.boardCue, isNull);
+        expect(tester.binding.transientCallbackCount, 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets(
+        'endless=$endless: reduced motion suppresses all booster accents',
+        (tester) async {
+      await _mount(tester, endless: endless, fixedEndless: true, reduced: true);
+      final effects = _effects(tester);
+      tester.widget<GameTileWidget>(_board('m0')).onTap!();
+      await tester.pump();
+      for (final action in ['Undo', 'Hint', 'Shuffle']) {
+        await tester.tap(_booster(action));
+        await tester.pumpAndSettle();
+        expect(effects.boardCue, isNull);
+        expect(effects.bursts, isEmpty);
+        expect(effects.flights, isEmpty);
+      }
+      expect(_board(), findsNWidgets(9));
+      expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+      expect(tester.binding.transientCallbackCount, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final interruption in ['tap', 'navigate', 'background', 'dispose']) {
+      testWidgets(
+          'endless=$endless: $interruption cancels booster cue permanently',
+          (tester) async {
+        await _mount(tester, endless: endless, fixedEndless: true);
+        final effects = _effects(tester);
+        await tester.tap(_booster('Shuffle'));
+        await tester.pump();
+        expect(effects.boardCue, isNotNull);
+        final revision = effects.revision;
+        NavigatorState? navigator;
+        if (interruption == 'tap') {
+          tester.widget<GameTileWidget>(_board().last).onTap!();
+          await tester.pump();
+        } else if (interruption == 'navigate') {
+          navigator =
+              Navigator.of(tester.element(find.byType(GameTileEffects)));
+          unawaited(navigator.push<void>(PageRouteBuilder<void>(
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+              pageBuilder: (_, __, ___) =>
+                  const Scaffold(body: Text('Away')))));
+          await tester.pumpAndSettle();
+        } else if (interruption == 'background') {
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          await tester.pump();
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+          await tester.pump();
+        } else {
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+        expect(effects.boardCue, isNull);
+        // A late completion cannot revive the old visual, including after a
+        // newer ordinary move. No timers or delayed action queue are involved.
+        effects.showBoardCue(
+            BoardCueKind.undo,
+            [
+              const TileFlightSource(
+                  Tile(id: 'stale', type: 'apple', x: 0, y: 0, layer: 0),
+                  Rect.fromLTWH(0, 0, 30, 30),
+                  tileCatalog,
+                  1,
+                  Size(30, 30))
+            ],
+            expectedRevision: revision);
+        expect(effects.boardCue, isNull);
+        navigator?.pop();
+        await tester.pumpAndSettle();
+        expect(
+            find.byWidgetPredicate(
+                (w) => w is CustomPaint && w.painter is BoardCuePainter),
+            findsNothing);
+        expect(tester.binding.transientCallbackCount, 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final endless in [false, true]) {
+    for (final level in [1, 2]) {
+      for (final action in ['Resume', 'Restart Level']) {
+        testWidgets('reverse Undo cancels on Campaign pause and $action',
+            (tester) async {
+          await _mount(tester);
+          tester.widget<GameTileWidget>(_board('m0')).onTap!();
+          await tester.pumpAndSettle();
+          final effects = _effects(tester);
+          await tester.tap(_booster('Undo'));
+          await tester.pump();
+          expect(effects.hidesBoard('m0'), isTrue);
+          await tester.tap(find.byIcon(Icons.pause_rounded));
+          await tester.pumpAndSettle();
+          expect(effects.flights, isEmpty);
+          await tester.tap(find.text(action));
+          await tester.pumpAndSettle();
+          expect(_board(), findsNWidgets(12));
+          expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+          expect(effects.hidesBoard('m0'), isFalse);
+          expect(find.byType(TileFlightVisual), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      }
+
+      testWidgets(
+          'final Hint during reverse Undo leaves no return copy over victory',
+          (tester) async {
+        await _mount(tester, count: 3);
+        tester.widget<GameTileWidget>(_board('m0')).onTap!();
+        await tester.pumpAndSettle();
+        final effects = _effects(tester);
+        await tester.tap(_booster('Undo'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(effects.flights.single.reversed, isTrue);
+        await tester.tap(_booster('Hint'));
+        await tester.pumpAndSettle();
+        expect(find.byType(WinScreen), findsOneWidget);
+        expect(effects.flights, isEmpty);
+        expect(effects.bursts, isEmpty);
+        expect(effects.hidesBoard('m0'), isFalse);
+        expect(
+            find.byType(TileFlightVisual, skipOffstage: false), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      for (final screen in qaScreens) {
+        testWidgets(
+            'reverse Undo endless=$endless level=$level ${screen.name}: exact anchors and one visible copy',
+            (tester) async {
+          await _mount(tester,
+              endless: endless,
+              fixedEndless: true,
+              level: level,
+              screen: screen);
+          final effects = _effects(tester);
+          tester.widget<GameTileWidget>(_board('m0')).onTap!();
+          await tester.pumpAndSettle();
+          // Slot 1 proves this is the actual former slot, not a hardcoded zero.
+          final historicalCell = effects.rectFor(tester.element(_board('m3')))!;
+          final originalTile = tester.widget<GameTileWidget>(_board('m3')).tile;
+          final hudBefore = endless
+              ? tester.getSize(find.byKey(const ValueKey('endless_hud_scroll')))
+              : null;
+          tester.widget<GameTileWidget>(_board('m3')).onTap!();
+          await tester.pump();
+          final forward = effects.flights.single;
+          await tester.pumpAndSettle();
+          final traySource =
+              effects.rectFor(effects.slotKeys[1].currentContext)!;
+          final trayTile = find.descendant(
+              of: find.byType(GameTray),
+              matching: find.byWidgetPredicate(
+                  (w) => w is GameTileWidget && w.tile.id == 'm3'));
+          Rect artwork(Finder tile) => effects.rectFor(tester.element(
+              find.descendant(of: tile, matching: find.byType(TileSymbol))))!;
+          final trayArtwork = artwork(trayTile);
+          final action =
+              tester.widget<GameBoosterButton>(_booster('Undo')).onPressed!;
+          action();
+          action();
+          await tester.pump();
+          final reverse = effects.flights.single;
+          // Score/Best 5 -> 10 reflows the small Endless HUD. Undo preserves
+          // score, so the ORIGINAL logical cell now has a different screen
+          // transform. Measure the restored RenderBox, even while paint-hidden.
+          final destination = effects.rectFor(tester.element(_board('m3')))!;
+          final restored = tester.widget<GameTileWidget>(_board('m3')).tile;
+          expect((
+            restored.id,
+            restored.type,
+            restored.x,
+            restored.y,
+            restored.layer
+          ), (
+            originalTile.id,
+            originalTile.type,
+            originalTile.x,
+            originalTile.y,
+            originalTile.layer
+          ));
+          if (endless && screen.size == const Size(320, 568)) {
+            expect(
+                tester
+                    .getSize(find.byKey(const ValueKey('endless_hud_scroll')))
+                    .height,
+                greaterThan(hudBefore!.height));
+            expect(
+                (destination.left - historicalCell.left).abs(), greaterThan(1),
+                reason:
+                    'Keep the real HUD reflow that exposed the stale anchor oracle');
+          }
+          final currentPath = TileFlight(
+              0,
+              TileFlightSource(restored, destination, forward.source.catalog,
+                  forward.source.depth, tester.getSize(_board('m3'))),
+              traySource,
+              1,
+              false);
+          expect(reverse.reversed, isTrue);
+          expect(reverse.source.tile.id, 'm3');
+          expect(reverse.slot, 1);
+          _expectAlignedRects(
+              reverse.rectAt(0), traySource, 'actual tray source');
+          _expectAlignedRects(
+              reverse.rectAt(1), destination, 'original board destination');
+          for (final p in [0.0, .14, .5, .78, 1.0]) {
+            _expectAlignedRects(reverse.rectAt(p), currentPath.rectAt(1 - p),
+                'reverse path in current layout at $p');
+            expect(reverse.appearanceAt(p),
+                closeTo(currentPath.appearanceAt(1 - p), 1e-9));
+          }
+          expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id),
+              ['m0']);
+          expect(
+              tester.widget<GameBoosterButton>(_booster('Undo')).badge, 'x1');
+          expect(effects.hidesBoard('m3'), isTrue);
+          final opacity = find
+              .ancestor(of: _board('m3'), matching: find.byType(Opacity))
+              .first;
+          expect(tester.widget<Opacity>(opacity).opacity, 0);
+          expect(find.byType(TileFlightVisual), findsOneWidget);
+          _expectAlignedRects(artwork(find.byType(TileFlightVisual)),
+              trayArtwork, 'full transformed artwork at actual tray source');
+          await tester.pump(const Duration(milliseconds: 220));
+          final visual =
+              tester.widget<TileFlightVisual>(find.byType(TileFlightVisual));
+          expect(visual.progress, .5);
+          expect(effects.hidesBoard('m3'), isTrue);
+          await tester.pump(const Duration(milliseconds: 220));
+          expect(
+              tester
+                  .widget<TileFlightVisual>(find.byType(TileFlightVisual))
+                  .progress,
+              1);
+          _expectAlignedRects(
+              artwork(find.byType(TileFlightVisual)),
+              artwork(_board('m3')),
+              'full transformed artwork aligns before canonical reveal');
+          expect(tester.widget<Opacity>(opacity).opacity, 0);
+          await tester.pump(const Duration(milliseconds: 1));
+          expect(effects.flights, isEmpty);
+          expect(effects.hidesBoard('m3'), isFalse);
+          expect(tester.widget<Opacity>(opacity).opacity, 1);
+          _expectAlignedRects(effects.rectFor(tester.element(_board('m3')))!,
+              destination, 'settled destination');
+          expect(find.byType(TileFlightVisual), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
+    testWidgets(
+        'reverse Undo endless=$endless: unfinished flight reverses without a slot teleport',
+        (tester) async {
+      await _mount(tester, endless: endless, fixedEndless: true);
+      final effects = _effects(tester);
+      Rect artwork(Finder tile) => effects.rectFor(tester.element(
+          find.descendant(of: tile, matching: find.byType(TileSymbol))))!;
+      tester.widget<GameTileWidget>(_board('m0')).onTap!();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 220));
+      final forward = effects.flights.single;
+      final painted = forward.rectAt(.5);
+      final paintedArtwork = artwork(find.byType(TileFlightVisual));
+      await tester.tap(_booster('Undo'));
+      await tester.pump();
+      final reverse = effects.flights.single;
+      expect(reverse.reverseFrom, .5);
+      expect(reverse.rectAt(0), painted);
+      expect(reverse.appearanceAt(0), forward.appearanceAt(.5));
+      _expectAlignedRects(
+          artwork(find.byType(TileFlightVisual)),
+          paintedArtwork,
+          'interrupted flight keeps its full transformed artwork');
+      await tester.pump(const Duration(milliseconds: 110));
+      // Reselecting the returned canonical tile starts where its copy is now.
+      final current = reverse.rectAt(.25);
+      tester.widget<GameTileWidget>(_board('m0')).onTap!();
+      await tester.pump();
+      expect(effects.flights, hasLength(1));
+      expect(effects.flights.single.reversed, isFalse);
+      expect(effects.flights.single.rectAt(0), current);
+      expect(effects.hidesBoard('m0'), isFalse);
+      await tester.pump(const Duration(milliseconds: 110));
+      final selectedAgain = effects.flights.single;
+      final secondStart = selectedAgain.rectAt(.25);
+      final secondArtwork = artwork(find.byType(TileFlightVisual));
+      await tester.tap(_booster('Undo'));
+      await tester.pump();
+      final secondReturn = effects.flights.single;
+      expect(secondReturn.rectAt(0), secondStart);
+      _expectAlignedRects(artwork(find.byType(TileFlightVisual)), secondArtwork,
+          'repeated Undo keeps its full transformed artwork');
+      // The reselection raised Score/Best to 10. The new fitted layout is
+      // authoritative; the first flight's source is a historical screen rect.
+      final destination = effects.rectFor(tester.element(_board('m0')))!;
+      final restored = tester.widget<GameTileWidget>(_board('m0')).tile;
+      expect((
+        restored.id,
+        restored.x,
+        restored.y,
+        restored.layer
+      ), (
+        forward.source.tile.id,
+        forward.source.tile.x,
+        forward.source.tile.y,
+        forward.source.tile.layer
+      ));
+      _expectAlignedRects(secondReturn.rectAt(1), destination,
+          'reselected tile returns to the original cell in its current transform');
+      await tester.pumpAndSettle();
+      _expectAlignedRects(effects.rectFor(tester.element(_board('m0')))!,
+          destination, 'canonical tile does not teleport when return ends');
+      expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
+      expect(effects.hidesBoard('m0'), isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final interruption in [
+      'repeat',
+      'Shuffle',
+      'Hint',
+      'route',
+      'background',
+      'resize',
+      'dispose'
+    ]) {
+      testWidgets(
+          'reverse Undo endless=$endless: $interruption does not leave duplicate or stale copies',
+          (tester) async {
+        await _mount(tester, endless: endless, fixedEndless: true);
+        final effects = _effects(tester);
+        for (final id in ['m0', 'm3']) {
+          tester.widget<GameTileWidget>(_board(id)).onTap!();
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(_booster('Undo'));
+        await tester.pump();
+        final first = effects.flights.single;
+        await tester.pump(const Duration(milliseconds: 100));
+        NavigatorState? navigator;
+        if (interruption == 'repeat') {
+          await tester.tap(_booster('Undo'));
+          await tester.pump();
+          expect(effects.flights, hasLength(2));
+          expect(effects.flights.map((f) => f.source.tile.id).toSet(),
+              {'m0', 'm3'});
+          final visual = tester.widget<TileFlightVisual>(find.byWidgetPredicate(
+              (w) => w is TileFlightVisual && w.flight.serial == first.serial));
+          expect(visual.progress, closeTo(100 / 440, 1e-9));
+        } else if (interruption == 'Shuffle' || interruption == 'Hint') {
+          await tester.tap(_booster(interruption));
+          await tester.pump();
+        } else if (interruption == 'route') {
+          navigator =
+              Navigator.of(tester.element(find.byType(GameTileEffects)));
+          unawaited(navigator.push<void>(PageRouteBuilder<void>(
+              transitionDuration: Duration.zero,
+              pageBuilder: (_, __, ___) =>
+                  const Scaffold(body: Text('Away')))));
+          await tester.pumpAndSettle();
+          expect(effects.flights, isEmpty);
+          navigator.pop();
+        } else if (interruption == 'background') {
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          await tester.pump();
+          expect(effects.flights, isEmpty);
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        } else if (interruption == 'resize') {
+          tester.view.physicalSize = const Size(412, 915);
+          await tester.pump();
+          expect(effects.flights, isEmpty);
+        } else {
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+        await tester.pumpAndSettle();
+        expect(effects.flights, isEmpty);
+        expect(effects.hidesBoard('m0'), isFalse);
+        expect(effects.hidesBoard('m3'), isFalse);
+        expect(find.byType(TileFlightVisual), findsNothing);
+        expect(tester.binding.transientCallbackCount, 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   for (final screen in qaScreens) {
     for (final level in [1, 2]) {
@@ -292,7 +946,11 @@ void main() {
       expect(effects.flights, hasLength(1));
       await tester.tap(_booster(action));
       await tester.pump();
-      expect(effects.flights, isEmpty);
+      if (action == 'Undo') {
+        expect(effects.flights.single.reversed, isTrue);
+      } else {
+        expect(effects.flights, isEmpty);
+      }
       if (action == 'Undo') {
         expect(_board('m0'), findsOneWidget);
         expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
@@ -415,22 +1073,106 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-      'victory starts during the clearing effect, never after its callback',
-      (tester) async {
-    final audio = await _mount(tester, count: 3);
-    for (var i = 0; i < 3; i++) {
-      tester.widget<GameTileWidget>(_board('m$i')).onTap!();
-    }
-    await tester.pump(); // Flush persistence futures, not the 640 ms effect.
-    expect(_effects(tester).bursts, hasLength(1));
-    expect(audio.calls.where((v) => v == 'match'), hasLength(1));
-    expect(audio.calls.where((v) => v == 'won'), isEmpty,
-        reason: 'Campaign completion must not play the retired synthetic chime');
-    expect(find.byType(WinScreen), findsOneWidget);
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-  });
+  for (final holdPersistence in [false, true]) {
+    testWidgets(
+        holdPersistence
+            ? 'final match paints while persistence is pending; victory does not await VFX'
+            : 'victory starts during the clearing effect, never after its callback',
+        (tester) async {
+      final gate = holdPersistence ? Completer<void>() : null;
+      addTearDown(() {
+        if (gate != null && !gate.isCompleted) gate.complete();
+      });
+      final progress = _VictoryProgress(completionGate: gate);
+      final audio =
+          await _mount(tester, count: 3, progressRepository: progress);
+      final effects = _effects(tester);
+      final created = <int>{};
+      void observe() =>
+          created.addAll(effects.bursts.map((burst) => burst.serial));
+      effects.addListener(observe);
+      addTearDown(() => effects.removeListener(observe));
+      final finalTap = tester.widget<GameTileWidget>(_board('m2')).onTap!;
+      final start = tester.binding.clock.now();
+      for (var i = 0; i < 3; i++) {
+        tester.widget<GameTileWidget>(_board('m$i')).onTap!();
+      }
+      // The final accepted move creates both events synchronously, BEFORE
+      // pumping persistence futures can push the victory route and clear them.
+      expect(effects.bursts, hasLength(1));
+      expect(effects.flights, hasLength(1));
+      final burst = effects.bursts.single;
+      final flight = effects.flights.single;
+      expect(flight.matched, isTrue);
+      expect(burst.incomingId, 'm2');
+      expect(burst.snapshots.map((face) => face.tile.id),
+          unorderedEquals(['m0', 'm1', 'm2']));
+      expect(created, {burst.serial});
+      expect(TileFlight.duration, const Duration(milliseconds: 440));
+      expect(TrayBurst.duration, const Duration(milliseconds: 640));
+      expect(audio.calls.where((v) => v == 'match'), hasLength(1));
+      finalTap(); // A stale accepted-tile callback cannot complete/reward twice.
+      await tester.pump(); // Zero elapsed time; drains mocked persistence.
+      if (gate != null) {
+        expect(progress.completionCalls, 1);
+        expect(find.byType(WinScreen), findsNothing);
+        expect(effects.bursts.single, same(burst));
+        expect(find.byType(MatchedTileVisual), findsNWidgets(3));
+        expect(
+            tester
+                .widget<TileFlightVisual>(find.byType(TileFlightVisual))
+                .progress,
+            0);
+        // Paint the exact arrival boundary while real completion is pending.
+        await tester.pump(const Duration(microseconds: 343200));
+        final visual =
+            tester.widget<TileFlightVisual>(find.byType(TileFlightVisual));
+        expect(visual.progress, closeTo(TileFlight.arrival, 1e-9));
+        expect(flight.opacityAt(visual.progress), 0);
+        for (final face in burst.snapshots) {
+          expect(burst.opacityAt(face, 343200 / 640000), 1);
+        }
+        gate.complete();
+        await tester.pump(); // Release persistence, not the animation clock.
+      }
+      expect(
+          tester.binding.clock.now().difference(start),
+          holdPersistence
+              ? const Duration(microseconds: 343200)
+              : Duration.zero);
+      expect(find.byType(WinScreen), findsOneWidget);
+      expect(progress.completionCalls, 1);
+      expect(progress.unlockCalls, 1);
+      expect(progress.coinCalls, greaterThan(0));
+      final coinCalls = progress.coinCalls;
+      final coins = await progress.coins();
+      // Losing the current route deliberately cancels presentation before its
+      // 440/640 ms onEnd callbacks. Retention here would be a stale-effect bug.
+      expect(effects.bursts, isEmpty);
+      expect(effects.flights, isEmpty);
+      expect(effects.boardCue, isNull);
+      expect(find.byType(MatchedTileVisual, skipOffstage: false), findsNothing);
+      finalTap();
+      effects.finishBurst(burst.serial);
+      effects.finishFlight(flight.serial);
+      await tester.pumpAndSettle();
+      expect(created, {burst.serial});
+      expect(progress.completionCalls, 1);
+      expect(progress.unlockCalls, 1);
+      expect(progress.coinCalls, coinCalls);
+      expect(await progress.coins(), coins);
+      expect(audio.calls.where((v) => v == 'match'), hasLength(1));
+      expect(audio.calls.where((v) => v == 'won'), isEmpty,
+          reason:
+              'Campaign completion must not play the retired synthetic chime');
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      expect(effects.bursts, isEmpty);
+      expect(effects.flights, isEmpty);
+      expect(tester.binding.transientCallbackCount, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final endless in [false, true]) {
     testWidgets('endless=$endless: navigation away never resumes stale flights',
@@ -1032,7 +1774,8 @@ void main() {
         expect(_board('m6'), findsOneWidget);
         expect(
             _tray(tester).trayTiles.whereType<Tile>().map((t) => t.id), ['m3']);
-        expect(effects.flights, isEmpty);
+        expect(effects.flights.single.reversed, isTrue);
+        expect(effects.hidesBoard('m6'), isTrue);
         expect(_tray(tester).feedback, isNull);
         for (final id in ['m0', 'm1', 'm2']) {
           expect(_board(id), findsNothing);
@@ -1100,13 +1843,13 @@ void main() {
     await tester.tap(_booster('Undo'));
     await tester.pump();
     expect(effects.bursts, isEmpty);
-    expect(effects.flights, isEmpty);
+    expect(effects.flights.single.reversed, isTrue);
     expect(_board('m3'), findsOneWidget);
     expect(_tray(tester).trayTiles.whereType<Tile>(), isEmpty);
 
     tester.widget<GameTileWidget>(_board('m6')).onTap!();
     await tester.pump();
-    final newFlight = effects.flights.single;
+    final newFlight = effects.flights.singleWhere((flight) => !flight.reversed);
     await tester.pump(const Duration(milliseconds: 80));
     // Deliberately deliver callbacks retained from the cancelled animations.
     oldBurstEnd();
@@ -1114,9 +1857,11 @@ void main() {
     await tester.pump();
     expect(effects.bursts, isEmpty);
     expect(find.byType(MatchedTileVisual), findsNothing);
-    expect(effects.flights.single, same(newFlight));
-    final visual =
-        tester.widget<TileFlightVisual>(find.byType(TileFlightVisual));
+    expect(effects.flights.singleWhere((flight) => !flight.reversed),
+        same(newFlight));
+    expect(effects.flights.where((flight) => flight.reversed), hasLength(1));
+    final visual = tester.widget<TileFlightVisual>(find.byWidgetPredicate(
+        (w) => w is TileFlightVisual && w.flight.serial == newFlight.serial));
     expect(visual.progress, closeTo(80 / 440, .000001));
     expect(_tray(tester).trayTiles.whereType<Tile>().map((t) => t.id), ['m6']);
     await tester.pump(const Duration(milliseconds: 361));

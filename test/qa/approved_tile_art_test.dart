@@ -341,8 +341,9 @@ void main() {
             of: find.byType(TileFace),
             matching: find.byWidgetPredicate((widget) =>
                 widget is CustomPaint && widget.foregroundPainter != null));
-        expect(outline, findsOneWidget,
-            reason: 'Hints must remain visible above the approved sprite.');
+        expect(outline, blocked ? findsNothing : findsOneWidget,
+            reason: 'Hints remain visible on selectable sprites; stale '
+                'highlights must not advertise a blocked tile as available.');
         await tester.tap(find.byType(GameTileWidget));
         await tester.pumpAndSettle();
         expect(taps, 1);

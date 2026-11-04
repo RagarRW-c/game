@@ -1,3 +1,5 @@
+import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_surfaces.dart';
 import 'package:triple_tile_adventure/domain/game_engine.dart';
@@ -6,6 +8,7 @@ import 'package:triple_tile_adventure/presentation/screens/game_screen.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tile.dart';
 import 'package:triple_tile_adventure/presentation/widgets/game_tray.dart';
 import 'package:triple_tile_adventure/presentation/widgets/tile_effects.dart';
+import 'package:triple_tile_adventure/presentation/widgets/tile_face.dart';
 
 import 'support/golden_fixtures.dart';
 import 'support/golden_harness.dart';
@@ -43,26 +46,30 @@ void main() {
       final definition = await GoldenLevels().loadLevel(level);
       expect(_boardTiles, findsNWidgets(definition.tiles.length));
       await expectGolden(tester, 'campaign_level_$level', phone);
-
-      if (level == 7) {
-        // One legal, deterministic move on the real board, not a random play
-        // session. Last painted enabled tile is unobscured by later tiles.
-        final enabled = find.byWidgetPredicate((widget) =>
-            widget is GameTileWidget &&
-            !widget.trayTile &&
-            widget.enabled &&
-            !widget.blocked);
-        final selectedId = tester.widget<GameTileWidget>(enabled.last).tile.id;
-        await tester.tap(enabled.last);
-        await settleGolden(tester);
-        final tray = tester.widget<GameTray>(find.byType(GameTray));
-        expect(tray.trayTiles.where((tile) => tile != null).length, 1);
-        expect(tray.trayTiles.first!.id, selectedId);
-        expect(find.byType(EmptyTraySlot), findsNWidgets(6));
-        await expectGolden(tester, 'campaign_occupied_tray', phone);
-      }
     });
   }
+
+  // Independent comparison: an initial-board mismatch must not prevent this
+  // occupied-tray artifact from being captured and reviewed.
+  goldenTest('golden campaign occupied tray', (tester) async {
+    await pumpGolden(tester, const GameScreen(level: 7));
+    _expectBoard(tester, 7);
+    // One legal, deterministic move on the real board, not a random play
+    // session. Last painted enabled tile is unobscured by later tiles.
+    final enabled = find.byWidgetPredicate((widget) =>
+        widget is GameTileWidget &&
+        !widget.trayTile &&
+        widget.enabled &&
+        !widget.blocked);
+    final selectedId = tester.widget<GameTileWidget>(enabled.last).tile.id;
+    await tester.tap(enabled.last);
+    await settleGolden(tester);
+    final tray = tester.widget<GameTray>(find.byType(GameTray));
+    expect(tray.trayTiles.where((tile) => tile != null).length, 1);
+    expect(tray.trayTiles.first!.id, selectedId);
+    expect(find.byType(EmptyTraySlot), findsNWidgets(6));
+    await expectGolden(tester, 'campaign_occupied_tray', phone);
+  });
 
   goldenTest('golden campaign small viewport', (tester) async {
     await pumpGolden(tester, const GameScreen(level: 7), viewport: smallPhone);
@@ -88,6 +95,21 @@ void main() {
           viewport: scenario.viewport);
       _expectBoard(tester, scenario.round);
       expect(find.byType(EmptyTraySlot), findsNWidgets(7));
+      if (scenario.round == 1 && scenario.viewport == smallPhone) {
+        // The actual 320x568 board paints ~19px tiles despite 51.2px layout
+        // boxes. A local-size-only painter would incorrectly retain the lock.
+        final cues = find.byWidgetPredicate((w) =>
+            w is CustomPaint &&
+            w.foregroundPainter is BlockedTileOverlayPainter);
+        expect(cues, findsWidgets);
+        for (final element in cues.evaluate()) {
+          final render = element.renderObject! as RenderCustomPaint;
+          final painter =
+              render.foregroundPainter! as BlockedTileOverlayPainter;
+          expect(render.size.shortestSide, closeTo(51.2, 1e-9));
+          expect(painter.renderedSide!(), inInclusiveRange(18, 21));
+        }
+      }
       await expectGolden(
           tester, 'endless_round_${scenario.round}', scenario.viewport);
     });

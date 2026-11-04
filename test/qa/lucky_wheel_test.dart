@@ -37,7 +37,16 @@ class _SelectedRandom implements Random {
 
 class _Audio implements GameAudioService {
   final calls = <String>[];
+  final achievementOwners = <Object>[];
+  final achievementEnds = <Object?>[];
+  VoidCallback? onAchievement;
   int wheelCancellations = 0;
+  @override
+  void beginAchievementFeedback(Object owner) => achievementOwners.add(owner);
+
+  @override
+  void cancelAchievementFeedback({Object? owner}) => achievementEnds.add(owner);
+
   @override
   void cancelPendingWheelFeedback() {
     wheelCancellations++;
@@ -75,6 +84,7 @@ class _Audio implements GameAudioService {
 
   @override
   Future<void> playAchievementUnlocked() async {
+    onAchievement?.call();
     calls.add('achievement');
   }
 
@@ -835,6 +845,14 @@ void main() {
       SharedPreferences.setMockInitialValues(
           {'coins': 1000, 'stats_lucky_wheel_spins': 6});
       final audio = _Audio();
+      final routeStatesAtAchievement = <(bool, bool)>[];
+      audio.onAchievement = () {
+        final popup =
+            tester.element(find.byKey(const ValueKey('achievement_name')));
+        final wheel = tester.element(find.byType(LuckyWheelScreen));
+        routeStatesAtAchievement.add(
+            (ModalRoute.of(popup)!.isCurrent, ModalRoute.of(wheel)!.isCurrent));
+      };
       await _mount(tester,
           random: _SelectedRandom(1), audio: audio, reducedMotion: true);
       await _tapSpin(tester);
@@ -857,6 +875,16 @@ void main() {
       expect(audio.calls.where((call) => call == 'achievement'),
           hasLength(acknowledged ? 0 : 1),
           reason: 'Only explicit wheel confirmation replaces the old chime.');
+      expect(audio.achievementOwners, hasLength(acknowledged ? 0 : 1));
+      expect(routeStatesAtAchievement, acknowledged ? isEmpty : [(true, false)],
+          reason:
+              'The visible popup owns feedback; the covered wheel cannot veto it.');
+      expect(audio.achievementEnds, isEmpty);
+      // A further frame must neither replay nor cancel the visible popup.
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(audio.calls.where((call) => call == 'achievement'),
+          hasLength(acknowledged ? 0 : 1));
+      expect(audio.achievementEnds, isEmpty);
       expect(await ProgressRepository().coins(), 1300);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getInt('stats_lucky_wheel_spins'), 7);
@@ -864,6 +892,11 @@ void main() {
       expect(prefs.getInt('total_xp'), 75);
       await tester.tap(find.byKey(const ValueKey('achievement_close')));
       await tester.pumpAndSettle();
+      expect(audio.achievementEnds, orderedEquals(audio.achievementOwners),
+          reason:
+              'Close and route disposal end only this popup, exactly once.');
+      expect(audio.calls.where((call) => call == 'achievement'),
+          hasLength(acknowledged ? 0 : 1));
       expect(await ProgressRepository().consumePendingAchievementPopups(),
           isEmpty);
       expect(audio.calls.where((call) => call == 'reward_ok'),
