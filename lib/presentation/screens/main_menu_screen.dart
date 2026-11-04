@@ -115,6 +115,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> with RouteAware {
         context,
         repository,
         onPopup: AppScope.of(context).audioService.playAchievementUnlocked,
+        audio: AppScope.of(context).audioService,
       );
     });
     _popupQueue = popupTask.catchError((Object _, StackTrace __) {});

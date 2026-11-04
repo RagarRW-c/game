@@ -58,6 +58,9 @@ class GameAudioService {
   bool _sfxSuspended = false;
   int _tileEpoch = 0;
   int _wheelEpoch = 0;
+  int _achievementEpoch = 0;
+  Object? _achievementOwner;
+  final List<String?> _sfxCues = List.filled(_sfxPoolSize, null);
   int _nextMatchPlayer = 1;
   int _nextSfxPlayer = 0;
 
@@ -152,7 +155,33 @@ class GameAudioService {
   Future<void> playWheelCollection() => _play('wheel_collection');
   Future<void> playWheelRewardOk() => _play('wheel_reward_ok');
   Future<void> playAchievementUnlocked() => _play('achievement');
-  Future<void> playWorldUnlocked() => _play('world_unlock');
+  // World completion uses the same owned reward voice as achievements, so a
+  // dismissed result cannot leave an independent synthesized fanfare playing.
+  Future<void> playWorldUnlocked() => _play('achievement');
+
+  /// Claim playback for a visible popup. Superseding an older popup also
+  /// invalidates its asynchronous setup before the new cue can start.
+  void beginAchievementFeedback(Object owner) {
+    if (_disposed) return;
+    cancelAchievementFeedback();
+    _achievementOwner = owner;
+  }
+
+  /// A late dismissal from an older popup must not cancel its successor.
+  /// Omitting owner retains explicit service-wide cancellation for callers
+  /// without a popup lifetime.
+  void cancelAchievementFeedback({Object? owner}) {
+    if (owner != null && !identical(owner, _achievementOwner)) return;
+    _achievementOwner = null;
+    _achievementEpoch++;
+    if (_disposed) return;
+    for (var i = 0; i < _sfxPlayers.length; i++) {
+      if (_sfxCues[i] != 'achievement') continue;
+      _sfxRequests[i]++;
+      _sfxCues[i] = null;
+      unawaited(_sfxPlayers[i].stop().catchError((Object _) {}));
+    }
+  }
 
   Future<void> _play(String cue) async {
     if (!sfxEnabled || _disposed || _sfxSuspended) return;
@@ -160,6 +189,7 @@ class GameAudioService {
     final epoch = _tileEpoch;
     final wheelCue = cue.startsWith('wheel_');
     final wheelEpoch = _wheelEpoch;
+    final achievementEpoch = _achievementEpoch;
     // One replaceable tap voice, three match voices: a tap cannot steal the
     // main burst cue, and the three retained visual bursts can sound together.
     final int index;
@@ -176,13 +206,15 @@ class GameAudioService {
       _nextSfxPlayer = (_nextSfxPlayer + 1) % _sfxPlayers.length;
     }
     final request = ++_sfxRequests[index];
+    _sfxCues[index] = cue;
     bool current() =>
         !_disposed &&
         !_sfxSuspended &&
         sfxEnabled &&
         _sfxRequests[index] == request &&
         (!tileCue || epoch == _tileEpoch) &&
-        (!wheelCue || wheelEpoch == _wheelEpoch);
+        (!wheelCue || wheelEpoch == _wheelEpoch) &&
+        (cue != 'achievement' || achievementEpoch == _achievementEpoch);
     await _configureSfx();
     if (!current()) return;
     final asset = _approvedSfx(cue);
@@ -243,6 +275,7 @@ class GameAudioService {
       'wheel_stop' => '${base}wheel_stop_b.mp3',
       'wheel_collection' => '${base}wheel_prize_coins.mp3',
       'wheel_reward_ok' => '${base}reward_ok_d.mp3',
+      'achievement' => '${base}reward_ok_d.mp3',
       _ => null, // Preserve all other existing cues, including wheel start.
     };
   }
@@ -373,24 +406,15 @@ class GameAudioService {
           (frequency: 1046, seconds: 0.08),
         ];
       case 'achievement':
-        return [
-          (frequency: 659, seconds: 0.08),
-          (frequency: 880, seconds: 0.08),
-          (frequency: 1318, seconds: 0.16),
-        ];
       case 'world_unlock':
-        return [
-          (frequency: 523, seconds: 0.08),
-          (frequency: 784, seconds: 0.08),
-          (frequency: 1046, seconds: 0.08),
-          (frequency: 1568, seconds: 0.2),
-        ];
+        throw StateError('Rewards use the approved Reward OK D asset');
       default:
         return [(frequency: 880, seconds: 0.07)];
     }
   }
 
   double _volumeForCue(String cue) {
+    if (cue == 'achievement') return .65;
     if (cue == 'wheel_tick') return .25;
     if (cue == 'wheel_stop') return .55;
     if (cue == 'wheel_reward_ok') return .65;

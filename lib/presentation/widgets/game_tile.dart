@@ -82,40 +82,79 @@ class _GameTileWidgetState extends State<GameTileWidget> {
           onTapDown: (_) => _setPressed(true),
           onTapCancel: () => _setPressed(false),
           onTapUp: (_) => _setPressed(false),
-          child: AnimatedOpacity(
-            duration: MediaQuery.disableAnimationsOf(context)
-                ? Duration.zero
-                : GameDurations.quick,
-            curve: Curves.easeInOut,
-            // TileFace already mutes covered artwork. Keep its body opaque so
-            // underlying symbols cannot shine through and confuse layer order.
-            opacity: widget.blocked || widget.enabled ? 1 : 0.52,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(
-                begin: 1,
-                end: _pressed ? 0.93 : 1,
-              ),
+          child: _BlockedTilePaint(
+            blocked: widget.blocked && !widget.trayTile,
+            child: AnimatedOpacity(
               duration: MediaQuery.disableAnimationsOf(context)
                   ? Duration.zero
-                  : Duration(milliseconds: _pressed ? 70 : 110),
-              curve: Curves.easeOutCubic,
-              builder: (context, scale, child) {
-                return Transform.scale(
-                    scale: scale, transformHitTests: false, child: child);
-              },
-              child: TileFace(
-                art: art,
-                blocked: widget.blocked,
-                highlighted: widget.highlighted,
-                pressed: _pressed,
-                depth: widget.depth,
-                trayBlend: blend,
+                  : GameDurations.quick,
+              curve: Curves.easeInOut,
+              // TileFace already mutes covered artwork. Keep its body opaque so
+              // underlying symbols cannot shine through and confuse layer order.
+              opacity: widget.blocked || widget.enabled ? 1 : 0.52,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(
+                  begin: 1,
+                  end: _pressed && !MediaQuery.disableAnimationsOf(context)
+                      ? 0.96
+                      : 1,
+                ),
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : Duration(milliseconds: _pressed ? 55 : 95),
+                curve: Curves.easeOutCubic,
+                builder: (context, scale, child) {
+                  return Transform.scale(
+                      scale: scale, transformHitTests: false, child: child);
+                },
+                child: TileFace(
+                  art: art,
+                  blocked: widget.blocked,
+                  highlighted: widget.highlighted && !widget.blocked,
+                  pressed: _pressed,
+                  depth: widget.depth,
+                  trayBlend: blend,
+                ),
               ),
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// Foreground paint stays outside AnimatedOpacity's repaint boundary. A parent
+/// FittedBox can then repaint the cue at a new scale without repainting artwork.
+/// Keep CustomPaint's layout, semantics and non-intercepting foreground behavior.
+class _BlockedTilePaint extends CustomPaint {
+  const _BlockedTilePaint({required bool blocked, required super.child})
+      : super(
+            foregroundPainter:
+                blocked ? const BlockedTileOverlayPainter() : null);
+
+  @override
+  RenderCustomPaint createRenderObject(BuildContext context) =>
+      _RenderBlockedTilePaint()..showCue = foregroundPainter != null;
+
+  @override
+  void updateRenderObject(BuildContext context,
+          covariant _RenderBlockedTilePaint renderObject) =>
+      renderObject.showCue = foregroundPainter != null;
+}
+
+class _RenderBlockedTilePaint extends RenderCustomPaint {
+  late final _cue = BlockedTileOverlayPainter(renderedSide: _renderedSide);
+
+  set showCue(bool value) => foregroundPainter = value ? _cue : null;
+
+  double _renderedSide() {
+    // Root coordinates are logical screen pixels, independent of device DPR.
+    // Canvas.getTransform() is insufficient across retained repaint layers.
+    final transform = getTransformTo(null).storage;
+    final sx = Offset(transform[0], transform[1]).distance;
+    final sy = Offset(transform[4], transform[5]).distance;
+    return size.shortestSide * (sx < sy ? sx : sy);
   }
 }
 

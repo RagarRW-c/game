@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/tile_catalog.dart';
 import '../../domain/tile.dart';
 import 'game_tile.dart';
+import 'tile_face.dart';
 
 enum TrayPlacement { top, bottom }
 
@@ -28,14 +29,31 @@ class TileFlight {
   static const pickup = .14;
   static const arrival = .78;
   const TileFlight(
-      this.serial, this.source, this.target, this.slot, this.matched);
+      this.serial, this.source, this.target, this.slot, this.matched,
+      {this.reversed = false, this.reverseFrom = 1, this.restoredSource});
   final int serial;
   final TileFlightSource source;
   final Rect target;
   final int slot;
   final bool matched;
+  final bool reversed;
+  final double reverseFrom;
+  // Reselecting a mid-return tile starts its new flight away from its cell.
+  // A subsequent Undo must still finish at the original canonical location.
+  final TileFlightSource? restoredSource;
 
-  double appearanceAt(double progress) => travelAt(progress);
+  Size faceSizeAt(double progress) {
+    final size =
+        Size.lerp(source.faceSize, target.size, appearanceAt(progress))!;
+    return reversed && restoredSource != null
+        ? Size.lerp(size, restoredSource!.faceSize, _smootherStep(progress))!
+        : size;
+  }
+
+  double pathProgressAt(double progress) =>
+      reversed ? reverseFrom * (1 - progress) : progress;
+
+  double appearanceAt(double progress) => travelAt(pathProgressAt(progress));
 
   double opacityAt(double progress) => matched && progress >= arrival ? 0 : 1;
 
@@ -52,6 +70,13 @@ class TileFlight {
       : 1 - travelAt(progress);
 
   Rect rectAt(double progress) {
+    final rect = _forwardRectAt(pathProgressAt(progress));
+    return reversed && restoredSource != null
+        ? Rect.lerp(rect, restoredSource!.rect, _smootherStep(progress))!
+        : rect;
+  }
+
+  Rect _forwardRectAt(double progress) {
     if (progress <= 0) return source.rect;
     if (progress >= 1 || progress == arrival) return target;
     final t = travelAt(progress);
@@ -92,7 +117,8 @@ class TrayBurst {
       {this.snapshots = const [],
       this.shifts = const [],
       this.catalog = tileCatalog,
-      this.incomingId});
+      this.incomingId,
+      this.boardMatch = false});
   final int serial;
   final List<Rect> rects;
   final double direction;
@@ -103,6 +129,7 @@ class TrayBurst {
   final List<MatchedTileSnapshot> shifts;
   final Map<String, TileArt> catalog;
   final String? incomingId;
+  final bool boardMatch;
 
   // Both tweens are inserted in the same frame. This is the exact flight
   // arrival expressed on the burst clock, not a timer or a completion callback.
@@ -145,19 +172,45 @@ class TrayBurst {
 double _smoothStep(double t) => t * t * (3 - 2 * t);
 double _smootherStep(double t) => t * t * t * (10 + t * (-15 + 6 * t));
 
+enum BoardCueKind { hint, undo, shuffle }
+
+/// Decorative feedback for a committed action, never a second board state.
+/// Shuffle permutes artwork in place, so its cue must not move tile bodies.
+class BoardCue {
+  const BoardCue(this.serial, this.kind, this.rects);
+  static const maxRects = 12;
+  final int serial;
+  final BoardCueKind kind;
+  final List<Rect> rects;
+  Duration get duration => Duration(
+          milliseconds: switch (kind) {
+        BoardCueKind.hint => 240,
+        BoardCueKind.undo => 260,
+        BoardCueKind.shuffle => 300,
+      });
+  Rect get bounds => rects.reduce((a, b) => a.expandToInclude(b));
+}
+
 /// Presentation only: no engine reference, rewards, asynchronous work or timers.
 /// Eviction/cancellation reveals the canonical tray immediately.
 class TileEffectsController extends ChangeNotifier {
   static const maxFlights = 7;
   static const maxBursts = 3;
   final layerKey = GlobalKey();
+  final boardKey = GlobalKey();
+  Size boardTileSize = Size.zero;
   final slotKeys = List.generate(7, (_) => GlobalKey());
   final List<TileFlight> _flights = [];
   final List<TrayBurst> _bursts = [];
   final Map<String, Rect> _presentedRects = {};
+  final Map<int, double> _flightProgress = {};
   int? _presentationBurst;
   int _serial = 0;
+  int _revision = 0;
+  int get revision => _revision;
   bool _disposed = false;
+  BoardCue? _boardCue;
+  BoardCue? get boardCue => _boardCue;
   bool reducedMotion = false;
   bool _audioActive = true;
   VoidCallback? cancelPendingAudio;
@@ -166,7 +219,7 @@ class TileEffectsController extends ChangeNotifier {
   void setAudioActive(bool active) {
     if (_disposed || _audioActive == active) return;
     _audioActive = active;
-    if (!active) _cancelAudio();
+    if (!active) clear(notify: false);
   }
 
   void _cancelAudio() {
@@ -207,14 +260,18 @@ class TileEffectsController extends ChangeNotifier {
   List<TrayBurst> get bursts => List.unmodifiable(_bursts);
   bool presents(TrayBurst burst) => burst.serial == _presentationBurst;
   bool hides(String id) =>
-      _flights.any((f) => !f.matched && f.source.tile.id == id) ||
+      _flights
+          .any((f) => !f.reversed && !f.matched && f.source.tile.id == id) ||
       _bursts.any((b) => presents(b) && b.shifts.any((s) => s.tile.id == id));
+  bool hidesBoard(String id) =>
+      _flights.any((f) => f.reversed && f.source.tile.id == id);
 
   void observeFlight(TileFlight flight, double progress) {
     if (!_disposed &&
         !flight.matched &&
         _flights.any((active) => active.serial == flight.serial)) {
       _presentedRects[flight.source.tile.id] = flight.rectAt(progress);
+      _flightProgress[flight.serial] = progress;
     }
   }
 
@@ -240,10 +297,142 @@ class TileEffectsController extends ChangeNotifier {
       Map<String, TileArt> catalog, double depth) {
     if (reducedMotion) return null;
     final rect = rectFor(context);
+    for (final flight
+        in _flights.where((f) => f.reversed && f.source.tile.id == tile.id)) {
+      final progress = _flightProgress[flight.serial] ?? 0;
+      return TileFlightSource(tile, flight.rectAt(progress), catalog, depth,
+          flight.faceSizeAt(progress));
+    }
     return rect == null
         ? null
         : TileFlightSource(tile, rect, catalog, depth,
             (context.findRenderObject()! as RenderBox).size);
+  }
+
+  /// Called after transaction validation, using the existing fitted Stack.
+  /// No extra per-tile keys, retained contexts, layout or engine dependency.
+  List<TileFlightSource> captureBoard(Iterable<Tile> tiles) {
+    if (_disposed || reducedMotion || !_audioActive || boardTileSize.isEmpty) {
+      return const [];
+    }
+    final board = boardKey.currentContext?.findRenderObject();
+    final layer = layerKey.currentContext?.findRenderObject();
+    if (board is! RenderBox ||
+        layer is! RenderBox ||
+        !board.attached ||
+        !layer.attached ||
+        !board.hasSize ||
+        !layer.hasSize) {
+      return const [];
+    }
+    final transform = board.getTransformTo(layer);
+    return [
+      for (final tile in tiles)
+        TileFlightSource(
+            tile,
+            MatrixUtils.transformRect(
+                transform, tile.boardRect(board.size, boardTileSize)),
+            catalog,
+            1,
+            boardTileSize),
+    ]
+        .where((source) =>
+            source.rect.isFinite &&
+            !source.rect.isEmpty &&
+            (Offset.zero & layer.size).overlaps(source.rect))
+        .toList(growable: false);
+  }
+
+  void showBoardCue(BoardCueKind kind, Iterable<TileFlightSource> sources,
+      {int? expectedRevision}) {
+    if (_disposed ||
+        reducedMotion ||
+        !_audioActive ||
+        (expectedRevision != null && expectedRevision != _revision)) return;
+    final rects = sources.map((s) => s.rect).take(BoardCue.maxRects).toList();
+    if (rects.isEmpty) return;
+    _revision++;
+    _boardCue = BoardCue(++_serial, kind, List.unmodifiable(rects));
+    notifyListeners();
+  }
+
+  void finishBoardCue(int serial) {
+    if (_disposed || _boardCue?.serial != serial) return;
+    _boardCue = null;
+    notifyListeners();
+  }
+
+  /// Snapshot all tray anchors inside the validated transaction, before Undo
+  /// changes state. The engine's before/after IDs identify the restored tile.
+  Map<String, TileFlight> captureUndo(List<Tile> tray,
+      {required int maxLayer}) {
+    final board = {
+      for (final source in captureBoard(tray)) source.tile.id: source
+    };
+    return {
+      for (var slot = 0; slot < tray.length && slot < slotKeys.length; slot++)
+        if (board[tray[slot].id] case final source?)
+          if (rectFor(slotKeys[slot].currentContext) case final target?)
+            tray[slot].id: _undoTemplate(source, target, slot, maxLayer),
+    };
+  }
+
+  TileFlight _undoTemplate(
+      TileFlightSource source, Rect target, int slot, int maxLayer) {
+    maxLayer = math.max(maxLayer, source.tile.layer);
+    for (final flight in _flights) {
+      if (!flight.reversed &&
+          !flight.matched &&
+          flight.source.tile.id == source.tile.id) {
+        // Reverse from the last PAINTED position, not the slot the forward
+        // flight has not yet reached. Also retain its exact artwork blend.
+        return TileFlight(0, flight.source, flight.target, slot, false,
+            reversed: true,
+            reverseFrom: _flightProgress[flight.serial] ?? 0,
+            restoredSource:
+                (flight.source.rect.center - source.rect.center).distance > 1e-9
+                    ? source
+                    : null);
+      }
+    }
+    return TileFlight(
+        0,
+        TileFlightSource(source.tile, source.rect, source.catalog,
+            maxLayer == 0 ? 1 : source.tile.layer / maxLayer, source.faceSize),
+        target,
+        slot,
+        false,
+        reversed: true);
+  }
+
+  void clearForUndo() {
+    final returning = _flights.where((flight) => flight.reversed).toList();
+    final progress = Map<int, double>.of(_flightProgress);
+    clear(notify: false);
+    if (_disposed) return;
+    _flights.addAll(returning);
+    for (final flight in returning) {
+      _flightProgress[flight.serial] = progress[flight.serial] ?? 0;
+    }
+    notifyListeners();
+  }
+
+  void undoAccepted(TileFlight? captured, {required int expectedRevision}) {
+    if (_disposed ||
+        reducedMotion ||
+        !_audioActive ||
+        captured == null ||
+        expectedRevision != _revision) return;
+    _revision++;
+    if (_flights.length == maxFlights) _flights.removeAt(0);
+    _flights.add(TileFlight(
+        ++_serial, captured.source, captured.target, captured.slot, false,
+        reversed: true,
+        reverseFrom: captured.reverseFrom,
+        restoredSource: captured.restoredSource));
+    _flightProgress
+        .removeWhere((serial, _) => !_flights.any((f) => f.serial == serial));
+    notifyListeners();
   }
 
   bool accepted(
@@ -253,15 +442,22 @@ class TileEffectsController extends ChangeNotifier {
       required Set<String> matchedIds,
       List<Tile> matchedTiles = const [],
       List<Tile> beforeTiles = const [],
+      List<TileFlightSource> hintSources = const [],
+      bool directBoardMatch = false,
+      int? expectedRevision,
       required List<int> matchedSlots,
       required TrayPlacement placement,
       VoidCallback? onMatchBurst}) {
-    if (_disposed) return false;
-    if (reducedMotion) {
+    if (_disposed ||
+        (expectedRevision != null && expectedRevision != _revision))
+      return false;
+    _revision++;
+    if (reducedMotion || !_audioActive) {
       clear();
       return false;
     }
     var deferred = false;
+    _boardCue = null;
     final previousRects = Map<String, Rect>.of(_presentedRects);
     for (final flight in _flights) {
       previousRects.putIfAbsent(
@@ -275,9 +471,12 @@ class TileEffectsController extends ChangeNotifier {
     // A match compacts tray indices. Cancel earlier flights rather than letting
     // them land in obsolete slots or replay already matched tile faces.
     if (matchedIds.isNotEmpty) {
-      _flights.clear();
+      _flights.removeWhere(
+          (f) => !f.reversed || matchedIds.contains(f.source.tile.id));
     } else {
-      _flights.removeWhere((f) => !tray.contains(f.source.tile.id));
+      _flights.removeWhere((f) => f.reversed
+          ? tray.contains(f.source.tile.id)
+          : !tray.contains(f.source.tile.id));
       for (final flight in _flights) {
         final rect = previousRects[flight.source.tile.id];
         if (rect != null) _presentedRects[flight.source.tile.id] = rect;
@@ -300,15 +499,31 @@ class TileEffectsController extends ChangeNotifier {
       // Keep the engine's append/compact order. Visually place the triple in
       // the three adjacent slots ending at the incoming tile's measured target.
       final targets = group ? [slot - 2, slot - 1, slot] : matchedSlots;
-      final rects = [
-        for (final slot in targets)
-          if (slot >= 0 && slot < slotKeys.length)
-            rectFor(slotKeys[slot].currentContext)
-      ].whereType<Rect>().toList();
+      final boardSources = {
+        for (final source in hintSources)
+          if (matchedIds.contains(source.tile.id)) source.tile.id: source,
+      }.values.take(3).toList(growable: false);
+      final rects = directBoardMatch
+          ? [
+              if (boardSources.length == 3)
+                for (final s in boardSources) s.rect
+            ]
+          : [
+              for (final slot in targets)
+                if (slot >= 0 && slot < slotKeys.length)
+                  rectFor(slotKeys[slot].currentContext)
+            ].whereType<Rect>().toList();
       if (rects.isNotEmpty) {
         final snapshots = <MatchedTileSnapshot>[];
+        if (directBoardMatch) {
+          snapshots.addAll(
+              boardSources.map((s) => MatchedTileSnapshot(s.tile, s.rect)));
+        }
         for (var i = 0;
-            i < matchedSlots.length && i < matchedTiles.length && i < 3;
+            !directBoardMatch &&
+                i < matchedSlots.length &&
+                i < matchedTiles.length &&
+                i < 3;
             i++) {
           final index = targets[i];
           if (index < 0 || index >= slotKeys.length) continue;
@@ -347,6 +562,7 @@ class TileEffectsController extends ChangeNotifier {
             snapshots: List.unmodifiable(snapshots),
             shifts: List.unmodifiable(shifts),
             catalog: source?.catalog ?? catalog,
+            boardMatch: directBoardMatch,
             incomingId: hasIncoming ? source?.tile.id : null));
         _presentationBurst = _bursts.last.serial;
         if (_audioActive && onMatchBurst != null) {
@@ -355,6 +571,8 @@ class TileEffectsController extends ChangeNotifier {
         }
       }
     }
+    _flightProgress
+        .removeWhere((serial, _) => !_flights.any((f) => f.serial == serial));
     notifyListeners();
     return deferred;
   }
@@ -365,6 +583,7 @@ class TileEffectsController extends ChangeNotifier {
       _presentedRects.remove(flight.source.tile.id);
     }
     _flights.removeWhere((f) => f.serial == serial);
+    _flightProgress.remove(serial);
     notifyListeners();
   }
 
@@ -381,10 +600,14 @@ class TileEffectsController extends ChangeNotifier {
 
   void clear({bool notify = true}) {
     if (_disposed) return;
+    _revision++;
     _cancelAudio();
     _presentationBurst = null;
     _presentedRects.clear();
-    if (_flights.isEmpty && _bursts.isEmpty) return;
+    _flightProgress.clear();
+    final hadCue = _boardCue != null;
+    _boardCue = null;
+    if (_flights.isEmpty && _bursts.isEmpty && !hadCue) return;
     _flights.clear();
     _bursts.clear();
     if (notify) notifyListeners();
@@ -395,6 +618,8 @@ class TileEffectsController extends ChangeNotifier {
     _cancelAudio();
     cancelPendingAudio = null;
     _disposed = true;
+    _flightProgress.clear();
+    _boardCue = null;
     _presentationBurst = null;
     _presentedRects.clear();
     _flights.clear();
@@ -407,6 +632,27 @@ class _BurstAudio {
   _BurstAudio(this.play);
   final VoidCallback play;
   bool queued = false;
+}
+
+/// Only paint visibility changes. Canonical layout, semantics and hit testing
+/// stay engine-owned while one non-interactive copy returns from the tray.
+class BoardFlightVisibility extends StatelessWidget {
+  const BoardFlightVisibility(
+      {super.key,
+      required this.controller,
+      required this.tileId,
+      required this.child});
+  final TileEffectsController controller;
+  final String tileId;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (_, child) => Opacity(
+          opacity: controller.hidesBoard(tileId) ? 0 : 1,
+          alwaysIncludeSemantics: true,
+          child: child));
 }
 
 /// Finite, framework-owned implicit animations; bounded to this screen. The
@@ -462,7 +708,10 @@ class _GameTileEffectsState extends State<GameTileEffects>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
-    if (mounted) _updateAudioActivity();
+    if (mounted) {
+      _updateAudioActivity();
+      setState(() {});
+    }
   }
 
   @override
@@ -483,6 +732,8 @@ class _GameTileEffectsState extends State<GameTileEffects>
           media.textScaler.scale(16),
           media.disableAnimations,
           TickerMode.of(context),
+          _foreground,
+          ModalRoute.of(context)?.isCurrent ?? true,
           widget.round
         );
         if (_geometry != signature) {
@@ -510,6 +761,19 @@ class _GameTileEffectsState extends State<GameTileEffects>
                         child: Stack(
                   clipBehavior: Clip.hardEdge,
                   children: [
+                    if (widget.controller.boardCue case final cue?)
+                      Positioned.fromRect(
+                        rect: cue.bounds,
+                        key: ValueKey('board_cue_${cue.serial}'),
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: 1),
+                          duration: cue.duration,
+                          onEnd: () =>
+                              widget.controller.finishBoardCue(cue.serial),
+                          builder: (context, progress, _) => CustomPaint(
+                              painter: BoardCuePainter(cue, progress)),
+                        ),
+                      ),
                     for (final flight in widget.controller.flights)
                       Positioned.fill(
                           key: ValueKey('flight_layer_${flight.serial}'),
@@ -569,7 +833,7 @@ class _GameTileEffectsState extends State<GameTileEffects>
                                               progress: progress)),
                                     Positioned.fill(
                                         child: CustomPaint(
-                                            painter: _BurstPainter(
+                                            painter: MatchBurstPainter(
                                                 burst, progress))),
                                   ]));
                             },
@@ -590,7 +854,7 @@ class TileFlightVisual extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final blend = flight.appearanceAt(progress);
-    final size = Size.lerp(flight.source.faceSize, flight.target.size, blend)!;
+    final size = flight.faceSizeAt(progress);
     return FittedBox(
         fit: BoxFit.fill,
         child: SizedBox(
@@ -661,9 +925,22 @@ class FlightAccentPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (progress <= 0 || progress >= 1 || flight.opacityAt(progress) == 0)
+    if (progress < 0 || progress >= 1 || flight.opacityAt(progress) == 0)
       return;
-    final strength = math.sin(math.pi * progress);
+    // Accepted-move light starts on the first flight frame and uses its pickup
+    // clock. Pointer-down alone cannot create it, and input is never delayed.
+    final phase = flight.pathProgressAt(progress);
+    if (phase < TileFlight.pickup) {
+      final glow = 1 - phase / TileFlight.pickup;
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              flight.rectAt(progress).inflate(1), const Radius.circular(12)),
+          Paint()
+            ..color = const Color(0xFFFFDF80).withValues(alpha: glow * .65)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2);
+    }
+    final strength = math.sin(math.pi * phase);
     final body = flight.rectAt(progress);
     final shadow = body.shift(Offset(0, 9 * strength)).inflate(6 * strength);
     canvas.drawOval(
@@ -705,7 +982,7 @@ class FlightAccentPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = stroke.$1);
     }
-    if (!flight.matched && progress > TileFlight.arrival) {
+    if (!flight.reversed && !flight.matched && progress > TileFlight.arrival) {
       final landing =
           (progress - TileFlight.arrival) / (1 - TileFlight.arrival);
       final pulse = math.sin(math.pi * landing);
@@ -728,121 +1005,138 @@ class FlightAccentPainter extends CustomPainter {
       old.flight != flight || old.progress != progress;
 }
 
-class _BurstPainter extends CustomPainter {
-  const _BurstPainter(this.burst, this.progress);
-  final TrayBurst burst;
+/// Local-only accents: no blur, shader allocation or paint outside tile bounds.
+class BoardCuePainter extends CustomPainter {
+  const BoardCuePainter(this.cue, this.progress);
+  final BoardCue cue;
   final double progress;
+
   @override
   void paint(Canvas canvas, Size size) {
-    if (progress < burst.reactionStart) return;
-    final p = burst.particlesAt(progress);
-    final fade = 1 - p;
-    // The faces compress together before any particles are released.
-    final reaction = burst.reactionAt(progress);
-    for (final rect in burst.rects) {
-      if (p < .3) {
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(rect, const Radius.circular(12)),
-            Paint()
-              ..color = Colors.white
-                  .withValues(alpha: reaction * (1 - p / .3) * .82));
-      }
-    }
-    if (progress < burst.release || progress >= 1 || burst.rects.isEmpty)
-      return;
-    // One shared central flash ties all three slot reactions together.
-    final center = burst.rects.map((r) => r.center).reduce((a, b) => a + b) /
-        burst.rects.length.toDouble();
-    final flashRect = Rect.fromCenter(
-        center: center, width: 48 + 100 * p, height: 38 + 38 * p);
-    canvas.drawOval(
-        flashRect,
-        Paint()
-          ..shader = RadialGradient(colors: [
-            Colors.white.withValues(alpha: fade * .9),
-            const Color(0xFFFFDC78).withValues(alpha: fade * .5),
-            const Color(0x00FFDC78),
-          ], stops: const [
-            0,
-            .35,
-            1
-          ]).createShader(flashRect));
-    for (final rect in burst.rects) {
-      final ring = RRect.fromRectAndRadius(
-          rect.inflate(2 + Curves.easeOut.transform(p) * 13),
-          const Radius.circular(14));
-      canvas.drawRRect(
-          ring,
-          Paint()
-            ..color = const Color(0xFF17304E).withValues(alpha: fade * .45)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 6 * fade);
-      canvas.drawRRect(
-          ring,
-          Paint()
-            ..color = const Color(0xFFFFDF80).withValues(alpha: fade * .9)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 3.5 * fade);
-      // Fixed 12 particles per slot. Small deterministic stagger, varied star
-      // and round shapes, decelerating scatter and gentle inward gravity.
-      for (var i = 0; i < TrayBurst.particlesPerSlot; i++) {
-        final delay = (i % 3) * .035;
-        if (p <= delay) continue;
-        final age = ((p - delay) / (1 - delay)).clamp(0.0, 1.0);
-        final scatter = Curves.easeOutCubic.transform(age);
-        final alpha = (1 - age) * (1 - age);
-        final angle = i * math.pi * 2 / TrayBurst.particlesPerSlot;
-        final origin = rect.center +
-            Offset(math.cos(angle) * rect.width * .3,
-                math.sin(angle) * rect.height * .3);
-        final point = origin +
-            Offset(
-                math.cos(angle) * (22 + (i % 4) * 5) * scatter,
-                burst.direction * (12 * scatter + 34 * age * age) +
-                    math.sin(angle) * 21 * scatter);
-        final radius = (3.3 + (i % 3) * 1.1) * (1 - age * .8);
-        final glow = Rect.fromCircle(center: point, radius: radius * 2);
-        canvas.drawCircle(
-            point,
-            radius * 2,
-            Paint()
-              ..shader = RadialGradient(colors: [
-                const Color(0xFFFFDF80).withValues(alpha: alpha * .65),
-                const Color(0x00FFDF80)
-              ]).createShader(glow));
-        final pen = Paint()
-          ..color = const Color(0xFFFFDF80).withValues(alpha: alpha);
-        if (i.isEven) {
-          final star = Path();
-          for (var tip = 0; tip < 8; tip++) {
-            final theta = angle + age * .65 + tip * math.pi / 4;
-            final r = tip.isEven ? radius : radius * .32;
-            final x = point.dx + math.cos(theta) * r;
-            final y = point.dy + math.sin(theta) * r;
-            if (tip == 0) {
-              star.moveTo(x, y);
-            } else {
-              star.lineTo(x, y);
-            }
+    if (progress <= 0 || progress >= 1) return;
+    final strength = math.sin(math.pi * progress);
+    final pen = Paint()
+      ..color = const Color(0xFFFFDF80).withValues(alpha: strength * .75)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+    for (final absolute in cue.rects) {
+      final rect = absolute.shift(-cue.bounds.topLeft);
+      final unit = rect.shortestSide;
+      final body = RRect.fromRectAndRadius(
+          rect.deflate(unit * .09), Radius.circular(unit * .18));
+      canvas.save();
+      canvas.clipRRect(body);
+      canvas.drawRRect(body.deflate(1), pen);
+      switch (cue.kind) {
+        case BoardCueKind.undo:
+          // Two left-facing chevrons retreat along the lower rim of the
+          // restored face. The tile itself stays at its authoritative position.
+          for (var i = 0; i < 2; i++) {
+            final c = Offset(
+                rect.center.dx + unit * (.12 - i * .18 - progress * .08),
+                rect.top + unit * .75);
+            canvas.drawPath(
+                Path()
+                  ..moveTo(c.dx + unit * .06, c.dy - unit * .07)
+                  ..lineTo(c.dx - unit * .02, c.dy)
+                  ..lineTo(c.dx + unit * .06, c.dy + unit * .07),
+                pen);
           }
-          star.close();
-          canvas.drawPath(
-              star,
-              Paint()
-                ..color = const Color(0xFF17304E).withValues(alpha: alpha * .6)
-                ..style = PaintingStyle.stroke
-                ..strokeWidth = 1.5);
-          canvas.drawPath(star, pen);
-        } else {
-          canvas.drawCircle(point, radius * .65, pen);
-        }
-        canvas.drawCircle(point, radius * .3,
-            Paint()..color = Colors.white.withValues(alpha: alpha));
+        case BoardCueKind.shuffle:
+          // Opposed perimeter sweeps describe the in-place type permutation.
+          for (var i = 0; i < 2; i++) {
+            canvas.drawArc(body.outerRect.deflate(unit * .04),
+                math.pi * (i + progress), math.pi * .35, false, pen);
+          }
+        case BoardCueKind.hint:
+          for (var i = 0; i < 4; i++) {
+            final angle = math.pi * (i * .5 + .25);
+            final c = rect.center +
+                Offset(math.cos(angle), math.sin(angle)) * unit * .34;
+            final r = unit * .055 * strength;
+            canvas.drawLine(c - Offset(r, 0), c + Offset(r, 0), pen);
+            canvas.drawLine(c - Offset(0, r), c + Offset(0, r), pen);
+          }
       }
+      canvas.restore();
     }
   }
 
   @override
-  bool shouldRepaint(_BurstPainter old) =>
+  bool shouldRepaint(BoardCuePainter old) =>
+      old.cue != cue || old.progress != progress;
+}
+
+class MatchBurstPainter extends CustomPainter {
+  const MatchBurstPainter(this.burst, this.progress);
+  final TrayBurst burst;
+  final double progress;
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress < burst.reactionStart || progress >= 1) return;
+    final p = burst.particlesAt(progress);
+    final reaction = burst.reactionAt(progress);
+    for (final slot in burst.rects) {
+      // The artwork is square even in a tall tray slot. Confine all light and
+      // particles to that face; never wash over a neighboring tile or badge.
+      final rect = TileFace.artworkRect(slot.size).shift(slot.topLeft);
+      final unit = rect.shortestSide;
+      final body = RRect.fromRectAndRadius(
+          rect.deflate(unit * .06), Radius.circular(unit * .18));
+      canvas.save();
+      canvas.clipRRect(body);
+      final light = reaction * (1 - p);
+      canvas.drawRRect(
+          body,
+          Paint()
+            ..color = const Color(0xFFFFF4DA).withValues(alpha: light * .18));
+      canvas.drawRRect(
+          body.deflate(1),
+          Paint()
+            ..color = const Color(0xFFFFDF80).withValues(alpha: light * .8)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.min(1.6, unit * .05));
+      if (progress >= burst.release) {
+        // Fixed, deterministic particles share the original burst/audio clock.
+        // Small filled glints replace the wide flash and per-particle shaders.
+        for (var i = 0; i < TrayBurst.particlesPerSlot; i++) {
+          final delay = (i % 3) * .035;
+          if (p <= delay) continue;
+          final age = ((p - delay) / (1 - delay)).clamp(0.0, 1.0);
+          final scatter = Curves.easeOutCubic.transform(age);
+          final angle = i * math.pi * 2 / TrayBurst.particlesPerSlot;
+          final point = rect.center +
+              Offset(
+                  math.cos(angle) * unit * (.18 + .22 * scatter),
+                  math.sin(angle) * unit * (.18 + .22 * scatter) +
+                      burst.direction * unit * .04 * age);
+          final radius = math.min(2.2, unit * .055) * (1 - age * .75);
+          final pen = Paint()
+            ..color = (i.isEven ? const Color(0xFFFFDF80) : Colors.white)
+                .withValues(alpha: (1 - age) * (1 - age));
+          if (i.isEven) {
+            final star = Path()
+              ..moveTo(point.dx, point.dy - radius)
+              ..lineTo(point.dx + radius * .3, point.dy - radius * .3)
+              ..lineTo(point.dx + radius, point.dy)
+              ..lineTo(point.dx + radius * .3, point.dy + radius * .3)
+              ..lineTo(point.dx, point.dy + radius)
+              ..lineTo(point.dx - radius * .3, point.dy + radius * .3)
+              ..lineTo(point.dx - radius, point.dy)
+              ..lineTo(point.dx - radius * .3, point.dy - radius * .3)
+              ..close();
+            canvas.drawPath(star, pen);
+          } else {
+            canvas.drawCircle(point, radius * .6, pen);
+          }
+        }
+      }
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(MatchBurstPainter old) =>
       old.progress != progress || old.burst != burst;
 }

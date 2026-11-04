@@ -253,7 +253,10 @@ class _LuckyWheelScreenState extends State<LuckyWheelScreen>
       await showPendingAchievementPopups(context, repository,
           onPopup: acknowledged == true
               ? null
-              : () => _sound(_audio.playAchievementUnlocked));
+              // The popup owns visibility now; the covered wheel route is
+              // correctly not current and must not veto its achievement cue.
+              : _audio.playAchievementUnlocked,
+          audio: _audio);
     } catch (_) {
       if (!mounted) return;
       _cancelUnconfirmedMotion();

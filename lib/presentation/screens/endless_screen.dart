@@ -37,7 +37,7 @@ class EndlessScreen extends StatefulWidget {
     required this.boardGenerator,
     this.initialRound = 1,
     this.initialScore = 0,
-  }) : assert(initialRound > 0),
+  })  : assert(initialRound > 0),
         assert(initialScore >= 0);
 
   final int initialRound;
@@ -248,7 +248,8 @@ class _EndlessScreenState extends State<EndlessScreen> {
             : await repository.spendCoins(_boosterCoinCost);
         if (!paid && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(inventory > 0 ? 'No booster available' : 'Not enough coins'),
+            content: Text(
+                inventory > 0 ? 'No booster available' : 'Not enough coins'),
           ));
         }
         return paid;
@@ -268,8 +269,11 @@ class _EndlessScreenState extends State<EndlessScreen> {
           }
         }
       },
-      valid: () => mounted && identical(engine, _engine) &&
-          (route == null || (route.isActive && route.isCurrent)) && legal(),
+      valid: () =>
+          mounted &&
+          identical(engine, _engine) &&
+          (route == null || (route.isActive && route.isCurrent)) &&
+          legal(),
       apply: () {
         final applied = apply();
         if (applied && freeUses == 0) {
@@ -389,21 +393,28 @@ class _EndlessScreenState extends State<EndlessScreen> {
 
   void _showMoveFeedback(
       List<String> before, Iterable<String> collected, Set<String> matchedIds,
-      {TileFlightSource? source}) {
+      {TileFlightSource? source,
+      List<TileFlightSource> hintSources = const [],
+      bool directBoardMatch = false,
+      int? expectedRevision}) {
     final engine = _engine;
     if (!mounted || engine == null) return;
-    setState(() {
-      _trayFeedback = TrayFeedback(
-          serial: ++_feedbackSerial,
-          matched: matchedIds.isNotEmpty,
-          before: before,
-          collected: collected,
-          matchedIds: matchedIds);
-    });
+    final feedback = TrayFeedback(
+        serial: ++_feedbackSerial,
+        matched: matchedIds.isNotEmpty,
+        before: before,
+        collected: collected,
+        matchedIds: matchedIds);
+    if (expectedRevision == null || expectedRevision == _tileEffects.revision) {
+      setState(() => _trayFeedback = feedback);
+    }
     final audio = _scope.audioService;
     _tileEffects.cancelPendingAudio = audio.cancelPendingTileFeedback;
     final deferredMatch = _tileEffects.accepted(
         source: source,
+        hintSources: hintSources,
+        directBoardMatch: directBoardMatch,
+        expectedRevision: expectedRevision,
         slot: before.length,
         tray: engine.tray,
         matchedIds: matchedIds,
@@ -416,7 +427,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
             if (matchedIds.contains(id) && engine.tileById(id) != null)
               engine.tileById(id)!,
         ],
-        matchedSlots: _trayFeedback!.slots,
+        matchedSlots: feedback.slots,
         placement: trayPlacementForRound(_round),
         onMatchBurst: engine.result == GameResult.playing
             ? () => dispatchTileMatch(audio)
@@ -521,20 +532,28 @@ class _EndlessScreenState extends State<EndlessScreen> {
     final usedFreeHint = _hintUsesRemaining > 0;
     var beforeTrayIds = <String>[];
     var collected = false;
+    var hintSources = <TileFlightSource>[];
+    var cueRevision = _tileEffects.revision;
     final applied = await _transactBooster(
-      engine, _hintUsesRemaining, _extraHintBoosters, BoosterKind.hint,
+      engine,
+      _hintUsesRemaining,
+      _extraHintBoosters,
+      BoosterKind.hint,
       () {
         engine.updateBoardGeometry(boardSize, tileSize);
         return engine.canCollectHintTileIds(hintIds);
       },
       () {
         beforeTrayIds = List<String>.from(engine.tray);
+        hintSources = _tileEffects
+            .captureBoard(hintIds.map(engine.tileById).whereType<Tile>());
         setState(() {
           _hintedTileIds.clear();
           collected = engine.collectHintTileIds(hintIds);
           if (collected && usedFreeHint) _hintUsesRemaining--;
           if (collected) _boosterUsedThisBoard = true;
         });
+        cueRevision = _tileEffects.revision;
         return collected;
       },
     );
@@ -548,7 +567,15 @@ class _EndlessScreenState extends State<EndlessScreen> {
       hintIds,
     );
     if (removedIds.isNotEmpty) {
-      _showMoveFeedback(beforeTrayIds, hintIds, removedIds);
+      final directBoardMatch =
+          hintIds.length == 3 && hintIds.every(removedIds.contains);
+      _showMoveFeedback(beforeTrayIds, hintIds, removedIds,
+          hintSources: hintSources,
+          directBoardMatch: directBoardMatch,
+          expectedRevision: cueRevision);
+      if (!directBoardMatch && _tileEffects.revision == cueRevision + 1) {
+        _tileEffects.showBoardCue(BoardCueKind.hint, hintSources);
+      }
       setState(() {
         _tilesMatched += removedIds.length;
         _addScore(50);
@@ -572,9 +599,14 @@ class _EndlessScreenState extends State<EndlessScreen> {
     }
     final usedFreeShuffle = _shuffleUsesRemaining > 0;
     var shuffled = false;
+    var cueRevision = _tileEffects.revision;
     final applied = await _transactBooster(
-      engine, _shuffleUsesRemaining, _extraShuffleBoosters, BoosterKind.shuffle,
-      () => engine.boardTiles.length >= 2 &&
+      engine,
+      _shuffleUsesRemaining,
+      _extraShuffleBoosters,
+      BoosterKind.shuffle,
+      () =>
+          engine.boardTiles.length >= 2 &&
           (engine.result == GameResult.playing),
       () {
         setState(() {
@@ -587,11 +619,17 @@ class _EndlessScreenState extends State<EndlessScreen> {
           if (shuffled && usedFreeShuffle) _shuffleUsesRemaining--;
           if (shuffled) _boosterUsedThisBoard = true;
         });
+        cueRevision = _tileEffects.revision;
         return shuffled;
       },
     );
     if (!applied || !mounted || !identical(engine, _engine)) return;
     if (!shuffled) return;
+    _tileEffects.showBoardCue(
+        BoardCueKind.shuffle,
+        _tileEffects.captureBoard(engine.renderedBoardTiles
+            .where((tile) => !engine.isTileCovered(tile))),
+        expectedRevision: cueRevision);
     _playSfx(_scope.audioService.playBooster, 'booster');
     unawaited(_scope.progressRepository.recordBoosterUsed(BoosterKind.shuffle));
   }
@@ -601,27 +639,50 @@ class _EndlessScreenState extends State<EndlessScreen> {
     final undoTray = List<String>.from(engine.tray);
     final usedFreeUndo = _undoUsesRemaining > 0;
     var undone = false;
+    var undoFlights = <String, TileFlight>{};
+    var cueRevision = _tileEffects.revision;
     final applied = await _transactBooster(
-      engine, _undoUsesRemaining, _extraUndoBoosters, BoosterKind.undo,
+      engine,
+      _undoUsesRemaining,
+      _extraUndoBoosters,
+      BoosterKind.undo,
       () => engine.canUndo && listEquals(engine.tray, undoTray),
       () {
+        undoFlights = _tileEffects.captureUndo(
+            undoTray.map(engine.tileById).whereType<Tile>().toList(),
+            maxLayer: engine.renderedBoardTiles
+                .fold<int>(0, (n, tile) => tile.layer > n ? tile.layer : n));
         setState(() {
           undone = engine.undo();
           if (undone) {
             _trayFeedback = null;
-            _tileEffects.clear();
+            _tileEffects.clearForUndo();
             _hintedTileIds.clear();
             if (usedFreeUndo) _undoUsesRemaining--;
             _boosterUsedThisBoard = true;
           }
         });
+        cueRevision = _tileEffects.revision;
         return undone;
       },
     );
     if (!applied || !mounted || !identical(engine, _engine)) return;
     if (!undone) return;
-    _playSfx(_scope.audioService.playBooster, 'booster');
+    _showUndoFlight(engine, undoFlights, cueRevision);
+    dispatchTileFeedback(
+        audio: _scope.audioService, matched: false, vibrationEnabled: false);
     unawaited(_scope.progressRepository.recordBoosterUsed(BoosterKind.undo));
+  }
+
+  void _showUndoFlight(
+      GameEngine engine, Map<String, TileFlight> captured, int revision) {
+    for (final entry in captured.entries) {
+      if (!engine.tray.contains(entry.key) &&
+          engine.tileById(entry.key)?.state == TileState.board) {
+        _tileEffects.undoAccepted(entry.value, expectedRevision: revision);
+        break; // Engine Undo restores exactly its last unmatched selection.
+      }
+    }
   }
 
   Future<void> _handleGameOver() async {
@@ -737,6 +798,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
             boardHeight.clamp(330.0, 600.0).toDouble(),
           );
           final tileSize = _tileSize(boardWidth + 20);
+          _tileEffects.boardTileSize = tileSize;
           final renderedBoardTiles = _renderedBoardSnapshot(
             engine,
             boardSize,
@@ -807,6 +869,7 @@ class _EndlessScreenState extends State<EndlessScreen> {
                               margin: GameplaySpacing.boardMargin,
                               decoration: boardSurfaceDecoration(worldTheme),
                               child: Stack(
+                                key: _tileEffects.boardKey,
                                 clipBehavior: Clip.none,
                                 children: [
                                   Positioned.fill(
@@ -828,27 +891,31 @@ class _EndlessScreenState extends State<EndlessScreen> {
                                               : tile.layer / maxLayer;
                                           return IgnorePointer(
                                             ignoring: covered,
-                                            child: GameTileWidget(
-                                              tile: tile,
-                                              enabled: !covered,
-                                              blocked: covered,
-                                              depth: depth,
-                                              highlighted: _hintedTileIds
-                                                  .contains(tile.id),
-                                              catalog: visualCatalog,
-                                              onTap: covered
-                                                  ? null
-                                                  : () => _onTileTap(
-                                                        tile,
-                                                        boardSize,
-                                                        tileSize,
-                                                        source: _tileEffects
-                                                            .capture(
-                                                                context,
-                                                                tile,
-                                                                visualCatalog,
-                                                                depth),
-                                                      ),
+                                            child: BoardFlightVisibility(
+                                              controller: _tileEffects,
+                                              tileId: tile.id,
+                                              child: GameTileWidget(
+                                                tile: tile,
+                                                enabled: !covered,
+                                                blocked: covered,
+                                                depth: depth,
+                                                highlighted: _hintedTileIds
+                                                    .contains(tile.id),
+                                                catalog: visualCatalog,
+                                                onTap: covered
+                                                    ? null
+                                                    : () => _onTileTap(
+                                                          tile,
+                                                          boardSize,
+                                                          tileSize,
+                                                          source: _tileEffects
+                                                              .capture(
+                                                                  context,
+                                                                  tile,
+                                                                  visualCatalog,
+                                                                  depth),
+                                                        ),
+                                              ),
                                             ),
                                           );
                                         },

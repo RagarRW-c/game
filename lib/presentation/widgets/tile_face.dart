@@ -68,6 +68,92 @@ class TileFace extends StatelessWidget {
   }
 }
 
+/// A consistent blocked surface for every world and artwork family. Keep the
+/// underlying body opaque: reducing tile opacity would expose lower symbols.
+/// Simple paint primitives add no font/asset loading or accessibility node.
+/// Tiny fitted tiles use a coarse blocked bar; larger tiles retain the lock.
+class BlockedTileOverlayPainter extends CustomPainter {
+  const BlockedTileOverlayPainter({this.renderedSide});
+
+  /// Supplied by the render object at paint time, after ancestor FittedBox
+  /// transforms. Standalone painter use defaults to unscaled logical pixels.
+  final double Function()? renderedSide;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final unit = size.shortestSide;
+    final body = TileFacePainter.bodyRect(size);
+    canvas.drawRRect(body, Paint()..color = const Color(0x59304450));
+
+    // Lower-center placement keeps the main symbol recognizable. The entire
+    // badge stays inside the resting body and follows its normal paint order.
+    final center = Offset(body.center.dx, body.top + body.height * .78);
+    final screenSide = renderedSide?.call() ?? unit;
+    if (screenSide.isFinite && screenSide > 0 && screenSide < 28) {
+      // Below ~28px the old lock's shackle/body become a 3-4px white blob.
+      // A horizontal blocked marker has no hole or tiny detail to resolve.
+      // The six approved captures render at >=29px and keep the lock below.
+      final pixel = unit / screenSide;
+      // Cap very extreme downscales so the marker always fits inside the body.
+      final markerPixel = math.min(pixel, unit / 19);
+      final stroke = math.min(pixel * .8, unit * .05);
+      canvas.drawRRect(
+          body.deflate(stroke / 2),
+          Paint()
+            ..color = const Color(0xFF304450)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = stroke);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromCenter(
+                  center: center,
+                  width: markerPixel * 8,
+                  height: markerPixel * 3.5),
+              Radius.circular(markerPixel * 1.75)),
+          Paint()..color = const Color(0xFF304450));
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromCenter(
+                  center: center,
+                  width: markerPixel * 6,
+                  height: markerPixel * 2),
+              Radius.circular(markerPixel * .5)),
+          Paint()..color = Colors.white);
+      return;
+    }
+
+    // Approved larger-size path: keep its geometry, colors and draw order exact.
+    canvas.drawCircle(
+        center, unit * .14, Paint()..color = const Color(0xFF304450));
+    final shackle = RRect.fromRectAndRadius(
+        Rect.fromCenter(
+            center: center - Offset(0, unit * .035),
+            width: unit * .10,
+            height: unit * .11),
+        Radius.circular(unit * .045));
+    canvas.drawRRect(
+        shackle,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = unit * .022);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(center.dx - unit * .08, center.dy - unit * .005,
+                unit * .16, unit * .11),
+            Radius.circular(unit * .02)),
+        Paint()..color = Colors.white);
+  }
+
+  @override
+  bool hitTest(Offset position) => false;
+
+  @override
+  bool shouldRepaint(BlockedTileOverlayPainter oldDelegate) =>
+      renderedSide != oldDelegate.renderedSide;
+}
+
 class _ApprovedTileHighlight extends CustomPainter {
   const _ApprovedTileHighlight();
 
