@@ -33,12 +33,39 @@ import 'world_selection_screen.dart';
 import 'settings_screen.dart';
 import 'win_screen.dart';
 
+/// Optional host-owned session boundary. Ordinary Campaign leaves this null.
+/// The host owns result navigation and persistence isolation; the screen keeps
+/// its authoritative input, layout, tile effects and tray presentation.
+class GameScreenSessionHooks {
+  const GameScreenSessionHooks({
+    required this.createEngine,
+    required this.onResult,
+    required this.onPause,
+    required this.title,
+    this.assistanceEnabled = false,
+    this.onBoardPointerDown,
+    this.onBoardPointerUp,
+  });
+
+  final GameEngine Function(LevelDefinition) createEngine;
+  final Future<void> Function(GameResult) onResult;
+  final VoidCallback onPause;
+  final String title;
+  final bool assistanceEnabled;
+  final PointerDownEventListener? onBoardPointerDown;
+  final PointerUpEventListener? onBoardPointerUp;
+}
+
 class GameScreen extends StatefulWidget {
   const GameScreen(
-      {super.key, required this.level, this.victoryVideoControllerFactory});
+      {super.key,
+      required this.level,
+      this.victoryVideoControllerFactory,
+      this.sessionHooks});
 
   static const route = '/game';
   final int level;
+  final GameScreenSessionHooks? sessionHooks;
   @visibleForTesting
   final VictoryVideoControllerFactory? victoryVideoControllerFactory;
 
@@ -160,8 +187,12 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   }
 
   void _ensureEngine(LevelDefinition level) {
-    _engine ??= GameEngine(level.tiles, objective: level.objective);
+    _engine ??= _createEngine(level);
   }
+
+  GameEngine _createEngine(LevelDefinition level) =>
+      widget.sessionHooks?.createEngine(level) ??
+      GameEngine(level.tiles, objective: level.objective);
 
   void _queueLevelOneTutorial() {
     if (_tutorialQueued || widget.level != 1) return;
@@ -255,6 +286,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   }
 
   bool _canUseBooster(int freeUsesRemaining, int inventory) {
+    if (widget.sessionHooks?.assistanceEnabled == false) return false;
     return freeUsesRemaining > 0 || inventory > 0 || _coins >= _boosterCoinCost;
   }
 
@@ -363,6 +395,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   }
 
   String _boosterCostLabel(int freeUsesRemaining, int inventory) {
+    if (widget.sessionHooks?.assistanceEnabled == false) return 'Off';
     if (freeUsesRemaining > 0) return 'x$freeUsesRemaining';
     if (inventory > 0) return '+$inventory';
     return '$_boosterCoinCost';
@@ -672,6 +705,10 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     _gameOverDialogShowing = true;
     _playSfx(_scope.audioService.playGameOver, 'game_over');
     _haptic(HapticFeedback.heavyImpact);
+    if (widget.sessionHooks case final hooks?) {
+      await hooks.onResult(GameResult.lost);
+      return;
+    }
     if (!mounted) return;
 
     await showDialog<void>(
@@ -690,7 +727,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                 _navigator.pop();
                 if (!mounted) return;
                 _safeSetState(() {
-                  _engine = GameEngine(level.tiles, objective: level.objective);
+                  _engine = _createEngine(level);
                   _resetAnimationState();
                   _resetBoosterUses();
                 });
@@ -701,6 +738,10 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   }
 
   Future<void> _showPauseMenu(LevelDefinition level) async {
+    if (widget.sessionHooks case final hooks?) {
+      hooks.onPause();
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (_) => GameDialogFrame(
@@ -726,7 +767,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                 _navigator.pop();
                 if (!mounted) return;
                 _safeSetState(() {
-                  _engine = GameEngine(level.tiles, objective: level.objective);
+                  _engine = _createEngine(level);
                   _resetAnimationState();
                   _resetBoosterUses();
                 });
@@ -765,6 +806,10 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   Future<void> _handleWin() async {
     if (_winDialogShowing || !mounted) return;
     _winDialogShowing = true;
+    if (widget.sessionHooks case final hooks?) {
+      await hooks.onResult(GameResult.won);
+      return;
+    }
     final scope = _scope;
     unawaited(scope.audioService.pauseGameplayMusicForVictory(owner: this));
     final bossInfo = _BossLevelInfo.forLevel(widget.level);
@@ -1074,7 +1119,8 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     GameHeader(
-                                      title: _gameHeaderTitle(level),
+                                      title: widget.sessionHooks?.title ??
+                                          _gameHeaderTitle(level),
                                       worldTheme: worldTheme,
                                       onBack: () =>
                                           Navigator.of(context).maybePop(),
@@ -1171,62 +1217,81 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                                     margin: GameplaySpacing.boardMargin,
                                     decoration:
                                         boardSurfaceDecoration(worldTheme),
-                                    child: Stack(
-                                      key: _tileEffects.boardKey,
-                                      clipBehavior: Clip.none,
-                                      children: [
-                                        Positioned.fill(
-                                            child: GameBoardBackdrop(
-                                                theme: worldTheme)),
-                                        for (final tile in renderedBoardTiles)
-                                          Positioned(
-                                            key: ValueKey(tile.id),
-                                            left: tile.x * boardSize.width,
-                                            top: tile.y * boardSize.height,
-                                            width: tileSize.width,
-                                            height: tileSize.height,
-                                            child: Builder(
-                                              builder: (context) {
-                                                final covered =
-                                                    coveredById[tile.id] ??
-                                                        true;
-                                                final depth = maxLayer == 0
-                                                    ? 1.0
-                                                    : tile.layer / maxLayer;
-                                                return IgnorePointer(
-                                                  ignoring: covered,
-                                                  child: BoardFlightVisibility(
-                                                    controller: _tileEffects,
-                                                    tileId: tile.id,
-                                                    child: GameTileWidget(
-                                                      tile: tile,
-                                                      enabled: !covered,
-                                                      blocked: covered,
-                                                      depth: depth,
-                                                      highlighted: hintedTileIds
-                                                          .contains(tile.id),
-                                                      catalog: visualCatalog,
-                                                      onTap: covered
-                                                          ? null
-                                                          : () => _onTileTap(
-                                                                level,
-                                                                tile,
-                                                                boardSize,
-                                                                tileSize,
-                                                                source: _tileEffects
-                                                                    .capture(
+                                    child: Listener(
+                                      behavior: widget.sessionHooks == null
+                                          ? HitTestBehavior.deferToChild
+                                          : HitTestBehavior.opaque,
+                                      onPointerDown: widget
+                                          .sessionHooks?.onBoardPointerDown,
+                                      onPointerUp:
+                                          widget.sessionHooks?.onBoardPointerUp,
+                                      child: Stack(
+                                        key: _tileEffects.boardKey,
+                                        clipBehavior: Clip.none,
+                                        children: [
+                                          Positioned.fill(
+                                              child: GameBoardBackdrop(
+                                                  theme: worldTheme)),
+                                          for (final tile in renderedBoardTiles)
+                                            Positioned(
+                                              key: ValueKey(tile.id),
+                                              left: tile.x * boardSize.width,
+                                              top: tile.y * boardSize.height,
+                                              width: tileSize.width,
+                                              height: tileSize.height,
+                                              child: Builder(
+                                                builder: (context) {
+                                                  final covered =
+                                                      coveredById[tile.id] ??
+                                                          true;
+                                                  final depth = maxLayer == 0
+                                                      ? 1.0
+                                                      : tile.layer / maxLayer;
+                                                  return ExcludeSemantics(
+                                                    excluding: covered &&
+                                                        widget.sessionHooks !=
+                                                            null,
+                                                    child: IgnorePointer(
+                                                      ignoring: covered,
+                                                      child:
+                                                          BoardFlightVisibility(
+                                                        controller:
+                                                            _tileEffects,
+                                                        tileId: tile.id,
+                                                        child: GameTileWidget(
+                                                          tile: tile,
+                                                          enabled: !covered,
+                                                          blocked: covered,
+                                                          depth: depth,
+                                                          highlighted:
+                                                              hintedTileIds
+                                                                  .contains(
+                                                                      tile.id),
+                                                          catalog:
+                                                              visualCatalog,
+                                                          onTap: covered
+                                                              ? null
+                                                              : () =>
+                                                                  _onTileTap(
+                                                                    level,
+                                                                    tile,
+                                                                    boardSize,
+                                                                    tileSize,
+                                                                    source: _tileEffects.capture(
                                                                         context,
                                                                         tile,
                                                                         visualCatalog,
                                                                         depth),
-                                                              ),
+                                                                  ),
+                                                        ),
+                                                      ),
                                                     ),
-                                                  ),
-                                                );
-                                              },
+                                                  );
+                                                },
+                                              ),
                                             ),
-                                          ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
