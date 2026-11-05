@@ -1,0 +1,17 @@
+name: level96_android_qa
+description: Isolated Android QA tooling; never a production dependency.
+publish_to: none
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  shared_preferences: ^2.3.2
+  triple_tile_adventure:
+    path: ..
+dev_dependencies:
+  flutter_lints: ^4.0.0

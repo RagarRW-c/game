@@ -6,6 +6,8 @@
 .pub/
 build/
 coverage/
+# Unique device QA runs may include APK metadata, logs and analyst-only traces.
+qa/level96_android_qa_runs/
 # Local third-party recordings are analysis references, never production assets.
 /reference/
 # Flutter golden mismatch artifacts; reviewed baselines remain trackable.
