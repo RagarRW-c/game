@@ -8,6 +8,7 @@ build/
 coverage/
 # Unique device QA runs may include APK metadata, logs and analyst-only traces.
 qa/level96_android_qa_runs/
+qa/phase5a_runs/
 # Local third-party recordings are analysis references, never production assets.
 /reference/
 # Flutter golden mismatch artifacts; reviewed baselines remain trackable.
@@ -30,5 +31,8 @@ signing.properties
 .env.*
 !.env.example
 assets/audio/*.wav
+!assets/audio/campaign_entrance_v2.wav
+!assets/audio/campaign_landing_v2.wav
+!assets/audio/campaign_collect_v2.wav
 android/app/src/main/res/mipmap-*/ic_launcher.png
 android/gradle/wrapper/gradle-wrapper.jar

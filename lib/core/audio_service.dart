@@ -7,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
 import 'game_music.dart';
+import 'campaign_feedback_audio.dart';
 
 class GameAudioService {
   GameAudioService(
@@ -52,6 +53,7 @@ class GameAudioService {
   bool _sfxConfigured = false;
   Future<void>? _sfxConfiguration;
   Future<void>? _tilePreparation;
+  Future<void>? _campaignPreparation;
   final Map<String, Future<String>> _pendingAudioPaths = {};
   final List<int> _sfxRequests = List.filled(_sfxPoolSize, 0);
   bool _disposed = false;
@@ -124,6 +126,19 @@ class GameAudioService {
 
   Future<void> playMatch() => _play('match');
 
+  Future<void> playCampaignFeedback(CampaignFeedbackEvent event) =>
+      _play('campaign_${event.name}');
+
+  Future<void> prepareCampaignFeedback() =>
+      _campaignPreparation ??= Future.wait([
+        prepareTileFeedback(),
+        AudioCache.instance.loadAll(
+            campaignFeedbackSounds.values.map((sound) => sound.asset).toList()),
+      ]).then<void>((_) {}).catchError((Object error) {
+        _campaignPreparation = null;
+        throw error;
+      });
+
   /// Prepare once on gameplay entry, away from the visual impact frame.
   Future<void> prepareTileFeedback() =>
       _tilePreparation ??= _prepareTileFeedback().catchError((Object error) {
@@ -185,7 +200,9 @@ class GameAudioService {
 
   Future<void> _play(String cue) async {
     if (!sfxEnabled || _disposed || _sfxSuspended) return;
-    final tileCue = cue.startsWith('tap') || cue == 'match';
+    final campaignSound = campaignSoundForCue(cue);
+    final tileCue =
+        cue.startsWith('tap') || cue == 'match' || campaignSound != null;
     final epoch = _tileEpoch;
     final wheelCue = cue.startsWith('wheel_');
     final wheelEpoch = _wheelEpoch;
@@ -193,7 +210,12 @@ class GameAudioService {
     // One replaceable tap voice, three match voices: a tap cannot steal the
     // main burst cue, and the three retained visual bursts can sound together.
     final int index;
-    if (cue.startsWith('tap')) {
+    if (campaignSound != null) {
+      // Selection/entrance: voice 0; collection/landing: voice 1.
+      // One dedicated, replaceable match voice bounds overlapping tails and
+      // preserves SFX mix headroom. Rapid selections cannot steal this voice.
+      index = campaignSound.voice;
+    } else if (cue.startsWith('tap')) {
       index = 0;
     } else if (cue == 'wheel_tick') {
       // A long approved tick replaces its predecessor instead of layering.
@@ -267,6 +289,8 @@ class GameAudioService {
   }
 
   String? _approvedSfx(String cue) {
+    final campaign = campaignSoundForCue(cue);
+    if (campaign != null) return campaign.asset;
     const base = 'audio/triotrek/sfx/';
     if (cue.startsWith('tap')) return '${base}tile_tap_b.mp3';
     return switch (cue) {
@@ -414,6 +438,8 @@ class GameAudioService {
   }
 
   double _volumeForCue(String cue) {
+    final campaign = campaignSoundForCue(cue);
+    if (campaign != null) return campaign.volume;
     if (cue == 'achievement') return .65;
     if (cue == 'wheel_tick') return .25;
     if (cue == 'wheel_stop') return .55;

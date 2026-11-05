@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/tile_catalog.dart';
+import '../../core/campaign_feedback_audio.dart';
 import '../../data/level_repository.dart';
 import '../../data/progress_repository.dart';
 import '../../domain/game_engine.dart';
@@ -21,6 +22,7 @@ import '../booster_transaction.dart';
 import '../widgets/achievement_popup.dart';
 import '../widgets/game_over_dialog.dart';
 import '../widgets/game_tile.dart';
+import '../widgets/campaign_entrance.dart';
 import '../widgets/game_tray.dart';
 import '../widgets/tile_effects.dart';
 import '../widgets/tile_face.dart';
@@ -61,11 +63,13 @@ class GameScreen extends StatefulWidget {
       {super.key,
       required this.level,
       this.victoryVideoControllerFactory,
-      this.sessionHooks});
+      this.sessionHooks,
+      this.gameFeelV2 = const bool.fromEnvironment('GAME_FEEL_V2')});
 
   static const route = '/game';
   final int level;
   final GameScreenSessionHooks? sessionHooks;
+  final bool gameFeelV2;
   @visibleForTesting
   final VictoryVideoControllerFactory? victoryVideoControllerFactory;
 
@@ -73,7 +77,8 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> with RouteAware {
+class _GameScreenState extends State<GameScreen>
+    with RouteAware, SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const int _maxBoosterUses = 2;
   static const int _boosterCoinCost = 150;
   static const int _levelCompleteCoinReward = 50;
@@ -98,6 +103,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   bool _vibrationEnabled = true;
   TrayFeedback? _trayFeedback;
   final _tileEffects = TileEffectsController();
+  late final CampaignEntranceController _entrance;
   final _boosterTransaction = BoosterTransaction();
   int _feedbackSerial = 0;
   bool _gameOverDialogShowing = false;
@@ -106,10 +112,55 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   PageRoute<dynamic>? _route;
 
   @override
+  void initState() {
+    super.initState();
+    _entrance = CampaignEntranceController(
+        vsync: this,
+        onEvent: (event) {
+          if (mounted && widget.gameFeelV2) {
+            dispatchCampaignFeedback(_scope.audioService, event);
+          }
+        });
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (widget.gameFeelV2 && state != AppLifecycleState.resumed) {
+      _entrance.finish();
+      _scope.audioService.cancelPendingTileFeedback();
+    }
+  }
+
+  @override
+  void didPushNext() {
+    if (widget.gameFeelV2) {
+      _entrance.finish();
+      _scope.audioService.cancelPendingTileFeedback();
+    }
+  }
+
+  Widget _entranceBoard(Widget child) => widget.gameFeelV2
+      ? CampaignEntranceGate(controller: _entrance, child: child)
+      : child;
+
+  Widget _entranceTile(String id, Widget child) => widget.gameFeelV2
+      ? CampaignTileEntrance(controller: _entrance, tileId: id, child: child)
+      : child;
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _scope = AppScope.of(context);
-    safelyPlayFeedback(_scope.audioService.prepareTileFeedback);
+    safelyPlayFeedback(widget.gameFeelV2
+        ? _scope.audioService.prepareCampaignFeedback
+        : _scope.audioService.prepareTileFeedback);
+    if (widget.gameFeelV2 &&
+        (MediaQuery.disableAnimationsOf(context) ||
+            !TickerMode.valuesOf(context).enabled ||
+            !(ModalRoute.of(context)?.isCurrent ?? true))) {
+      _entrance.finish();
+    }
     _navigator = Navigator.of(context);
     final route = ModalRoute.of(context);
     if (_route == null && route is PageRoute<dynamic>) {
@@ -144,6 +195,8 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _entrance.dispose();
     _tileEffects.dispose();
     final route = _route;
     if (route != null) appRouteObserver.unsubscribe(this);
@@ -154,6 +207,15 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
   @override
   void didUpdateWidget(covariant GameScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.gameFeelV2 != widget.gameFeelV2) {
+      _tileEffects.clear();
+      if (widget.gameFeelV2 && _engine != null) {
+        _entrance.prepare(_engine!.boardTiles,
+            reducedMotion: MediaQuery.disableAnimationsOf(context));
+      } else {
+        _entrance.finish();
+      }
+    }
     if (oldWidget.level != widget.level) {
       _levelFuture = _scope.levelRepository.loadLevel(widget.level);
       _engine = null;
@@ -190,9 +252,17 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
     _engine ??= _createEngine(level);
   }
 
-  GameEngine _createEngine(LevelDefinition level) =>
-      widget.sessionHooks?.createEngine(level) ??
-      GameEngine(level.tiles, objective: level.objective);
+  GameEngine _createEngine(LevelDefinition level) {
+    final engine = widget.sessionHooks?.createEngine(level) ??
+        GameEngine(level.tiles, objective: level.objective);
+    if (widget.gameFeelV2) {
+      _entrance.prepare(engine.boardTiles,
+          reducedMotion: MediaQuery.disableAnimationsOf(context) ||
+              !TickerMode.valuesOf(context).enabled ||
+              !(ModalRoute.of(context)?.isCurrent ?? true));
+    }
+    return engine;
+  }
 
   void _queueLevelOneTutorial() {
     if (_tutorialQueued || widget.level != 1) return;
@@ -406,6 +476,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
       {TileFlightSource? source,
       List<TileFlightSource> hintSources = const [],
       bool directBoardMatch = false,
+      bool premiumTap = false,
       int? expectedRevision}) {
     final engine = _engine;
     if (!mounted || engine == null) return;
@@ -439,8 +510,15 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         ],
         matchedSlots: feedback.slots,
         placement: trayPlacementForRound(widget.level),
+        premium: premiumTap,
+        onArrival: premiumTap && engine.result == GameResult.playing
+            ? () => dispatchCampaignFeedback(
+                audio, CampaignFeedbackEvent.collection)
+            : null,
         onMatchBurst: engine.result == GameResult.playing
-            ? () => dispatchTileMatch(audio)
+            ? () => premiumTap
+                ? dispatchCampaignFeedback(audio, CampaignFeedbackEvent.match)
+                : dispatchTileMatch(audio)
             : null);
     dispatchTileFeedback(
         audio: _scope.audioService,
@@ -448,13 +526,14 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
         deferMatch: deferredMatch,
         tapped: source != null || !deferredMatch,
         vibrationEnabled: _vibrationEnabled,
-        terminal: engine.result != GameResult.playing);
+        terminal: engine.result != GameResult.playing,
+        campaignFeel: premiumTap);
   }
 
   Future<void> _onTileTap(
       LevelDefinition level, Tile tile, Size boardSize, Size tileSize,
       {TileFlightSource? source}) async {
-    if (!mounted) return;
+    if (!mounted || (widget.gameFeelV2 && _entrance.running)) return;
     final engine = _engine;
     if (engine == null || engine.result != GameResult.playing) {
       return;
@@ -487,7 +566,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
       collectedId: canonicalTile.id,
     );
     _showMoveFeedback(beforeTrayIds, [canonicalTile.id], matchedIds,
-        source: source);
+        source: source, premiumTap: widget.gameFeelV2);
     if (matchedIds.isNotEmpty) {
       await _recordMatchedTiles(
         matchedIds.length,
@@ -1217,7 +1296,7 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                                     margin: GameplaySpacing.boardMargin,
                                     decoration:
                                         boardSurfaceDecoration(worldTheme),
-                                    child: Listener(
+                                    child: _entranceBoard(Listener(
                                       behavior: widget.sessionHooks == null
                                           ? HitTestBehavior.deferToChild
                                           : HitTestBehavior.opaque,
@@ -1247,52 +1326,55 @@ class _GameScreenState extends State<GameScreen> with RouteAware {
                                                   final depth = maxLayer == 0
                                                       ? 1.0
                                                       : tile.layer / maxLayer;
-                                                  return ExcludeSemantics(
-                                                    excluding: covered &&
-                                                        widget.sessionHooks !=
-                                                            null,
-                                                    child: IgnorePointer(
-                                                      ignoring: covered,
-                                                      child:
-                                                          BoardFlightVisibility(
-                                                        controller:
-                                                            _tileEffects,
-                                                        tileId: tile.id,
-                                                        child: GameTileWidget(
-                                                          tile: tile,
-                                                          enabled: !covered,
-                                                          blocked: covered,
-                                                          depth: depth,
-                                                          highlighted:
-                                                              hintedTileIds
-                                                                  .contains(
-                                                                      tile.id),
-                                                          catalog:
-                                                              visualCatalog,
-                                                          onTap: covered
-                                                              ? null
-                                                              : () =>
-                                                                  _onTileTap(
-                                                                    level,
-                                                                    tile,
-                                                                    boardSize,
-                                                                    tileSize,
-                                                                    source: _tileEffects.capture(
-                                                                        context,
+                                                  return _entranceTile(
+                                                      tile.id,
+                                                      ExcludeSemantics(
+                                                        excluding: covered &&
+                                                            widget.sessionHooks !=
+                                                                null,
+                                                        child: IgnorePointer(
+                                                          ignoring: covered,
+                                                          child:
+                                                              BoardFlightVisibility(
+                                                            controller:
+                                                                _tileEffects,
+                                                            tileId: tile.id,
+                                                            child:
+                                                                GameTileWidget(
+                                                              tile: tile,
+                                                              enabled: !covered,
+                                                              blocked: covered,
+                                                              depth: depth,
+                                                              highlighted:
+                                                                  hintedTileIds
+                                                                      .contains(
+                                                                          tile.id),
+                                                              catalog:
+                                                                  visualCatalog,
+                                                              onTap: covered
+                                                                  ? null
+                                                                  : () =>
+                                                                      _onTileTap(
+                                                                        level,
                                                                         tile,
-                                                                        visualCatalog,
-                                                                        depth),
-                                                                  ),
+                                                                        boardSize,
+                                                                        tileSize,
+                                                                        source: _tileEffects.capture(
+                                                                            context,
+                                                                            tile,
+                                                                            visualCatalog,
+                                                                            depth),
+                                                                      ),
+                                                            ),
+                                                          ),
                                                         ),
-                                                      ),
-                                                    ),
-                                                  );
+                                                      ));
                                                 },
                                               ),
                                             ),
                                         ],
                                       ),
-                                    ),
+                                    )),
                                   ),
                                 ),
                               ),

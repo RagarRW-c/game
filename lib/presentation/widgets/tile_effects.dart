@@ -30,13 +30,21 @@ class TileFlight {
   static const arrival = .78;
   const TileFlight(
       this.serial, this.source, this.target, this.slot, this.matched,
-      {this.reversed = false, this.reverseFrom = 1, this.restoredSource});
+      {this.reversed = false,
+      this.reverseFrom = 1,
+      this.restoredSource,
+      this.premium = false});
   final int serial;
   final TileFlightSource source;
   final Rect target;
   final int slot;
   final bool matched;
   final bool reversed;
+  final bool premium;
+  Duration get animationDuration =>
+      premium ? const Duration(milliseconds: 360) : duration;
+  double get pickupAt => premium ? .12 : pickup;
+  double get arrivalAt => premium ? .80 : arrival;
   final double reverseFrom;
   // Reselecting a mid-return tile starts its new flight away from its cell.
   // A subsequent Undo must still finish at the original canonical location.
@@ -55,18 +63,18 @@ class TileFlight {
 
   double appearanceAt(double progress) => travelAt(pathProgressAt(progress));
 
-  double opacityAt(double progress) => matched && progress >= arrival ? 0 : 1;
+  double opacityAt(double progress) => matched && progress >= arrivalAt ? 0 : 1;
 
   /// A visible pickup precedes transport. Both phase boundaries have zero
   /// velocity and acceleration; gameplay has already accepted the selection.
   double travelAt(double progress) {
-    if (progress <= pickup) return 0;
-    if (progress >= arrival) return 1;
-    return _smootherStep((progress - pickup) / (arrival - pickup));
+    if (progress <= pickupAt) return 0;
+    if (progress >= arrivalAt) return 1;
+    return _smootherStep((progress - pickupAt) / (arrivalAt - pickupAt));
   }
 
-  double liftAt(double progress) => progress <= pickup
-      ? _smootherStep((progress / pickup).clamp(0.0, 1.0))
+  double liftAt(double progress) => progress <= pickupAt
+      ? _smootherStep((progress / pickupAt).clamp(0.0, 1.0))
       : 1 - travelAt(progress);
 
   Rect rectAt(double progress) {
@@ -78,17 +86,19 @@ class TileFlight {
 
   Rect _forwardRectAt(double progress) {
     if (progress <= 0) return source.rect;
-    if (progress >= 1 || progress == arrival) return target;
+    if (progress >= 1 || progress == arrivalAt) return target;
     final t = travelAt(progress);
     final rect = Rect.lerp(source.rect, target, t)!;
-    if (progress < arrival) {
+    if (progress < arrivalAt) {
       final lift = liftAt(progress);
       final arc = math.pow(math.sin(math.pi * t), 3).toDouble();
       return rect
-          .inflate(math.min(rect.width, rect.height) * lift * .11)
-          .shift(Offset(arc * (slot >= 3 ? -8 : 8), -lift * 12));
+          .inflate(
+              math.min(rect.width, rect.height) * lift * (premium ? .06 : .11))
+          .shift(
+              Offset(arc * (slot >= 3 ? -8 : 8), -lift * (premium ? 7 : 12)));
     }
-    final landing = (progress - arrival) / (1 - arrival);
+    final landing = (progress - arrivalAt) / (1 - arrivalAt);
     final compression = landing < .45
         ? math.pow(math.sin(math.pi * landing / .45), 2).toDouble()
         : -math.pow(math.sin(math.pi * (landing - .45) / .55), 2).toDouble() *
@@ -118,7 +128,8 @@ class TrayBurst {
       this.shifts = const [],
       this.catalog = tileCatalog,
       this.incomingId,
-      this.boardMatch = false});
+      this.boardMatch = false,
+      this.premium = false});
   final int serial;
   final List<Rect> rects;
   final double direction;
@@ -130,13 +141,15 @@ class TrayBurst {
   final Map<String, TileArt> catalog;
   final String? incomingId;
   final bool boardMatch;
+  final bool premium;
+  int get particleCount => premium ? 8 : particlesPerSlot;
 
   // Both tweens are inserted in the same frame. This is the exact flight
   // arrival expressed on the burst clock, not a timer or a completion callback.
   double get reactionStart => incomingId == null
       ? 0
-      : TileFlight.duration.inMicroseconds *
-          TileFlight.arrival /
+      : (premium ? 360000 : TileFlight.duration.inMicroseconds) *
+          (premium ? .80 : TileFlight.arrival) /
           duration.inMicroseconds;
   double get _compression =>
       compressionDuration.inMicroseconds / duration.inMicroseconds;
@@ -215,6 +228,7 @@ class TileEffectsController extends ChangeNotifier {
   bool _audioActive = true;
   VoidCallback? cancelPendingAudio;
   final Map<int, _BurstAudio> _burstAudio = {};
+  final Map<int, _BurstAudio> _arrivalAudio = {};
 
   void setAudioActive(bool active) {
     if (_disposed || _audioActive == active) return;
@@ -224,6 +238,7 @@ class TileEffectsController extends ChangeNotifier {
 
   void _cancelAudio() {
     _burstAudio.clear();
+    _arrivalAudio.clear();
     cancelPendingAudio?.call();
   }
 
@@ -267,6 +282,24 @@ class TileEffectsController extends ChangeNotifier {
       _flights.any((f) => f.reversed && f.source.tile.id == id);
 
   void observeFlight(TileFlight flight, double progress) {
+    final cue = _arrivalAudio[flight.serial];
+    if (!_disposed &&
+        _audioActive &&
+        cue != null &&
+        !cue.queued &&
+        progress >= flight.arrivalAt &&
+        progress < 1) {
+      cue.queued = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_disposed ||
+            !_audioActive ||
+            !identical(_arrivalAudio[flight.serial], cue)) {
+          return;
+        }
+        _arrivalAudio.remove(flight.serial);
+        cue.play();
+      });
+    }
     if (!_disposed &&
         !flight.matched &&
         _flights.any((active) => active.serial == flight.serial)) {
@@ -388,6 +421,7 @@ class TileEffectsController extends ChangeNotifier {
         // flight has not yet reached. Also retain its exact artwork blend.
         return TileFlight(0, flight.source, flight.target, slot, false,
             reversed: true,
+            premium: flight.premium,
             reverseFrom: _flightProgress[flight.serial] ?? 0,
             restoredSource:
                 (flight.source.rect.center - source.rect.center).distance > 1e-9
@@ -428,8 +462,11 @@ class TileEffectsController extends ChangeNotifier {
     _flights.add(TileFlight(
         ++_serial, captured.source, captured.target, captured.slot, false,
         reversed: true,
+        premium: captured.premium,
         reverseFrom: captured.reverseFrom,
         restoredSource: captured.restoredSource));
+    _arrivalAudio
+        .removeWhere((serial, _) => !_flights.any((f) => f.serial == serial));
     _flightProgress
         .removeWhere((serial, _) => !_flights.any((f) => f.serial == serial));
     notifyListeners();
@@ -447,7 +484,9 @@ class TileEffectsController extends ChangeNotifier {
       int? expectedRevision,
       required List<int> matchedSlots,
       required TrayPlacement placement,
-      VoidCallback? onMatchBurst}) {
+      VoidCallback? onMatchBurst,
+      VoidCallback? onArrival,
+      bool premium = false}) {
     if (_disposed ||
         (expectedRevision != null && expectedRevision != _revision))
       return false;
@@ -487,7 +526,11 @@ class TileEffectsController extends ChangeNotifier {
       if (target != null) {
         if (_flights.length == maxFlights) _flights.removeAt(0);
         _flights.add(TileFlight(++_serial, source, target, slot,
-            matchedIds.contains(source.tile.id)));
+            matchedIds.contains(source.tile.id),
+            premium: premium));
+        if (onArrival != null && !matchedIds.contains(source.tile.id)) {
+          _arrivalAudio[_flights.last.serial] = _BurstAudio(onArrival);
+        }
       }
     }
     if (matchedIds.isNotEmpty) {
@@ -563,6 +606,7 @@ class TileEffectsController extends ChangeNotifier {
             shifts: List.unmodifiable(shifts),
             catalog: source?.catalog ?? catalog,
             boardMatch: directBoardMatch,
+            premium: premium,
             incomingId: hasIncoming ? source?.tile.id : null));
         _presentationBurst = _bursts.last.serial;
         if (_audioActive && onMatchBurst != null) {
@@ -571,6 +615,8 @@ class TileEffectsController extends ChangeNotifier {
         }
       }
     }
+    _arrivalAudio
+        .removeWhere((serial, _) => !_flights.any((f) => f.serial == serial));
     _flightProgress
         .removeWhere((serial, _) => !_flights.any((f) => f.serial == serial));
     notifyListeners();
@@ -579,6 +625,7 @@ class TileEffectsController extends ChangeNotifier {
 
   void finishFlight(int serial) {
     if (_disposed) return;
+    _arrivalAudio.remove(serial);
     for (final flight in _flights.where((f) => f.serial == serial)) {
       _presentedRects.remove(flight.source.tile.id);
     }
@@ -780,7 +827,7 @@ class _GameTileEffectsState extends State<GameTileEffects>
                           child: TweenAnimationBuilder<double>(
                             key: ValueKey('flight_${flight.serial}'),
                             tween: Tween(begin: 0, end: 1),
-                            duration: TileFlight.duration,
+                            duration: flight.animationDuration,
                             onEnd: () =>
                                 widget.controller.finishFlight(flight.serial),
                             builder: (context, progress, _) {
@@ -933,8 +980,8 @@ class FlightAccentPainter extends CustomPainter {
     // Accepted-move light starts on the first flight frame and uses its pickup
     // clock. Pointer-down alone cannot create it, and input is never delayed.
     final phase = flight.pathProgressAt(progress);
-    if (phase < TileFlight.pickup) {
-      final glow = 1 - phase / TileFlight.pickup;
+    if (phase < flight.pickupAt) {
+      final glow = 1 - phase / flight.pickupAt;
       canvas.drawRRect(
           RRect.fromRectAndRadius(
               flight.rectAt(progress).inflate(1), const Radius.circular(12)),
@@ -985,9 +1032,8 @@ class FlightAccentPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = stroke.$1);
     }
-    if (!flight.reversed && !flight.matched && progress > TileFlight.arrival) {
-      final landing =
-          (progress - TileFlight.arrival) / (1 - TileFlight.arrival);
+    if (!flight.reversed && !flight.matched && progress > flight.arrivalAt) {
+      final landing = (progress - flight.arrivalAt) / (1 - flight.arrivalAt);
       final pulse = math.sin(math.pi * landing);
       final ring = RRect.fromRectAndRadius(
           flight.target.inflate(2 + landing * 5), const Radius.circular(13));
@@ -1103,12 +1149,12 @@ class MatchBurstPainter extends CustomPainter {
       if (progress >= burst.release) {
         // Fixed, deterministic particles share the original burst/audio clock.
         // Small filled glints replace the wide flash and per-particle shaders.
-        for (var i = 0; i < TrayBurst.particlesPerSlot; i++) {
+        for (var i = 0; i < burst.particleCount; i++) {
           final delay = (i % 3) * .035;
           if (p <= delay) continue;
           final age = ((p - delay) / (1 - delay)).clamp(0.0, 1.0);
           final scatter = Curves.easeOutCubic.transform(age);
-          final angle = i * math.pi * 2 / TrayBurst.particlesPerSlot;
+          final angle = i * math.pi * 2 / burst.particleCount;
           final point = rect.center +
               Offset(
                   math.cos(angle) * unit * (.18 + .22 * scatter),

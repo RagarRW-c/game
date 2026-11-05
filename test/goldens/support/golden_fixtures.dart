@@ -1,3 +1,4 @@
+import 'package:triple_tile_adventure/core/campaign_feedback_audio.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -153,6 +154,10 @@ class _FrozenChest extends TreasureChest {
 // native players. Implement the entire public interface explicitly so future
 // API additions are compile errors instead of runtime noSuchMethod failures.
 class GoldenAudio implements GameAudioService {
+  @override
+  Future<void> prepareCampaignFeedback() async {}
+  @override
+  Future<void> playCampaignFeedback(CampaignFeedbackEvent event) async {}
   @override
   Future<void> prepareTileFeedback() async {}
   @override
